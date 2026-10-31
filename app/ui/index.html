@@ -668,6 +668,13 @@ details[open] summary::before{content:'－ '}
               </div>
               <div class="wz-go" style="margin-top:8px"><button class="btn" id="agOwnReset" hidden>Вернуть встроенную Gemma</button><button class="btn pri" id="agOwnUse">Подключить</button></div>
             </details>
+            <details id="agWh" style="margin-top:8px">
+              <summary>У меня уже есть whisper — указать папку</summary>
+              <div class="hint" style="margin:8px 0">Папка с программой <b>whisper-cli.exe</b> и/или моделью <b>ggml-….bin</b> (многоязычной, не «.en»). Что найдётся — будет использовано, недостающее приложение скачает отдельно.</div>
+              <div class="path on"><input id="agWhDir" spellcheck="false" placeholder="D:\Tools\whisper"><button class="btn" data-pick="agWhDir">Обзор…</button></div>
+              <div class="hint" id="agWhInfo" style="margin-top:6px"></div>
+              <div class="wz-go" style="margin-top:8px"><button class="btn" id="agWhReset" hidden>Вернуть встроенный whisper</button><button class="btn pri" id="agWhUse">Подключить</button></div>
+            </details>
           </div>
           <div class="card">
             <div class="card-h"><h3>Промпт для</h3></div>
@@ -2402,6 +2409,12 @@ async function agStatus() {
   $('#agInstall').textContent = !needModel ? `Докачать распознавание речи (~${Math.round(s.speech_size / 1e6)} МБ)`
     : s.custom ? 'Скачать движок llama.cpp (37 МБ) и распознавание речи' : `Скачать модель (~${((s.size + s.speech_size) / 1e9).toFixed(1)} ГБ, вместе с распознаванием речи)`;
   $('#agFromLip').hidden = !L.dur0;
+  const sp = s.speech || {};
+  $('#agWhReset').hidden = !sp.custom;
+  if (sp.custom && !$('#agWhDir').value) $('#agWhDir').value = sp.custom;
+  $('#agWhInfo').innerHTML = sp.ready
+    ? `<span class="ok-t">✓ Программа и модель найдены${sp.model ? ': ' + esc(sp.model) : ''}</span>`
+    : sp.custom ? `<span class="warn-t">Не найдено: ${esc(sp.missing.join(', '))} — нажмите «Докачать» в карточке выше, скачается только это.</span>` : '';
   $('#agModel').insertAdjacentHTML('beforeend', s.speech_ready
     ? '<br><span class="ok-t">✓ Распознавание речи готово: можно приложить аудио и говорить в микрофон.</span>'
     : '<br><span class="warn-t">Распознавание речи не скачано: без него нельзя приложить аудио и говорить голосом.</span>');
@@ -2421,6 +2434,11 @@ $('#agOwnUse').onclick = async () => {
   try { await postJSON('/api/agent/model', { dir: $('#agOwnDir').value }); toast('Модель подключена'); agStatus(); }
   catch (e) { toast(e.message); }
 };
+$('#agWhUse').onclick = async () => {
+  try { await postJSON('/api/speech/folder', { dir: $('#agWhDir').value }); toast('Папка whisper подключена'); agStatus(); }
+  catch (e) { toast(e.message); }
+};
+$('#agWhReset').onclick = async () => { await postJSON('/api/speech/folder', { reset: true }); $('#agWhDir').value = ''; toast('Снова встроенный whisper'); agStatus(); };
 $('#agOwnPick').onchange = async e => {
   try { await postJSON('/api/agent/model', { dir: $('#agOwnDir').value, model: e.target.value }); toast('Модель выбрана'); agStatus(); }
   catch (err) { toast(err.message); }

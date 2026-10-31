@@ -313,7 +313,7 @@ class LlamaServer:
             return ""
 
 
-async def install(installer, root, variant, runtime_only=False):
+async def install(installer, root, variant, runtime_only=False, whisper_dir=None):
     """Download llama.cpp (Vulkan build, works on any NVIDIA/AMD card) and, unless the user has their own, Gemma."""
     root = Path(root)
     llama_dir = root / "llama.cpp"
@@ -324,7 +324,7 @@ async def install(installer, root, variant, runtime_only=False):
             z.extractall(llama_dir)
         zpath.unlink(missing_ok=True)
     import speech
-    await speech.install(installer, root)  # words from audio + voice input (~200 MB)
+    await speech.install(installer, root, whisper_dir)  # words from audio + voice input (~200 MB)
     if runtime_only:
         return
     v = LLM_VARIANTS[variant]

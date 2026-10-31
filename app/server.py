@@ -28,6 +28,7 @@ import agent as ag
 import catalog
 import cloud
 import engine
+import speech
 import workflows as wf
 
 # frozen builds keep code inside the bundle but user data next to the exe
@@ -869,6 +870,7 @@ class App:
             "variant": variant, "title": Path(custom["model"]).stem if custom else v["title"],
             "size": 37e6 if custom else v["model_size"] + v["mmproj_size"], "candidates": candidates, "vram": vram,
             "custom": custom, "vision": self.llm.vision(variant), "has_model": self.llm.has_model(variant),
+            "speech_ready": speech.ready(self.llm.root), "speech_size": speech.MODEL_SIZE + speech.WHISPER_ZIP_SIZE,
             "installed": self.llm.installed(variant), "running": self.llm.alive(),
             "installing": bool(self.agent_installer), "dir": str(self.llm.root),
             "skills": [self.skill_public(s) for s in self.skills.list()],
@@ -898,6 +900,26 @@ class App:
 
         asyncio.create_task(run())
         return web.json_response({"ok": True})
+
+    async def h_transcribe(self, req):
+        """Words from an audio clip (WAV from the browser) - lyrics for lipsync prompts and voice input."""
+        await self.llm_variant()  # keeps llm.root in sync with the install folder
+        if not speech.ready(self.llm.root):
+            return web.json_response({"error": "Распознавание речи ещё не скачано (карточка «Модель» в разделе «Агент»)."},
+                                     status=400)
+        wav, lang = None, "auto"
+        async for field in await req.multipart():
+            if field.name == "file":
+                wav = await field.read()
+            elif field.name == "lang":
+                lang = (await field.text()).strip() or "auto"
+        if not wav:
+            return web.json_response({"error": "Нет аудио"}, status=400)
+        try:
+            text, code, name = await speech.transcribe(self.llm.root, wav, lang)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"text": text, "lang": code, "lang_name": name})
 
     async def h_agent_model(self, req):
         """Use a GGUF model the user already has (or go back to the app's own Gemma)."""
@@ -1084,7 +1106,7 @@ def send_to_recycle_bin(path):
 
 def build_app(comfy_override=None):
     state = App(comfy_override)
-    app = web.Application(client_max_size=200 * 1024 * 1024)
+    app = web.Application(client_max_size=300 * 1024 * 1024)
     app.on_startup.append(state.start)
     app.on_cleanup.append(state.stop)
     app.add_routes([
@@ -1109,6 +1131,7 @@ def build_app(comfy_override=None):
         web.post("/api/agent/install", state.h_agent_install),
         web.post("/api/agent/install/cancel", state.h_agent_install_cancel),
         web.post("/api/agent/model", state.h_agent_model),
+        web.post("/api/speech/transcribe", state.h_transcribe),
         web.post("/api/agent/chat", state.h_agent_chat),
         web.get("/api/agent/chats", state.h_chats),
         web.delete("/api/agent/chats", state.h_chats_clear),

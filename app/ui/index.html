@@ -308,6 +308,13 @@ details[open] summary::before{content:'－ '}
 .ag-comp{display:flex;gap:10px;align-items:flex-end;padding:12px 18px 18px}
 .ag-comp textarea{min-height:48px;max-height:180px;flex:1}
 .ag-clip{padding:12px;display:grid;place-items:center}
+.ag-clip.rec{background:rgba(232,38,79,.25);border-color:var(--accent);color:#fff;animation:pulse 1s infinite}
+.ag-audio{margin:0 18px;padding:10px 12px;border-radius:12px;background:var(--bg-2);border:1px solid var(--line);display:grid;gap:6px}
+.ag-audio-h{display:flex;align-items:center;gap:10px}
+.ag-audio-h b{flex:1;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ag-audio-h small{font-family:var(--mono);color:var(--muted)}
+.ag-audio-h button{width:24px;height:24px;border-radius:7px;background:var(--surface-2);font-size:11px}
+.ag-audio textarea{min-height:56px;font-size:13px}
 .sk-list{display:grid;gap:8px;margin-bottom:10px}
 .sk{padding:10px 12px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);display:grid;gap:6px}
 .sk-top{display:flex;align-items:center;gap:8px}
@@ -620,10 +627,24 @@ details[open] summary::before{content:'－ '}
             </div>
           </div>
           <div class="ag-att" id="agAtt"></div>
+          <div class="ag-audio" id="agAudioBox" hidden>
+            <div class="ag-audio-h"><b id="agAudioName"></b><small id="agAudioDur"></small><button type="button" id="agAudioX" title="Убрать аудио">✕</button></div>
+            <label class="hint" for="agAudioText">Слова из аудио — проверьте и поправьте, агент вставит их в промпт дословно</label>
+            <textarea id="agAudioText" rows="2" placeholder="Распознаём слова…"></textarea>
+          </div>
           <div class="ag-comp">
             <label class="btn ag-clip" title="Приложить картинки"><input type="file" accept="image/*" multiple hidden id="agFile">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg>
             </label>
+            <label class="btn ag-clip" title="Приложить аудио (песню или голос) — слова будут распознаны"><input type="file" accept="audio/*,video/mp4" hidden id="agAudioFile">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            </label>
+            <button class="btn ag-clip" type="button" id="agFromLip" title="Взять выделенный фрагмент из раздела Lipsync" hidden>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M19 11a7 7 0 0 1-14 0"/></svg>
+            </button>
+            <button class="btn ag-clip" type="button" id="agMic" title="Голосовой ввод: нажмите, говорите, нажмите ещё раз">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            </button>
             <textarea id="agIn" rows="2" placeholder="Опишите сцену, сценарий или вставьте реплики… (Enter — отправить, Shift+Enter — новая строка)"></textarea>
             <button class="btn pri" id="agSend">Отправить</button>
           </div>
@@ -2163,13 +2184,87 @@ function renderMsgs() {
   });
   $('#agMsgs').scrollTop = 1e9;
 }
+/* audio in the chat: words from a clip (for lipsync prompts) and voice input */
+async function transcribeWav(blob, lang = 'auto') {
+  const fd = new FormData(); fd.append('file', blob, 'a.wav'); fd.append('lang', lang);
+  const r = await fetch('/api/speech/transcribe', { method: 'POST', body: fd });
+  const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Не удалось распознать');
+  return j;
+}
+function needSpeech() {
+  if (AG.status?.speech_ready) return false;
+  toast('Распознавание речи ещё не скачано — карточка «Модель» справа, кнопка «Докачать»'); return true;
+}
+function showAudioBox() {
+  const a = AG.audio; $('#agAudioBox').hidden = !a; if (!a) return;
+  $('#agAudioName').textContent = a.name; $('#agAudioDur').textContent = a.dur.toFixed(1) + ' с';
+  $('#agAudioText').value = a.text; $('#agAudioText').placeholder = a.busy ? 'Распознаём слова…' : 'Слов не найдено — впишите их сами или оставьте пустым (музыка)';
+  $('#agAudioText').disabled = a.busy;
+}
+async function setChatAudio(wavBlob, name, dur) {
+  if (needSpeech()) return;
+  const a = AG.audio = { name, dur, text: '', busy: true, lang: '', langName: '', file: new File([wavBlob], name.replace(/\.[^.]+$/, '') + '.wav', { type: 'audio/wav' }) };
+  showAudioBox();
+  try { const j = await transcribeWav(wavBlob); if (AG.audio === a) { a.text = j.text; a.lang = j.lang; a.langName = j.lang_name; } }
+  catch (e) { toast(e.message); }
+  if (AG.audio === a) { a.busy = false; showAudioBox(); }
+}
+$('#agAudioFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const buf = await new AudioContext().decodeAudioData(await f.arrayBuffer());
+    if (buf.duration > 120) toast('Длинное аудио: берём первые 2 минуты. Для нужного куска выделите его в разделе Lipsync и нажмите значок микрофона-фрагмента.');
+    await setChatAudio(wavSlice(buf, 0, Math.min(buf.duration, 120)), f.name, Math.min(buf.duration, 120));
+  } catch { toast('Не удалось прочитать аудиофайл'); }
+};
+$('#agFromLip').onclick = () => {
+  if (!L.dur0) return;
+  setChatAudio(wavSlice(abuf, L.start, L.end), 'фрагмент из Lipsync', L.len());
+};
+$('#agAudioText').oninput = e => { if (AG.audio) AG.audio.text = e.target.value; };
+$('#agAudioX').onclick = () => { AG.audio = null; showAudioBox(); };
+
+let micRec = null, micTimer = null;
+$('#agMic').onclick = async () => {
+  if (micRec) { micRec.stop(); return; }
+  if (needSpeech()) return;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch { toast('Нет доступа к микрофону. Разрешите его в окне Windows или подключите микрофон.'); return; }
+  const chunks = [], mr = new MediaRecorder(stream), t0 = Date.now(), btn = $('#agMic');
+  micRec = mr; btn.classList.add('rec');
+  const tick = () => { btn.title = `Идёт запись ${Math.round((Date.now() - t0) / 1000)} с — нажмите, чтобы закончить`; };
+  tick(); micTimer = setInterval(tick, 500);
+  mr.ondataavailable = e => chunks.push(e.data);
+  mr.onstop = async () => {
+    clearInterval(micTimer); stream.getTracks().forEach(t => t.stop()); micRec = null; btn.classList.remove('rec');
+    btn.title = 'Голосовой ввод: нажмите, говорите, нажмите ещё раз';
+    const ta = $('#agIn'), before = ta.placeholder; ta.placeholder = 'Распознаём речь…';
+    try {
+      const buf = await new AudioContext().decodeAudioData(await new Blob(chunks).arrayBuffer());
+      if (buf.duration < 0.4) throw new Error('Запись слишком короткая');
+      const j = await transcribeWav(wavSlice(buf, 0, buf.duration));
+      if (!j.text) toast('Речь не распознана — скажите ещё раз'); else { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + j.text; ta.focus(); }
+    } catch (e) { toast(e.message); }
+    ta.placeholder = before;
+  };
+  mr.start();
+};
+
 async function agSend() {
-  const text = $('#agIn').value.trim();
+  let text = $('#agIn').value.trim();
   if (AG.busy) { AG.ctrl?.abort(); return; }
-  if (!text && !AG.att.length) return;
+  const au = AG.audio;
+  if (au?.busy) { toast('Подождите, слова из аудио ещё распознаются'); return; }
+  if (!text && !AG.att.length && !au) return;
   if (!AG.status?.installed) { toast('Сначала скачайте модель агента — справа, в карточке «Модель»'); return; }
-  AG.msgs.push({ role: 'user', content: text, images: AG.att.map(a => a.url), files: AG.att.map(a => a.file) });
-  AG.att = []; renderAtt(); $('#agIn').value = '';
+  if (au) {
+    text += `\n\n[Аудио для клипа: ${au.name}, ${au.dur.toFixed(1)} с. ` + (au.text.trim()
+      ? `Слова из аудио${au.langName ? ` (язык: ${au.langName})` : ''}: «${au.text.trim()}»]` : 'Слов в аудио нет (музыка или голос не распознан).]');
+    text = text.trim();
+  }
+  AG.msgs.push({ role: 'user', content: text, images: AG.att.map(a => a.url), files: AG.att.map(a => a.file), audioFile: au?.file });
+  AG.att = []; renderAtt(); $('#agIn').value = ''; AG.audio = null; showAudioBox();
   const reply = { role: 'assistant', content: '', status: 'Отправляем…' };
   AG.msgs.push(reply); renderMsgs();
   const el = $('#agMsgs .msg:last-child');
@@ -2208,7 +2303,7 @@ async function saveChat() {
   if (!API || !AG.msgs.length) return;
   AG.id = AG.id || Math.random().toString(36).slice(2, 14).replace(/[^a-z0-9]/g, 'x');
   await fetch(`/api/agent/chats/${AG.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ target: AG.target, messages: AG.msgs.map(({ files, status, ...m }) => m) }) });
+    body: JSON.stringify({ target: AG.target, messages: AG.msgs.map(({ files, status, audioFile, ...m }) => m) }) });
   loadChats();
 }
 function fmtShort(iso) { return iso ? fmtDate(new Date(iso)) : ''; }
@@ -2274,9 +2369,12 @@ async function sendPrompt(blk, to) {
       for (let i = 0; i < Math.min(files.length, slots.length); i++) await setDropFile(slots[i], files[i]);
     }
   }
+  // the song itself goes to Lipsync together with the prompt (the whole clip; trim it there if needed)
+  const au = [...AG.msgs].reverse().find(m => m.audioFile)?.audioFile;
+  if (to === 'lipsync' && au) await setDropFile($('#aFile'), au);
   goTo(to);
   const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', action: '«Экшн-сцены»' }[to];
-  toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' ? ' вместе с картинками' : '') + (to === 'lipsync' ? ' — добавьте аудио' : ''));
+  toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' ? ' вместе с картинками' : '') + (to === 'lipsync' ? (au ? ' и аудио — выделите нужный фрагмент' : ' — добавьте аудио') : ''));
 }
 $('#agMsgs').addEventListener('click', async e => {
   const blk = e.target.closest('.pblock'); if (!blk) return;
@@ -2299,8 +2397,14 @@ async function agStatus() {
       + (s.installed ? '' : 'Осталось скачать движок llama.cpp (37 МБ).')
     : `<b style="color:var(--text)">${esc(s.title)}</b> — бесплатная локальная модель (Apache 2.0), понимает русский и картинки. `
       + (s.installed ? 'Пока агент работает, генерация видео ждёт: обе модели вместе не помещаются в видеопамять — приложение переключает их само.' : `Нужно скачать один раз: ~${(s.size / 1e9).toFixed(1)} ГБ.`);
-  $('#agInstall').hidden = s.installed || s.installing || (s.custom && !s.has_model);
-  $('#agInstall').textContent = s.custom ? 'Скачать движок llama.cpp (37 МБ)' : `Скачать модель (~${(s.size / 1e9).toFixed(1)} ГБ)`;
+  const needModel = !s.installed;
+  $('#agInstall').hidden = s.installing || (s.custom && !s.has_model) || (!needModel && s.speech_ready);
+  $('#agInstall').textContent = !needModel ? `Докачать распознавание речи (~${Math.round(s.speech_size / 1e6)} МБ)`
+    : s.custom ? 'Скачать движок llama.cpp (37 МБ) и распознавание речи' : `Скачать модель (~${((s.size + s.speech_size) / 1e9).toFixed(1)} ГБ, вместе с распознаванием речи)`;
+  $('#agFromLip').hidden = !L.dur0;
+  $('#agModel').insertAdjacentHTML('beforeend', s.speech_ready
+    ? '<br><span class="ok-t">✓ Распознавание речи готово: можно приложить аудио и говорить в микрофон.</span>'
+    : '<br><span class="warn-t">Распознавание речи не скачано: без него нельзя приложить аудио и говорить голосом.</span>');
   $('#agOwnReset').hidden = !s.custom;
   const cands = s.candidates || [];
   $('#agOwnPickWrap').hidden = cands.length < 2;

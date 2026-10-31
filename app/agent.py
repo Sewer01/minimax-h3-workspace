@@ -149,8 +149,9 @@ def system_prompt(skills_text, target, ctx):
             "- Первая строка промпта - выравнивание референсов: для каждой картинки по порядку "
             "`<Picture N> (from [Shot 1]) is fully referenced.` после фразы `For the target video, at 0.00 seconds "
             "into the target video,`. Затем пустая строка и три поля H3.\n"
-            "- Реплики внутри <d>[Язык] ...</d> должны дословно совпадать со словами в аудио. Если пользователь не "
-            "дал текст песни или реплики - спроси его, не выдумывай.\n"
+            "- Реплики внутри <d>[Язык] ...</d> должны дословно совпадать со словами в аудио. Если в сообщении есть блок "
+            "`[Аудио ... Слова из аудио ...]`, возьми слова из него и вставь ДОСЛОВНО (без перевода и правок), язык "
+            "укажи тот, что назван в блоке. Если слов нет и пользователь не дал текст - спроси его, не выдумывай.\n"
             "- Звук берётся из аудио пользователя, поэтому `overall_soundscape: N/A` и `non_diegetic_music: N/A`, "
             "если пользователь не просит иначе.\n"
             "- Рот говорящего должен оставаться видимым, без больших поворотов головы.")
@@ -322,6 +323,8 @@ async def install(installer, root, variant, runtime_only=False):
         with zipfile.ZipFile(zpath) as z:
             z.extractall(llama_dir)
         zpath.unlink(missing_ok=True)
+    import speech
+    await speech.install(installer, root)  # words from audio + voice input (~200 MB)
     if runtime_only:
         return
     v = LLM_VARIANTS[variant]

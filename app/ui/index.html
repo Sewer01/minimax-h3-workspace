@@ -62,7 +62,7 @@ button{cursor:pointer;border:0;background:none}
 .stat b{color:var(--text);font-weight:700}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(63,209,139,.18);margin-right:7px;vertical-align:1px}
 .vram{height:5px;border-radius:9px;background:var(--surface-2);overflow:hidden}
-.vram i{display:block;height:100%;width:8%;background:var(--grad)}
+.vram i{display:block;height:100%;width:0;background:var(--grad)}
 
 /* main */
 .main{overflow:auto}
@@ -226,7 +226,7 @@ details[open] summary::before{content:'－ '}
 .m .pb i{display:block;height:100%;width:0;background:var(--grad);transition:width .3s}
 .m .st{font-size:12px;font-weight:700;text-align:right}
 .st.ok{color:var(--ok)}.st.miss{color:var(--warn)}.st.dl{color:var(--accent-2)}
-.choose.three{grid-template-columns:repeat(4,1fr)}
+.choose.three{grid-template-columns:repeat(3,1fr)}
 .mode-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .mcard{position:relative;text-align:left;padding:13px 14px 13px 44px;border-radius:13px;background:var(--bg-2);border:1.5px solid var(--line);display:grid;gap:3px;transition:.15s}
 .mcard:hover{border-color:var(--line-2)}
@@ -458,14 +458,14 @@ details[open] summary::before{content:'－ '}
     </button>
     <button class="nav" data-view="models">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="m3 13 9 5 9-5M3 18l9 5 9-5" opacity=".5"/></svg>
-      Модели <span class="badge" id="modelsBadge">5 / 9</span>
+      Модели <span class="badge" id="modelsBadge" hidden></span>
     </button>
 
     <div class="side-foot">
       <div class="stat"><span><span class="dot" id="engDot"></span>Движок</span><b id="engTxt">запущен</b></div>
-      <div class="stat"><span>Видеокарта</span><b id="gpuName">RTX 4090</b></div>
+      <div class="stat"><span>Видеокарта</span><b id="gpuName">—</b></div>
       <div class="vram"><i id="vramBar"></i></div>
-      <div class="stat"><span>VRAM</span><b id="vramTxt">2 / 24 ГБ</b></div>
+      <div class="stat"><span>VRAM</span><b id="vramTxt">—</b></div>
     </div>
   </aside>
 
@@ -719,11 +719,6 @@ details[open] summary::before{content:'－ '}
             <b>Я новичок — у меня ничего нет</b>
             <span>Всё скачается и установится само: ComfyUI, ноды и модели под вашу видеокарту</span>
           </button>
-          <button class="opt" data-opt="models">
-            <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg></div>
-            <b>ComfyUI нет, но модели уже скачаны</b>
-            <span>ComfyUI поставим сами, а модели возьмём из вашей папки — докачаем только недостающее</span>
-          </button>
           <button class="opt" data-opt="external">
             <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></div>
             <b>У меня уже есть ComfyUI и модели</b>
@@ -737,21 +732,17 @@ details[open] summary::before{content:'－ '}
         </div>
 
         <div class="card" id="wzForm">
-          <div class="fld" data-for="new models">
+          <div class="fld" data-for="new">
             <label>Куда установить</label>
             <div class="path on"><input id="instDir" spellcheck="false"><button class="btn" data-pick="instDir">Обзор…</button></div>
             <small class="hint" id="diskHint"></small>
-          </div>
-          <div class="fld" data-for="models">
-            <label>Папка с вашими моделями <span class="hint">(папка models, внутри которой diffusion_models, text_encoders, vae…)</span></label>
-            <div class="path on"><input id="modelsDir" spellcheck="false" placeholder="например G:\Model Hub"><button class="btn" data-pick="modelsDir">Обзор…</button></div>
           </div>
           <div class="fld" data-for="external">
             <label>Адрес вашего ComfyUI</label>
             <div class="path on"><input id="comfyUrl" value="http://127.0.0.1:8188" spellcheck="false"></div>
             <small class="hint">ComfyUI должен быть запущен. Приложение подключится к нему, как браузер.</small>
           </div>
-          <div class="fld" data-for="new models">
+          <div class="fld" data-for="new">
             <label>Что вы хотите делать? <span class="hint">— отметьте только нужное, остальное можно докачать потом в разделе «Модели»</span></label>
             <div class="mode-cards" id="modePick">
               <button class="mcard" data-m="video"><i></i><b>Генерация видео</b><span>Видео по тексту, по картинке, по первому и последнему кадру</span><small></small></button>
@@ -761,12 +752,12 @@ details[open] summary::before{content:'－ '}
             </div>
             <div class="note" id="modeTotal" style="margin-top:4px"></div>
           </div>
-          <div class="fld" data-for="new models">
+          <div class="fld" data-for="new">
             <label>Размер набора моделей</label>
             <div class="seg" id="profilePick" style="grid-template-columns:repeat(3,1fr)"></div>
             <small class="hint" id="profileAbout"></small>
           </div>
-          <div class="fld" data-for="new models">
+          <div class="fld" data-for="new">
             <label>Что скачается</label>
             <div class="mlist" id="planList"></div>
           </div>
@@ -1516,6 +1507,8 @@ async function openSetup() {
   setupProfile = setupInfo.profile;
   if (setupInfo.installing) { showSetupPane('progress'); setStep(2); replaySetup(setupInfo); return; }
   const hw = setupInfo.hardware, c = setupInfo.config;
+  // before setup ComfyUI may not exist yet, so the sidebar shows the detected card instead
+  if (hw.nvidia && $('#gpuName').textContent === '—') { $('#gpuName').textContent = hw.gpu; $('#vramTxt').textContent = `${hw.vram_gb} ГБ`; }
   $('#hwGrid').innerHTML = [
     ['Видеокарта', hw.nvidia ? hw.gpu : 'не найдена NVIDIA'], ['Видеопамять', hw.vram_gb ? hw.vram_gb + ' ГБ' : '—'],
     ['Оперативная память', hw.ram_gb + ' ГБ'], ['Свободно на диске', hw.disk_free_gb != null ? hw.disk_free_gb + ' ГБ' : '—'],
@@ -1524,7 +1517,7 @@ async function openSetup() {
   $('#hwVerdict').className = 'verdict ' + V[0]; $('#hwVerdict').textContent = V[1];
   $('#hwNotes').innerHTML = setupInfo.notes.map(n => `<li>${esc(n)}</li>`).join('');
   if (!$('#instDir').value) $('#instDir').value = setupInfo.install_dir;
-  if (c.models_dir && !$('#modelsDir').value) $('#modelsDir').value = c.models_dir;
+
   if (c.comfy_url) $('#comfyUrl').value = c.comfy_url;
   const free = hw.disk_free_gb;
   $('#diskHint').textContent = `Понадобится до ~${setupInfo.need_gb} ГБ (если моделей ещё нет)` + (free != null ? `, свободно ${free} ГБ` : '')
@@ -1587,8 +1580,8 @@ $('#wzStart').onclick = async () => {
       toast(`Подключено к ComfyUI ${r.version}`);
       await afterSetup();
     } else {
-      if (setupOpt === 'models' && !$('#modelsDir').value.trim()) throw new Error('Укажите папку с моделями');
-      await postJSON('/api/setup/install', { install_dir: $('#instDir').value.trim(), models_dir: setupOpt === 'models' ? $('#modelsDir').value.trim() : '', profile: setupProfile, modes: setupModes });
+
+      await postJSON('/api/setup/install', { install_dir: $('#instDir').value.trim(), profile: setupProfile, modes: setupModes });
       showSetupPane('progress'); setStep(2); resetProgress();
     }
   } catch (e) { $('#wzErr').textContent = e.message; }
@@ -1650,7 +1643,7 @@ function replaySetup(info) { resetProgress(); (info.log || []).forEach(onSetupEv
 $('#pCancel').onclick = () => { postJSON('/api/setup/cancel'); $('#pLabel').textContent = 'Останавливаем…'; };
 $('#pRetry').onclick = async () => {
   try {
-    await postJSON('/api/setup/install', { install_dir: $('#instDir').value.trim(), models_dir: setupOpt === 'models' ? $('#modelsDir').value.trim() : '', profile: setupProfile, modes: setupModes });
+    await postJSON('/api/setup/install', { install_dir: $('#instDir').value.trim(), profile: setupProfile, modes: setupModes });
     resetProgress();
   } catch (e) { $('#pErr').textContent = e.message; }
 };
@@ -1663,7 +1656,7 @@ async function afterSetup() {
 function renderModels(s) {
   if (!s.models) return;
   const have = s.models.filter(m => m.have).length;
-  $('#modelsBadge').textContent = `${have} / ${s.models.length}`;
+  $('#modelsBadge').textContent = `${have} / ${s.models.length}`; $('#modelsBadge').hidden = false;
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';

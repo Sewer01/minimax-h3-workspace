@@ -874,6 +874,7 @@ details[open] summary::before{content:'－ '}
       <div class="v-btns">
         <button class="btn pri" id="vwSave">Сохранить на компьютер</button>
         <button class="btn" id="vwRepeat">Повторить с этими настройками</button>
+        <button class="btn" id="vwSeed" hidden>Зафиксировать seed этого видео</button>
         <button class="btn" id="vwFav">В избранное</button>
         <button class="btn danger" id="vwDel">Удалить</button>
       </div>
@@ -997,9 +998,18 @@ function paramsCard(el, st, opts) {
     </div>
     <details style="margin-top:16px">
       <summary>Дополнительно</summary>
-      <div class="adv">
-        <label class="field">Seed<input value="случайный"></label>
-        <label class="field">Шаги<select><option>по умолчанию</option><option>больше — качественнее</option></select></label>
+      <div class="row" style="margin-top:14px">
+        <div class="row-l">Seed — «номер варианта»</div>
+        <div class="seg seed-seg" style="grid-template-columns:1fr 1fr">
+          <button data-sf="0">Случайный<small>каждый раз новое видео</small></button>
+          <button data-sf="1">Фиксированный<small>тот же вариант снова</small></button>
+        </div>
+        <div class="path on seed-row" hidden>
+          <input class="seed-in" inputmode="numeric" spellcheck="false" placeholder="число, например 123456789">
+          <button class="btn seed-new" type="button">🎲 Новый</button>
+          <button class="btn seed-copy" type="button">Копировать</button>
+        </div>
+        <div class="hint seed-hint"></div>
       </div>
     </details>`;
   const upd = () => {
@@ -1014,15 +1024,35 @@ function paramsCard(el, st, opts) {
       $('.durv', el).textContent = `${st.dur} с · ${frames(st.dur)} кадров`;
     }
     $('.vwarn', el).hidden = !(st.q === '1080p' && st.len() > 8);
+    $$('.seed-seg button', el).forEach(b => b.classList.toggle('on', (b.dataset.sf === '1') === !!st.seedFixed));
+    $('.seed-row', el).hidden = !st.seedFixed;
+    if ($('.seed-in', el) !== document.activeElement) $('.seed-in', el).value = st.seed || '';
+    $('.seed-hint', el).textContent = st.seedFixed
+      ? 'Одинаковый seed + одинаковые настройки и промпт = одинаковое видео. Удобно менять что-то одно и сравнивать. Понравившийся seed можно взять из библиотеки или сразу после генерации.'
+      : 'Каждый раз получается новый вариант. Seed понравившегося видео сохраняется в библиотеке — потом его можно зафиксировать.';
     opts.onChange();
   };
+  st._upd = upd;  // lets the library and the preview panel switch this mode to a given seed
   el.addEventListener('click', e => {
     const c = e.target.closest('.chip[data-a]'); if (c) { st.aspect = c.dataset.a; st.userAspect = true; upd(); }
     const q = e.target.closest('.seg button[data-q]'); if (q) { st.q = q.dataset.q; upd(); }
     const r = e.target.closest('.seg button[data-r]'); if (r) { st.refSize = r.dataset.r; upd(); }
+    const sf = e.target.closest('.seed-seg button'); if (sf) { st.seedFixed = sf.dataset.sf === '1'; if (st.seedFixed && !st.seed) st.seed = newSeed(); upd(); }
+    if (e.target.closest('.seed-new')) { st.seed = newSeed(); upd(); }
+    if (e.target.closest('.seed-copy')) { navigator.clipboard?.writeText(String(st.seed || '')); toast('Seed скопирован: ' + st.seed); }
   });
+  $('.seed-in', el).oninput = e => { st.seed = e.target.value.replace(/\D/g, '').slice(0, 18); e.target.value = st.seed; };
   if (opts.duration) $('.dur', el).oninput = e => { st.dur = +e.target.value; upd(); };
   return upd;
+}
+const newSeed = () => String(Math.floor(Math.random() * 2 ** 50));
+// the seed goes to the server only when the user fixed it; otherwise the server draws a new one
+function seedForm(st, fd) { if (st.seedFixed && st.seed) fd.append('seed', st.seed); }
+// make a mode use this exact seed (from the library or from a finished video)
+function useSeed(st, seed, go) {
+  st.seedFixed = true; st.seed = String(seed); st._upd?.();
+  if (go) goTo(go);
+  toast(`Seed ${seed} зафиксирован в этом режиме`);
 }
 
 /* ---------- live preview rendering (demo: imitates denoising toward a target) ---------- */
@@ -1176,7 +1206,9 @@ function previewPanel(el, st, opts) {
       result.src = data.url; result.hidden = false; result.muted = true; result.play().catch(() => {});
       frame.classList.add('done'); $('.hud-t', el).textContent = 'Готово'; $('.hud-s', el).textContent = took;
       addToLib(normItem(data), new Date(data.date));
-      status.textContent = `Готово за ${took} — видео в библиотеке`;
+      status.innerHTML = `Готово за ${took} — видео в библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(data.seed ?? '—'))}</b> `
+        + (data.seed != null ? '<button class="btn" id="keepSeed" type="button" style="padding:4px 10px;font-size:12px">Зафиксировать</button>' : '');
+      $('#keepSeed', el)?.addEventListener('click', () => useSeed(st, data.seed));
     } else {
       resetFrame();
       status.textContent = kind === 'error' ? 'Ошибка ComfyUI: ' + data : 'Генерация остановлена. Поправьте промпт или настройки и запустите снова';
@@ -1248,8 +1280,8 @@ function previewPanel(el, st, opts) {
 
 /* ---------- dropzones ---------- */
 const REF_HINT = {
-  max: 'Модель получает ваши картинки в полном размере: лицо, одежда и мелкие детали переносятся точнее всего. Генерация в 2–3 раза дольше.',
-  match: 'Картинки уменьшаются до размера видео: заметно быстрее, но лицо и мелкие детали похожи чуть меньше. Хорошо для проб.',
+  max: 'Модель внимательно разглядывает ваши картинки в полном размере, поэтому лицо и одежда похожи сильнее всего. Но работает в 2–3 раза дольше. Берите для готового видео.',
+  match: 'Модель смотрит на картинки в уменьшенном виде: быстрее, но сходство с лицом чуть хуже. Берите для проб, пока подбираете промпт.',
 };
 /* optional LoRAs: the same on/off switch and strength slider in every mode */
 const LORA_DEFS = {
@@ -1339,6 +1371,7 @@ const vPrev = previewPanel($('#vPreview'), V, {
       const fd = new FormData();
       fd.append('prompt', $('#vPrompt').value.trim());
       fd.append('aspect', V.aspect); fd.append('quality', V.q); fd.append('duration', V.dur);
+      seedForm(V, fd);
       if ($('#dFirst')._file) fd.append('first', $('#dFirst')._file);
       if ($('#dFirst')._file && $('#dLast')._file) fd.append('last', $('#dLast')._file);
       return fd;
@@ -1376,7 +1409,7 @@ const lPrev = previewPanel($('#lPreview'), L, {
       const fd = new FormData();
       fd.append('prompt', $('#lPrompt').value.trim());
       fd.append('aspect', L.aspect); fd.append('quality', L.q); fd.append('ref_size', L.refSize);
-      loraForm(L, fd);
+      loraForm(L, fd); seedForm(L, fd);
       fd.append('audio', new File([wavSlice(abuf, L.start, L.end)], 'clip.wav', { type: 'audio/wav' }));
       fd.append('audio_len', L.len().toFixed(3));
       $$('.ref', refsEl).filter(r => r._file).forEach((r, i) => fd.append('ref' + i, r._file));
@@ -1947,10 +1980,11 @@ function openViewer(id) {
   vid.hidden = !it.url; img.hidden = $('#viewer .li-play').hidden = !!it.url;
   if (it.url) { vid.src = it.url; vid.play().catch(() => {}); } else img.src = it.thumb;
   $('#vwTitle').textContent = `${MODE_NAME[it.mode]} · ${it.sub}`;
-  $('#vwKv').innerHTML = [['Разрешение', it.res], ['Формат', it.aspect], ['Качество', it.q], ['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`], ['Создано', fmtDate(it.date)], ['Файл', fileName(it)]]
+  $('#vwKv').innerHTML = [['Разрешение', it.res], ['Формат', it.aspect], ['Качество', it.q], ['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`], ['Создано', fmtDate(it.date)], ...(it.seed != null ? [['Seed', String(it.seed)]] : []), ['Файл', fileName(it)]]
     .map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
   $('#vwPrompt').textContent = it.prompt || 'без промпта';
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
+  $('#vwSeed').hidden = it.seed == null;
   $('#viewer').hidden = false;
 }
 function closeViewer() { $('#viewer').hidden = true; openId = null; const v = $('#viewer video'); v.pause(); v.removeAttribute('src'); }
@@ -1977,6 +2011,11 @@ $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m 
 addEventListener('keydown', e => { if (e.key === 'Escape') { $('#confirm').hidden = true; closeViewer(); } });
 $('#vwSave').onclick = () => saveItems([byId(openId)]);
 $('#vwDel').onclick = () => askDelete([openId]);
+$('#vwSeed').onclick = () => {
+  const it = byId(openId); if (!it || it.seed == null) return;
+  const st = it.mode === 'video' ? V : it.mode === 'lipsync' ? L : RM[it.mode]?.S; if (!st) return;
+  closeViewer(); useSeed(st, it.seed, it.mode);
+};
 $('#vwFav').onclick = () => { const it = byId(openId); setFav(it, !it.fav); $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное'; renderLib(); };
 $('#vwRepeat').onclick = () => {
   const it = byId(openId); closeViewer();
@@ -2096,7 +2135,7 @@ function makeRefMode(cfg) {
         fd.append('prompt', $('.rm-prompt', root).value.trim());
         fd.append('aspect', S.aspect); fd.append('quality', S.q); fd.append('duration', S.dur);
         fd.append('steps', S.steps); fd.append('ref_size', S.refSize);
-        loraForm(S, fd);
+        loraForm(S, fd); seedForm(S, fd);
         $$('.ref', imgsEl).filter(r => r._file).forEach((r, i) => fd.append('img' + i, r._file));
         if (vidsEl) files('.rm-vids .slot').forEach((s, i) => fd.append('vid' + i, s._file));
         files('.rm-auds .slot').forEach((s, i) => fd.append('aud' + i, s._file));

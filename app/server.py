@@ -795,6 +795,70 @@ class App:
             "mode": "action", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed, "faithful": s["faithful"]})
 
+    # ---------- audio: voice / music separation (MelBand RoFormer through ComfyUI) ----------
+
+    async def separation_ready(self):
+        """(ok, reason) - is the node pack there and is the model visible to ComfyUI."""
+        if self.rh():
+            return False, "Отделение голоса работает на этом компьютере, а сейчас включено облако."
+        try:
+            _, node = await self.comfy_json("GET", "/object_info/MelBandRoFormerSampler")
+        except aiohttp.ClientError:
+            return False, "ComfyUI не запущен."
+        if not node:
+            return False, "В ComfyUI нет ноды MelBandRoFormer (ComfyUI-MelBandRoFormer)."
+        if not self.model_names:
+            await self.resolve_models()
+        if "vocal_model" in {m["role"] for m in self.missing}:
+            return False, "Не найдена модель MelBandRoformer_fp16.safetensors (папка diffusion_models)."
+        return True, ""
+
+    async def h_audio_info(self, _req):
+        ok, reason = await self.separation_ready()
+        return web.json_response({"available": ok, "reason": reason})
+
+    async def h_audio_separate(self, req):
+        """WAV in -> the voice only (FLAC) out. Blocks until ComfyUI is done (usually well under a minute)."""
+        ok, reason = await self.separation_ready()
+        if not ok:
+            return web.json_response({"error": reason}, status=400)
+        name = None
+        async for field in await req.multipart():
+            if field.name == "file" and field.filename:
+                name = await self.upload_input(field)
+        if not name:
+            return web.json_response({"error": "Нет аудио"}, status=400)
+        await self.stop_llm()  # the agent's model would compete for video memory
+        graph = {
+            "1": {"class_type": "LoadAudio", "inputs": {"audio": name}},
+            "2": {"class_type": "MelBandRoFormerModelLoader", "inputs": {"model_name": self.model_names["vocal_model"]}},
+            "3": {"class_type": "MelBandRoFormerSampler", "inputs": {"model": ["2", 0], "audio": ["1", 0]}},
+            "4": {"class_type": "SaveAudio", "inputs": {"audio": ["3", 0], "filename_prefix": "H3Workspace/audio/vocals"}},
+        }
+        status, res = await self.comfy_json("POST", "/prompt", json={"prompt": graph, "client_id": CLIENT_ID})
+        if status != 200:
+            return web.json_response({"error": comfy_error_text(res)}, status=400)
+        pid = res["prompt_id"]
+        loop = asyncio.get_running_loop()
+        end = loop.time() + 600
+        while loop.time() < end:
+            await asyncio.sleep(1.5)
+            _, hist = await self.comfy_json("GET", f"/history/{pid}")
+            entry = (hist or {}).get(pid)
+            if not entry:
+                continue
+            st = entry.get("status", {})
+            if st.get("status_str") == "error":
+                msgs = [m[1].get("exception_message", "") for m in st.get("messages", []) if m[0] == "execution_error"]
+                return web.json_response({"error": "Не удалось отделить голос: " + (msgs[0].strip() if msgs else "ошибка ComfyUI")}, status=500)
+            audio = next((f for out in entry.get("outputs", {}).values() for f in out.get("audio", [])), None)
+            if audio:
+                async with self.session.get(self.comfy + "/view", params={
+                        "filename": audio["filename"], "subfolder": audio.get("subfolder", ""), "type": audio.get("type", "output")}) as r:
+                    data = await r.read()
+                return web.Response(body=data, content_type="audio/flac")
+        return web.json_response({"error": "Отделение голоса заняло слишком много времени"}, status=504)
+
     async def h_interrupt(self, req):
         pid = (await req.json()).get("prompt_id")
         job = self.jobs.get(pid)
@@ -1175,6 +1239,8 @@ def build_app(comfy_override=None):
         web.get("/", state.h_index),
         web.get("/api/status", state.h_status),
         web.get("/api/system", state.h_system),
+        web.get("/api/audio/info", state.h_audio_info),
+        web.post("/api/audio/separate", state.h_audio_separate),
         web.get("/api/setup/info", state.h_setup_info),
         web.post("/api/setup/external", state.h_setup_external),
         web.post("/api/setup/install", state.h_setup_install),

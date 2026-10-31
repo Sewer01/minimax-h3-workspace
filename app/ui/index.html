@@ -196,6 +196,19 @@ details[open] summary::before{content:'－ '}
 .hdl{position:absolute;top:50%;width:14px;height:40px;margin-top:-20px;border-radius:6px;background:#fff;cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,.5);display:grid;place-items:center}
 .hdl::after{content:'';width:2px;height:16px;background:var(--accent);border-radius:2px}
 .hdl.l{left:-8px}.hdl.r{right:-8px}
+/* audio editor tools: the part to cut out is hatched */
+.cutsel{position:absolute;top:0;bottom:0;border-left:2px solid #ff9fb2;border-right:2px solid #ff9fb2;background:repeating-linear-gradient(135deg,rgba(255,159,178,.28) 0 6px,rgba(255,159,178,.1) 6px 12px)}
+.cutsel .hdl::after{background:#ff4d6d}
+.wave .sel{transition:opacity .15s}
+.wave.cutmode .sel{pointer-events:none;opacity:.45}
+.wave.cutmode{cursor:crosshair}
+.a-tools{display:grid;gap:10px}
+.a-btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.a-btnrow .btn{padding:9px 13px}
+.a-btnrow .btn:disabled{opacity:.45;cursor:default}
+.a-pauses{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:var(--bg-2);border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.a-pauses input{width:64px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:12.5px;outline:none;color:var(--text)}
+.a-pauses b{color:var(--text);margin-left:auto;font-weight:600}
 .playhead{position:absolute;top:0;bottom:0;width:2px;background:#fff;display:none;pointer-events:none}
 .a-times{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .a-times .field input{width:100%}
@@ -598,7 +611,25 @@ details[open] summary::before{content:'－ '}
               <div class="wave" id="wave">
                 <canvas id="waveCv"></canvas>
                 <div class="sel" id="sel"><div class="hdl l" data-h="l"></div><div class="hdl r" data-h="r"></div></div>
+                <div class="cutsel" id="cutSel" hidden><div class="hdl l" data-h="cl"></div><div class="hdl r" data-h="cr"></div></div>
                 <div class="playhead" id="ph"></div>
+              </div>
+              <div class="a-tools">
+                <div class="seg a-mode" style="grid-template-columns:1fr 1fr">
+                  <button type="button" data-m="clip" class="on">Выбор фрагмента<small>что пойдёт в клип</small></button>
+                  <button type="button" data-m="cut">Вырезание<small>убрать кусок из аудио</small></button>
+                </div>
+                <div class="a-btnrow">
+                  <button class="btn" type="button" id="aCutDel" disabled>✂ Удалить вырезанное</button>
+                  <button class="btn" type="button" id="aPauses">Убрать паузы</button>
+                  <button class="btn" type="button" id="aVocals" title="Оставить только голос, без музыки">Отделить голос</button>
+                  <button class="btn" type="button" id="aUndo" disabled>↶ Отменить</button>
+                </div>
+                <div class="a-pauses" id="aPausesBox" hidden>
+                  <span>Паузы длиннее</span><input type="number" id="apMin" value="0.6" step="0.1" min="0.2" max="5"><span>с сократить до</span><input type="number" id="apKeep" value="0.25" step="0.05" min="0.05" max="1"><span>с</span>
+                  <b id="apInfo"></b><button class="btn pri" type="button" id="apApply">Убрать</button>
+                </div>
+                <div class="hint" id="aToolHint"></div>
               </div>
               <div class="a-times">
                 <label class="field">Начало, с<input type="number" step="0.1" min="0" id="aStart"></label>
@@ -1568,13 +1599,124 @@ async function loadAudio(f) {
   catch { alert('Не удалось прочитать этот аудиофайл'); return; }
   L.dur0 = abuf.duration; L.start = 0; L.end = Math.min(abuf.duration, REC_LEN);
   const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-  $('#aName').innerHTML = `${f.name}<small>${fmt(abuf.duration)} · ${abuf.sampleRate / 1000} кГц</small>`;
+  audioName = f.name; undoStack = []; cut = null; setEditMode('clip'); $('#aPausesBox').hidden = true;
   aDrop.style.display = 'none'; $('#aEd').classList.add('on');
-  const ch = abuf.getChannelData(0), N = 600, step = Math.floor(ch.length / N);
+  refreshAudioInfo(); computePeaks();
+  drawWave(); syncSel(); syncCut(); checkVocals();
+}
+function computePeaks() {
+  const ch = abuf.getChannelData(0), N = 600, step = Math.max(1, Math.floor(ch.length / N));
   peaks = Array.from({ length: N }, (_, i) => { let m = 0; for (let j = i * step; j < (i + 1) * step; j += 16) m = Math.max(m, Math.abs(ch[j] || 0)); return m; });
   const mx = Math.max(...peaks) || 1; peaks = peaks.map(p => p / mx);
-  drawWave(); syncSel();
 }
+function refreshAudioInfo() {
+  const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  $('#aName').innerHTML = `${esc(audioName)}<small>${fmt(abuf.duration)} · ${abuf.sampleRate / 1000} кГц${undoStack.length ? ' · изменено' : ''}</small>`;
+}
+
+/* editing: cut a piece out, remove pauses, keep only the voice. Every edit makes a new buffer; "Отменить" goes back. */
+let audioName = '', editMode = 'clip', cut = null, undoStack = [];
+function setEditMode(m) {
+  editMode = m; wave.classList.toggle('cutmode', m === 'cut');
+  $$('.a-mode button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
+  $('#aToolHint').textContent = m === 'cut' ? 'Проведите мышью по волне, чтобы выделить кусок, который нужно убрать (края можно двигать), и нажмите «Удалить вырезанное».' : '';
+  if (m === 'clip') { cut = null; syncCut(); }
+}
+function syncCut() {
+  const el = $('#cutSel'), btn = $('#aCutDel');
+  if (!cut || !L.dur0) { el.hidden = true; btn.disabled = true; btn.textContent = '✂ Удалить вырезанное'; return; }
+  const w = wave.clientWidth; el.hidden = false;
+  el.style.left = (cut.a / L.dur0 * w) + 'px'; el.style.width = ((cut.b - cut.a) / L.dur0 * w) + 'px';
+  btn.disabled = cut.b - cut.a < 0.05; btn.textContent = `✂ Удалить вырезанное (${(cut.b - cut.a).toFixed(1)} с)`;
+}
+// the pieces [a,b] (seconds) of buf that stay, joined with tiny fades so the joins do not click
+function keepRanges(buf, ranges) {
+  const sr = buf.sampleRate, chs = buf.numberOfChannels, fade = Math.round(0.004 * sr);
+  const lens = ranges.map(([a, b]) => Math.max(0, Math.round((b - a) * sr)));
+  const out = actx.createBuffer(chs, Math.max(1, lens.reduce((x, y) => x + y, 0)), sr);
+  for (let c = 0; c < chs; c++) {
+    const srcd = buf.getChannelData(c), dst = out.getChannelData(c); let o = 0;
+    ranges.forEach(([a], i) => {
+      const s = Math.round(a * sr), n = lens[i];
+      dst.set(srcd.subarray(s, s + n), o);
+      for (let k = 0; k < Math.min(fade, n); k++) { if (i > 0) dst[o + k] *= k / fade; if (i < ranges.length - 1) dst[o + n - 1 - k] *= k / fade; }
+      o += n;
+    });
+  }
+  return out;
+}
+// where a moment of the old audio ends up after the removed pieces [a,b] are taken out
+const shiftAfter = removed => t => t - removed.reduce((s, [a, b]) => s + (t >= b ? b - a : t > a ? t - a : 0), 0);
+function commitEdit(newBuf, mapT) {
+  stop();
+  undoStack.push({ buf: abuf, start: L.start, end: L.end }); if (undoStack.length > 15) undoStack.shift();
+  abuf = newBuf; L.dur0 = abuf.duration;
+  L.start = Math.min(mapT(L.start), Math.max(0, L.dur0 - 1)); L.end = Math.min(Math.max(mapT(L.end), L.start + 1), L.dur0);
+  cut = null; computePeaks(); refreshAudioInfo(); drawWave(); syncSel(); syncCut(); $('#aUndo').disabled = false;
+}
+$('.a-mode').onclick = e => { const b = e.target.closest('button[data-m]'); if (b && L.dur0) setEditMode(b.dataset.m); };
+$('#aCutDel').onclick = () => {
+  if (!cut || cut.b - cut.a < 0.05) return;
+  const { a, b } = cut, keep = [[0, a], [b, abuf.duration]].filter(([x, y]) => y - x > 0.001);
+  if (!keep.length) { toast('Нельзя вырезать всё аудио'); return; }
+  commitEdit(keepRanges(abuf, keep), shiftAfter([[a, b]]));
+  toast(`Вырезано ${(b - a).toFixed(1)} с`);
+};
+$('#aUndo').onclick = () => {
+  const s = undoStack.pop(); if (!s) return; stop();
+  abuf = s.buf; L.dur0 = abuf.duration; L.start = s.start; L.end = s.end; cut = null;
+  computePeaks(); refreshAudioInfo(); drawWave(); syncSel(); syncCut(); $('#aUndo').disabled = !undoStack.length;
+};
+// pauses: stretches quieter than the speech, longer than "min", shortened to "keep"
+function findPauses(buf, minLen, keep) {
+  const sr = buf.sampleRate, win = Math.round(sr * 0.01), n = Math.floor(buf.length / win);
+  const a = buf.getChannelData(0), b = buf.numberOfChannels > 1 ? buf.getChannelData(1) : a, rms = new Float32Array(n);
+  for (let i = 0; i < n; i++) { let s = 0, c = 0; for (let j = i * win; j < (i + 1) * win; j += 2) { s += (a[j] * a[j] + b[j] * b[j]) * 0.5; c++; } rms[i] = Math.sqrt(s / c); }
+  const sorted = Float32Array.from(rms).sort(), floor = sorted[Math.floor(n * 0.1)] || 0, loud = sorted[Math.floor(n * 0.9)] || 0;
+  const thr = Math.min(Math.max(floor * 3, loud * 0.05, 0.002), loud * 0.2), found = []; let run = -1;
+  for (let i = 0; i <= n; i++) {
+    const quiet = i < n && rms[i] < thr;
+    if (quiet && run < 0) run = i;
+    if (!quiet && run >= 0) { const s = run * 0.01, e = i * 0.01; if (e - s >= minLen && e - s > keep + 0.02) found.push([s + keep / 2, e - keep / 2]); run = -1; }
+  }
+  return found;
+}
+function pausesPreview() {
+  if (!L.dur0) return [];
+  const f = findPauses(abuf, +$('#apMin').value || 0.6, +$('#apKeep').value || 0.25), saved = f.reduce((s, [x, y]) => s + y - x, 0);
+  $('#apInfo').textContent = f.length ? `Найдено пауз: ${f.length}, станет короче на ${saved.toFixed(1)} с` : 'Длинных пауз не найдено';
+  $('#apApply').disabled = !f.length; return f;
+}
+$('#aPauses').onclick = () => { const box = $('#aPausesBox'); box.hidden = !box.hidden; if (!box.hidden) pausesPreview(); };
+$('#apMin').oninput = $('#apKeep').oninput = pausesPreview;
+$('#apApply').onclick = () => {
+  const f = pausesPreview(); if (!f.length) return;
+  const keep = []; let pos = 0; f.forEach(([s, e]) => { keep.push([pos, s]); pos = e; }); keep.push([pos, abuf.duration]);
+  commitEdit(keepRanges(abuf, keep.filter(([x, y]) => y - x > 0.001)), shiftAfter(f));
+  $('#aPausesBox').hidden = true; toast(`Убрано пауз: ${f.length}`);
+};
+// voice only (needs the MelBand RoFormer node and model in ComfyUI)
+let vocalsOk = null;
+async function checkVocals() {
+  if (!API) return;
+  try { vocalsOk = await (await fetch('/api/audio/info')).json(); } catch { vocalsOk = { available: false, reason: 'ComfyUI не запущен.' }; }
+  const b = $('#aVocals'); b.disabled = !vocalsOk.available;
+  b.title = vocalsOk.available ? 'Оставить только голос, без музыки' : 'Недоступно: ' + vocalsOk.reason;
+}
+$('#aVocals').onclick = async () => {
+  if (!L.dur0) return;
+  if (abuf.duration > 360) { toast('Для отделения голоса аудио должно быть не длиннее 6 минут: сначала вырежьте нужное'); return; }
+  const b = $('#aVocals'), old = b.textContent; b.disabled = true; b.textContent = 'Отделяем голос…'; stop();
+  try {
+    const fd = new FormData(); fd.append('file', wavSlice(abuf, 0, abuf.duration), 'a.wav');
+    const r = await fetch('/api/audio/separate', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Не удалось отделить голос');
+    const nb = await actx.decodeAudioData(await r.arrayBuffer());
+    commitEdit(nb, t => Math.min(t, nb.duration));
+    toast('Голос отделён, музыки больше нет. Прослушайте (▶). Не понравилось — «Отменить».');
+  } catch (e) { toast(e.message); }
+  b.textContent = old; b.disabled = !(vocalsOk?.available);
+};
 function drawWave() {
   const r = wave.getBoundingClientRect(), dpr = devicePixelRatio || 1;
   cv.width = r.width * dpr; cv.height = r.height * dpr;
@@ -1606,7 +1748,9 @@ wave.addEventListener('pointerdown', e => {
   if (!L.dur0) return;
   const w = wave.clientWidth, x = e.clientX - wave.getBoundingClientRect().left, t = x / w * L.dur0;
   const h = e.target.dataset.h;
-  drag = h ? { mode: h } : e.target === selEl ? { mode: 'move', off: t - L.start, len: L.len() } : { mode: 'new', anchor: t };
+  if (editMode === 'cut' && !(h === 'cl' || h === 'cr')) { drag = { mode: 'cnew', anchor: t }; cut = { a: t, b: t }; }
+  else if (h === 'cl' || h === 'cr') drag = { mode: h };
+  else drag = h ? { mode: h } : e.target === selEl ? { mode: 'move', off: t - L.start, len: L.len() } : { mode: 'new', anchor: t };
   wave.setPointerCapture(e.pointerId);
 });
 wave.addEventListener('pointermove', e => {
@@ -1614,6 +1758,9 @@ wave.addEventListener('pointermove', e => {
   const w = wave.clientWidth;
   const t = Math.min(L.dur0, Math.max(0, (e.clientX - wave.getBoundingClientRect().left) / w * L.dur0));
   const MIN = 1;
+  if (drag.mode === 'cnew') { cut = { a: Math.min(drag.anchor, t), b: Math.max(drag.anchor, t) }; syncCut(); return; }
+  if (drag.mode === 'cl') { cut.a = Math.min(t, cut.b - 0.05); syncCut(); return; }
+  if (drag.mode === 'cr') { cut.b = Math.max(t, cut.a + 0.05); syncCut(); return; }
   if (drag.mode === 'l') L.start = Math.min(t, L.end - MIN);
   else if (drag.mode === 'r') L.end = Math.max(t, L.start + MIN);
   else if (drag.mode === 'move') { L.start = Math.min(Math.max(0, t - drag.off), L.dur0 - drag.len); L.end = L.start + drag.len; }
@@ -1623,7 +1770,7 @@ wave.addEventListener('pointermove', e => {
 wave.addEventListener('pointerup', () => drag = null);
 $('#aStart').onchange = e => { L.start = Math.min(Math.max(0, +e.target.value), L.end - 1); syncSel(); };
 $('#aEnd').onchange = e => { L.end = Math.max(Math.min(L.dur0, +e.target.value), L.start + 1); syncSel(); };
-addEventListener('resize', () => L.dur0 && syncSel());
+addEventListener('resize', () => L.dur0 && (syncSel(), syncCut()));
 
 $('#aPlay').onclick = () => src ? stop() : play();
 function play() {

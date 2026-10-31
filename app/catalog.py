@@ -16,6 +16,9 @@ NODE_PACKS = [
      "commit": "699e58e51b1c8e12b8c0f0dd55da603d870d20e6"},
     {"name": "Comfyui_Minimax_h3_latent_Upscaler", "repo": "LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
      "commit": "40316cf008b2fd8663263270669eb4da23f89d2c"},
+    # separates the voice from music in the lipsync audio editor
+    {"name": "ComfyUI-MelBandRoFormer", "repo": "kijai/ComfyUI-MelBandRoFormer",
+     "commit": "92c86854e6654f4aacc97484471af95c98ea16d4"},
     # loads reference videos at 24 fps for the references mode
     {"name": "ComfyUI-VideoHelperSuite", "repo": "Kosinkadink/ComfyUI-VideoHelperSuite",
      "commit": "4d907bee61e92c2e65af3bd6383a4e4d356126d1"},
@@ -70,6 +73,10 @@ VARIANTS = {
     "preview": {
         "taeh3": _m("Alissonerdx/Minimax-H3-ComfyUI", "vae_approx/taeh3.safetensors", 0.02, "vae_approx", sub=None),
     },
+    # voice / music separation (MelBand RoFormer), used by the audio editor in Lipsync
+    "vocal_model": {
+        "fp16": _m("Kijai/MelBandRoFormer_comfy", "MelBandRoformer_fp16.safetensors", 0.456, "diffusion_models"),
+    },
     # action scenes (Prompt Mastery workflow): FL2VA/Ref2VA hybrid
     "action_unet": {
         "int8": _m("smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models",
@@ -108,6 +115,7 @@ ROLE_TITLES = {
     "action_unet": "Основная модель — Экшн-сцены (Hybrid FL2VA/Ref2VA)",
     "speed_slider_lora": "LoRA Speed Slider (экшн)",
     "action_upscaler": "Апскейлер SelfLift (экшн, точный режим)",
+    "vocal_model": "Отделение голоса от музыки (MelBand RoFormer)",
     "realism_lora": "LoRA «Реализм людей» (по желанию)",
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
 }
@@ -123,7 +131,7 @@ MODE_ROLES = {
 }
 # Small extras downloaded with a mode but not required to run it.
 MODE_OPTIONAL = {
-    "lipsync": ["realism_lora"],
+    "lipsync": ["realism_lora", "vocal_model"],
     "refs": ["realism_lora", "motion_repair_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
 }
@@ -132,7 +140,7 @@ ALL_ROLES = list(VARIANTS)
 # The user's original files, for connecting to an existing ComfyUI that already has them.
 DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
                   "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
-                  "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms",
+                  "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
                   "realism_lora": "v1", "motion_repair_lora": "v1"}
 
 

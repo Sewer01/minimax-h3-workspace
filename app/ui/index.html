@@ -75,8 +75,13 @@ h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
 .mode-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:99px;background:var(--surface);border:1px solid var(--line-2);font-weight:700;font-size:13px;white-space:nowrap}
 .mode-pill i{width:8px;height:8px;border-radius:50%;background:var(--grad)}
 
-/* the work area fills the window; the preview column grows with it */
-.grid{display:grid;grid-template-columns:minmax(0,1fr) clamp(360px,34vw,760px);gap:22px;align-items:start}
+/* the work area fills the window; the preview column is narrower by default and can be dragged */
+:root{--pw:clamp(340px,30vw,700px)}
+.grid{position:relative;display:grid;grid-template-columns:minmax(0,1fr) var(--pw);gap:22px;align-items:start}
+.gresize{position:absolute;top:0;bottom:0;right:var(--pw);width:22px;cursor:col-resize;z-index:5;touch-action:none}
+.gresize::after{content:'';position:absolute;left:10px;top:14px;bottom:14px;width:2px;border-radius:2px;background:transparent;transition:background .15s}
+.gresize:hover::after,.grid.resizing .gresize::after{background:var(--accent)}
+.grid.resizing{user-select:none;cursor:col-resize}
 .col{display:grid;gap:16px}
 .card{background:linear-gradient(180deg,var(--surface),rgba(34,16,22,.85));border:1px solid var(--line);border-radius:var(--radius);padding:18px}
 .card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -420,7 +425,7 @@ details[open] summary::before{content:'－ '}
 .toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);opacity:0;background:var(--surface-2);border:1px solid var(--line-2);padding:11px 18px;border-radius:12px;font-weight:600;font-size:13px;transition:.25s;z-index:60;box-shadow:0 12px 30px rgba(0,0,0,.5);pointer-events:none;max-width:calc(100% - 32px)}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
-@media (max-width:1100px){.grid{grid-template-columns:1fr}.preview{position:static}}
+@media (max-width:1100px){.grid{grid-template-columns:1fr}.preview{position:static}.gresize{display:none}}
 @media (max-width:760px){
   .app{grid-template-columns:1fr}
   .side{display:none}
@@ -2579,6 +2584,30 @@ $('#skUp').onchange = async e => {
   catch (err) { toast(err.message); }
 };
 $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx(); loadChats(); });
+
+/* a divider between the form and the preview: drag to resize, double-click to reset (width is remembered) */
+(() => {
+  const KEY = 'h3.pw', root = document.documentElement;
+  try { const v = +localStorage.getItem(KEY); if (v >= 280) root.style.setProperty('--pw', v + 'px'); } catch {}
+  $$('.grid').forEach(g => {
+    const h = document.createElement('div');
+    h.className = 'gresize'; h.title = 'Потяните, чтобы изменить ширину. Двойной клик — вернуть как было';
+    g.append(h);
+    h.addEventListener('pointerdown', e => { e.preventDefault(); h.setPointerCapture(e.pointerId); g.classList.add('resizing'); });
+    h.addEventListener('pointermove', e => {
+      if (!h.hasPointerCapture(e.pointerId)) return;
+      const r = g.getBoundingClientRect();
+      // the form keeps at least 420 px, the preview at least 280 px
+      const pw = Math.round(Math.min(Math.max(r.right - e.clientX - 11, 280), r.width - 440));
+      root.style.setProperty('--pw', pw + 'px');
+    });
+    h.addEventListener('pointerup', e => {
+      h.releasePointerCapture(e.pointerId); g.classList.remove('resizing');
+      try { localStorage.setItem(KEY, parseInt(root.style.getPropertyValue('--pw'))); } catch {}
+    });
+    h.addEventListener('dblclick', () => { root.style.removeProperty('--pw'); try { localStorage.removeItem(KEY); } catch {} });
+  });
+})();
 
 if (API) {
   connectEvents(); loadStatus(); loadCloud();

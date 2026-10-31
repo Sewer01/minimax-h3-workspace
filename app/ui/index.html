@@ -191,6 +191,8 @@ details[open] summary::before{content:'－ '}
 .ref .plus svg{width:20px;height:20px}
 .ref img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .ref.filled{border-style:solid;border-color:var(--line)}
+/* a filled slot takes the shape of its picture; a landscape one is two columns wide */
+.ref.wide{grid-column:span 2}
 .ref .tag{position:absolute;left:6px;top:6px;font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:6px;background:rgba(18,7,10,.8)}
 .ref select{position:absolute;left:6px;right:6px;bottom:6px;font-size:11.5px;padding:5px 6px;border-radius:8px;background:rgba(18,7,10,.85);border:1px solid var(--line-2);outline:none}
 .ref .x{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:7px;background:rgba(18,7,10,.8);display:none;place-items:center}
@@ -1242,6 +1244,16 @@ function previewPanel(el, st, opts) {
 }
 
 /* ---------- dropzones ---------- */
+// reference slots take the shape of the picture: 16:9 wide, 9:16 tall, square square
+function fitSlot(r, img) {
+  const go = () => {
+    const ratio = Math.min(16 / 9, Math.max(9 / 16, img.naturalWidth / img.naturalHeight));
+    r.style.aspectRatio = ratio.toFixed(4); r.classList.toggle('wide', ratio > 1.2);
+  };
+  img.complete && img.naturalWidth ? go() : img.addEventListener('load', go, { once: true });
+}
+function resetSlot(r) { r.style.aspectRatio = ''; r.classList.remove('wide'); }
+
 // pick the format closest to a picture's proportions once it has loaded
 function fitAspect(st, img, upd, force) {
   if (st.userAspect && !force) return;
@@ -1376,6 +1388,7 @@ for (let i = 1; i <= MAX_REFS; i++) {
     $('img', r)?.remove(); $('select', r)?.remove();
     r._file = f;
     const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
+    fitSlot(r, img);
     if (!$$('.ref.filled', refsEl).length) fitAspect(L, img, lUpd);
     const sel = document.createElement('select');
     sel.innerHTML = ['Персонаж', 'Локация', 'Одежда', 'Предмет', 'Стиль'].map(o => `<option>${o}</option>`).join('');
@@ -1391,7 +1404,7 @@ for (let i = 1; i <= MAX_REFS; i++) {
   r.addEventListener('drop', e => { e.preventDefault(); set(e.dataTransfer.files[0]); });
   $('.x', r).onclick = e => {
     e.preventDefault(); e.stopPropagation();
-    $('img', r)?.remove(); $('select', r)?.remove(); input.value = ''; r._file = null;
+    $('img', r)?.remove(); $('select', r)?.remove(); input.value = ''; r._file = null; resetSlot(r);
     r.classList.remove('filled'); $('.plus', r).hidden = false; $('.tag', r).hidden = true; refsChanged();
   };
 }
@@ -1983,13 +1996,14 @@ function makeRefMode(cfg) {
       if (!f || !f.type.startsWith('image/')) return;
       $('img', r)?.remove(); r._file = f;
       const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
+      fitSlot(r, img);
       if (!$$('.ref.filled', imgsEl).length) fitAspect(S, img, () => upd());
       r.classList.add('filled'); $('.plus', r).hidden = true; $('.tag', r).hidden = false; changed();
     };
     input.onchange = () => set(input.files[0]);
     r.addEventListener('dragover', e => e.preventDefault());
     r.addEventListener('drop', e => { e.preventDefault(); set(e.dataTransfer.files[0]); });
-    $('.x', r).onclick = e => { e.preventDefault(); e.stopPropagation(); $('img', r)?.remove(); input.value = ''; r._file = null; r.classList.remove('filled'); $('.plus', r).hidden = false; $('.tag', r).hidden = true; changed(); };
+    $('.x', r).onclick = e => { e.preventDefault(); e.stopPropagation(); $('img', r)?.remove(); input.value = ''; r._file = null; resetSlot(r); r.classList.remove('filled'); $('.plus', r).hidden = false; $('.tag', r).hidden = true; changed(); };
   }
   // video / audio slots
   const mkSlots = (el, n, accept, icon, label) => {

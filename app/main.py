@@ -56,14 +56,64 @@ class ServerThread(threading.Thread):
 
 class JsApi:
     # pywebview exposes every public attribute to JS and walks it recursively,
-    # so the window reference must stay private
-    def __init__(self):
+    # so everything except the methods JS may call stays private (underscore)
+    def __init__(self, port):
         self._window = None
+        self._port = port
 
     def pick_folder(self, start=""):
         import webview
         res = self._window.create_file_dialog(webview.FOLDER_DIALOG, directory=start if os.path.isdir(start) else "")
         return res[0] if res else None
+
+    def _copy(self, item_id, dest):
+        """Stream a library video from the local server into the file the user chose."""
+        import urllib.request
+        with urllib.request.urlopen(f"http://127.0.0.1:{self._port}/api/file/{item_id}", timeout=60) as r, \
+                open(dest, "wb") as f:
+            while chunk := r.read(1 << 20):
+                f.write(chunk)
+
+    @staticmethod
+    def _free_name(folder, name):
+        stem, ext = os.path.splitext(name)
+        path, n = os.path.join(folder, name), 1
+        while os.path.exists(path):  # never overwrite files the user already has
+            path, n = os.path.join(folder, f"{stem} ({n}){ext}"), n + 1
+        return path
+
+    def save_video(self, item_id, filename):
+        """The usual Windows "Save as" window, then the video is copied there."""
+        import webview
+        res = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename=filename,
+                                              file_types=("Видео MP4 (*.mp4)",))
+        if not res:
+            return {"ok": False, "cancelled": True}
+        dest = res if isinstance(res, str) else res[0]
+        if not dest.lower().endswith(".mp4"):
+            dest += ".mp4"
+        try:
+            self._copy(item_id, dest)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "path": dest}
+
+    def save_videos(self, items):
+        """Several videos: one folder is chosen, every video is saved into it."""
+        import webview
+        res = self._window.create_file_dialog(webview.FOLDER_DIALOG)
+        if not res:
+            return {"ok": False, "cancelled": True}
+        folder = res if isinstance(res, str) else res[0]
+        saved, failed = [], 0
+        for it in items:
+            try:
+                path = self._free_name(folder, it["filename"])
+                self._copy(it["id"], path)
+                saved.append(path)
+            except Exception:
+                failed += 1
+        return {"ok": bool(saved), "folder": folder, "count": len(saved), "failed": failed}
 
 
 def main():
@@ -75,7 +125,11 @@ def main():
 
     try:
         import webview
-        api = JsApi()
+        try:
+            webview.settings["ALLOW_DOWNLOADS"] = True  # a plain <a download> also works as a fallback
+        except Exception:
+            pass
+        api = JsApi(port)
         api._window = webview.create_window("Minimax H3 Workspace", url, width=1440, height=920, min_size=(1000, 680),
                                            background_color="#12070a", js_api=api)
         webview.start(gui="edgechromium", private_mode=False,

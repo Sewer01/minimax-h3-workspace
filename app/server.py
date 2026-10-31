@@ -314,7 +314,10 @@ class App:
     # ---------- helpers ----------
 
     def public(self, item):
-        return {k: v for k, v in item.items() if k != "file"} | {"url": f"/api/file/{item['id']}"}
+        p = self.file_path(item)
+        # a video deleted from disk stays in the list until the user removes it, but is marked
+        return {k: v for k, v in item.items() if k != "file"} | {"url": f"/api/file/{item['id']}",
+                                                                 "missing": bool(p) and not p.exists()}
 
     def file_path(self, item):
         if item["file"].get("type") == "local":
@@ -749,7 +752,10 @@ class App:
         }
 
     async def h_action_info(self, _req):
-        s = await self.action_setup()
+        try:
+            s = await self.action_setup()
+        except aiohttp.ClientError:
+            return web.json_response({"error": "ComfyUI не отвечает"}, status=503)
         s.pop("refiner_def", None)
         return web.json_response(s)
 

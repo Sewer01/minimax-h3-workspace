@@ -386,6 +386,8 @@ details[open] summary::before{content:'－ '}
 .li.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
 .li-th{position:relative;aspect-ratio:16/10;background:#0b0406;cursor:pointer}
 .li-th img{width:100%;height:100%;object-fit:cover;display:block}
+.li-gone{position:absolute;inset:0;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted);font-weight:700;font-size:13px;background:repeating-linear-gradient(45deg,rgba(255,255,255,.02) 0 10px,transparent 10px 20px)}
+.li-gone small{font-weight:500;font-size:11px;color:var(--dim)}
 .li-mode,.li-len{position:absolute;bottom:8px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:7px;background:rgba(11,4,6,.75);backdrop-filter:blur(6px)}
 .li-mode{left:8px}.li-len{right:8px;font-family:var(--mono);font-weight:500}
 .li-play{position:absolute;inset:0;display:grid;place-items:center;opacity:0;transition:.15s;background:rgba(11,4,6,.25)}
@@ -1929,7 +1931,8 @@ function renderLib() {
   lib.innerHTML = items.length ? items.map(it => `
     <div class="li${selected.has(it.id) ? ' sel' : ''}" data-id="${it.id}">
       <div class="li-th" data-act="open">
-        ${it.url ? `<video src="${it.url}#t=0.5" preload="metadata" muted loop playsinline></video>` : `<img src="${it.thumb}" alt="">`}
+        ${it.missing ? '<div class="li-gone">файл не найден<small>видео удалили с диска</small></div>'
+          : it.url ? `<video src="${it.url}#t=0.5" preload="metadata" muted loop playsinline></video>` : `<img src="${it.thumb}" alt="">`}
         <div class="li-play"><i>${ICON.play}</i></div>
         ${it.fav ? `<span class="li-fav">${ICON.star}</span>` : ''}
         <span class="li-check">${selected.has(it.id) ? '✓' : ''}</span>
@@ -1953,8 +1956,28 @@ function renderLib() {
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const byId = id => LIB.find(x => x.id === id);
 
-function saveItems(items) {
+async function saveItems(items) {
+  const have = items.filter(it => !it.missing);
+  if (have.length < items.length) toast(`Пропущено видео, которых нет на диске: ${items.length - have.length}`);
+  items = have; if (!items.length) return;
   if (API) {
+    const native = window.pywebview?.api;
+    if (native?.save_video) {
+      // the app window: the usual Windows "Save as" dialog; the program copies the file itself
+      try {
+        if (items.length === 1) {
+          const r = await native.save_video(items[0].id, fileName(items[0]));
+          if (r.ok) toast('Сохранено: ' + r.path);
+          else if (!r.cancelled) toast('Не удалось сохранить: ' + (r.error || 'ошибка'));
+        } else {
+          const r = await native.save_videos(items.map(it => ({ id: it.id, filename: fileName(it) })));
+          if (r.ok) toast(`Сохранено видео: ${r.count} в папку ${r.folder}` + (r.failed ? ` (не удалось: ${r.failed})` : ''));
+          else if (!r.cancelled) toast('Не удалось сохранить');
+        }
+      } catch (e) { toast('Не удалось сохранить: ' + e.message); }
+      return;
+    }
+    // a normal browser: the browser's own download
     items.forEach((it, i) => setTimeout(() => {
       const a = document.createElement('a'); a.href = it.url + '?download=1'; a.download = ''; a.click();
     }, i * 400));
@@ -2006,9 +2029,10 @@ $('#lib').addEventListener('click', e => {
   const id = card.dataset.id, it = byId(id);
   if (selecting) { selected.has(id) ? selected.delete(id) : selected.add(id); renderLib(); return; }
   const act = e.target.closest('[data-act]')?.dataset.act;
-  if (act === 'save') saveItems([it]);
+  if (act === 'del') askDelete([id]);
+  else if (it.missing) toast('Файла этого видео нет на диске (его удалили). Нажмите корзину, чтобы убрать запись.');
+  else if (act === 'save') saveItems([it]);
   else if (act === 'fav') { setFav(it, !it.fav); renderLib(); toast(it.fav ? 'Добавлено в избранное' : 'Убрано из избранного'); }
-  else if (act === 'del') askDelete([id]);
   else openViewer(id);
 });
 $('#libFilter').onclick = e => {

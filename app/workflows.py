@@ -251,7 +251,7 @@ def lipsync_prompt(text, n_refs):
             "overall_soundscape: N/A\n\nnon_diegetic_music: N/A")
 
 
-def lipsync_graph(m, prompt, width, height, seconds, seed, audio, ref_images, scale, ref_size="max"):
+def lipsync_graph(m, prompt, width, height, seconds, seed, audio, ref_images, scale, ref_size="max", extra_loras=()):
     """MiniMax H3 Singularity Ref2V + Audio Lock, two passes.
 
     width/height are pass 1 size; pass 2 upscales the latent by `scale`.
@@ -311,8 +311,11 @@ def lipsync_graph(m, prompt, width, height, seconds, seed, audio, ref_images, sc
         node_id = str(30 + i)
         g[node_id] = {"class_type": "LoadImage", "inputs": {"image": image}}
         g["8"]["inputs"][f"ref_images.ref_image_{i}"] = [node_id, 0]
+    if extra_loras:  # optional LoRAs go in front of the speed LoRA, as in the original workflow
+        g["3"]["inputs"]["model"] = _lora_chain(g, ["2", 0], list(extra_loras))
 
     stages = {n: "load" for n in ("1", "2", "3", "4", "5", "6", "7")}
+    stages.update({n: "load" for n in g if n.isdigit() and 60 <= int(n) < 70})
     stages.update({n: "encode" for n in ["8", "9"] + [str(30 + i) for i in range(9)]})
     stages.update({"15": "sample", "16": "upscale", "17": "upscale", "18": "upscale",
                    "19": "sample2", "20": "decode", "21": "save", "22": "save"})

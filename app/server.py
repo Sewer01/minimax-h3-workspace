@@ -682,8 +682,9 @@ class App:
         scale = wf.lipsync_scale(quality)
         out_w, out_h = wf.resolution(aspect, quality)
         width, height = wf.r32(out_w / scale), wf.r32(out_h / scale)
+        extra = self.optional_loras(form, (("realism", "realism_lora"),))
         graph, stages = wf.lipsync_graph(self.model_names, wf.lipsync_prompt(prompt, len(refs)), width, height,
-                                         seconds, seed, files["audio"], refs, scale, ref_size)
+                                         seconds, seed, files["audio"], refs, scale, ref_size, extra)
         speed = "максимум" if ref_size == "max" else "быстро"
         return await self.queue(graph, stages, {
             "mode": "lipsync", "sub": f"{len(refs)} реф. ({speed}) · аудио {seconds:.1f} с", "prompt": prompt,
@@ -703,16 +704,23 @@ class App:
         seconds = min(15.0, max(3.0, float(form.get("duration", 6))))
         return form, prompt, aspect, quality, seed, images, videos, audios, seconds
 
+    def optional_loras(self, form, pairs):
+        """(file name, strength) for the optional LoRAs the user switched on and this ComfyUI has."""
+        missing = {m["role"] for m in self.missing}
+        out = []
+        for key, role in pairs:
+            v = lora_strength(form, key, None)
+            if v is not None and role not in missing and role in self.model_names:
+                out.append((self.model_names[role], v))
+        return out
+
     async def h_generate_refs(self, req):
         await self.need_models("refs")
         form, prompt, aspect, quality, seed, images, videos, audios, seconds = await self.read_ref_form(req, 9)
         steps = int(form.get("steps", 6)) if form.get("steps", "6").isdigit() else 6
         steps = min(8, max(4, steps))
         ref_size = form.get("ref_size") if form.get("ref_size") in ("match", "max") else "max"
-        extra = []
-        for flag, role, strength in (("realism", "realism_lora", 0.5), ("motion_repair", "motion_repair_lora", 0.5)):
-            if form.get(flag) == "1" and role not in {m["role"] for m in self.missing}:
-                extra.append((self.model_names[role], strength))
+        extra = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora")))
         width, height = wf.resolution(aspect, quality)
         graph, stages = wf.ref_graph(self.model_names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed, images, videos, audios,
                                      steps, ref_size, extra)
@@ -756,7 +764,11 @@ class App:
             s = {"faithful": False, "dmad": dmad, "speed": speed}
         else:
             s = await self.action_setup()
-        loras = ([(s["dmad"], 0.8)] if s["dmad"] else []) + ([(s["speed"], 4.0)] if s["speed"] else [])
+        loras = []
+        for key, name, default in (("dmad", s["dmad"], 0.8), ("speed", s["speed"], 4.0)):
+            v = lora_strength(form, key, default)  # the user can switch them off or change the strength
+            if name and v is not None:
+                loras.append((name, v))
         names = dict(self.model_names)
         width, height = wf.resolution(aspect, quality)
         graph, stages = wf.action_graph(names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed, images, audios,
@@ -1097,6 +1109,19 @@ class App:
 
     async def h_index(self, _req):
         return web.FileResponse(UI_DIR / "index.html", headers={"Cache-Control": "no-store"})
+
+
+def lora_strength(form, key, default):
+    """Strength sent by the UI: a number when the LoRA is on, "off" when off, nothing -> the default (None = off)."""
+    v = form.get(f"lora_{key}")
+    if v in (None, ""):
+        return default
+    if v == "off":
+        return None
+    try:
+        return float(v)
+    except ValueError:
+        return default
 
 
 def re_chat_id(cid):

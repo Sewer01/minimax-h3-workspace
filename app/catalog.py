@@ -123,6 +123,7 @@ MODE_ROLES = {
 }
 # Small extras downloaded with a mode but not required to run it.
 MODE_OPTIONAL = {
+    "lipsync": ["realism_lora"],
     "refs": ["realism_lora", "motion_repair_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
 }

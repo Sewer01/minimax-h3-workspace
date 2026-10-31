@@ -193,6 +193,9 @@ details[open] summary::before{content:'－ '}
 .ref.filled{border-style:solid;border-color:var(--line)}
 /* a filled slot takes the shape of its picture; a landscape one is two columns wide */
 .ref.wide{grid-column:span 2}
+.lora{display:grid;gap:6px;margin-bottom:14px}
+.lora-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.lora-v{font-family:var(--mono);font-size:12px;color:var(--muted)}
 .ref .tag{position:absolute;left:6px;top:6px;font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:6px;background:rgba(18,7,10,.8)}
 .ref select{position:absolute;left:6px;right:6px;bottom:6px;font-size:11.5px;padding:5px 6px;border-radius:8px;background:rgba(18,7,10,.85);border:1px solid var(--line-2);outline:none}
 .ref .x{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:7px;background:rgba(18,7,10,.8);display:none;place-items:center}
@@ -1014,7 +1017,7 @@ function paramsCard(el, st, opts) {
     opts.onChange();
   };
   el.addEventListener('click', e => {
-    const c = e.target.closest('.chip'); if (c) { st.aspect = c.dataset.a; st.userAspect = true; upd(); }
+    const c = e.target.closest('.chip[data-a]'); if (c) { st.aspect = c.dataset.a; st.userAspect = true; upd(); }
     const q = e.target.closest('.seg button[data-q]'); if (q) { st.q = q.dataset.q; upd(); }
     const r = e.target.closest('.seg button[data-r]'); if (r) { st.refSize = r.dataset.r; upd(); }
   });
@@ -1244,6 +1247,36 @@ function previewPanel(el, st, opts) {
 }
 
 /* ---------- dropzones ---------- */
+const REF_HINT = {
+  max: 'Модель получает ваши картинки в полном размере: лицо, одежда и мелкие детали переносятся точнее всего. Генерация в 2–3 раза дольше.',
+  match: 'Картинки уменьшаются до размера видео: заметно быстрее, но лицо и мелкие детали похожи чуть меньше. Хорошо для проб.',
+};
+/* optional LoRAs: the same on/off switch and strength slider in every mode */
+const LORA_DEFS = {
+  realism: { name: 'Реализм людей', hint: 'Для живых людей: естественная кожа и лицо. Если лицо выглядит «пластиково» — включите.', min: 0, max: 1, step: .05, v: .5, on: false },
+  motion: { name: 'Исправление движения', hint: 'Если движение рвётся, дёргается или «плывёт» — включите.', min: 0, max: 1, step: .05, v: .5, on: false },
+  dmad: { name: 'DMAD', hint: 'Усиливает динамику и чёткость движения. Как в исходном экшн-workflow: 0.8.', min: 0, max: 1.2, step: .05, v: .8, on: true },
+  speed: { name: 'Speed Slider', hint: 'Скорость движения: 3–4 — быстро и резко; ближе к 0 — спокойнее; со знаком минус — замедление.', min: -8, max: 8, step: .5, v: 4, on: true },
+};
+function mountLoras(box, st, keys) {
+  st.loras = st.loras || {};
+  keys.forEach(k => { st.loras[k] = st.loras[k] || { on: LORA_DEFS[k].on, v: LORA_DEFS[k].v }; });
+  box.innerHTML = keys.length ? `<div class="row"><div class="row-l">Дополнительные LoRA <span class="hint" style="font-family:inherit">включите нужные и задайте силу влияния</span></div>`
+    + keys.map(k => { const d = LORA_DEFS[k]; return `<div class="lora" data-k="${k}"><div class="lora-h"><button class="chip lora-t" type="button">${d.name}</button><span class="lora-v"></span></div>`
+      + `<input type="range" class="lora-r" min="${d.min}" max="${d.max}" step="${d.step}"><div class="hint">${d.hint}</div></div>`; }).join('') + '</div>' : '';
+  const paint = () => $$('.lora', box).forEach(el => {
+    const s = st.loras[el.dataset.k], r = $('.lora-r', el);
+    $('.lora-t', el).classList.toggle('on', s.on);
+    r.value = s.v; r.disabled = !s.on; r.style.opacity = s.on ? 1 : .35;
+    r.style.setProperty('--p', ((s.v - r.min) / (r.max - r.min) * 100) + '%');
+    $('.lora-v', el).textContent = s.on ? `сила ${(+s.v).toFixed(2).replace(/\.?0+$/, '')}` : 'выключена';
+  });
+  box.onclick = e => { const el = e.target.closest('.lora'); if (!el || !e.target.closest('.lora-t')) return; const s = st.loras[el.dataset.k]; s.on = !s.on; paint(); };
+  box.oninput = e => { const el = e.target.closest('.lora'); if (!el) return; st.loras[el.dataset.k].v = +e.target.value; paint(); };
+  paint();
+}
+function loraForm(st, fd) { Object.entries(st.loras || {}).forEach(([k, s]) => fd.append('lora_' + k, s.on ? s.v : 'off')); }
+
 // reference slots take the shape of the picture: 16:9 wide, 9:16 tall, square square
 function fitSlot(r, img) {
   const go = () => {
@@ -1343,6 +1376,7 @@ const lPrev = previewPanel($('#lPreview'), L, {
       const fd = new FormData();
       fd.append('prompt', $('#lPrompt').value.trim());
       fd.append('aspect', L.aspect); fd.append('quality', L.q); fd.append('ref_size', L.refSize);
+      loraForm(L, fd);
       fd.append('audio', new File([wavSlice(abuf, L.start, L.end)], 'clip.wav', { type: 'audio/wav' }));
       fd.append('audio_len', L.len().toFixed(3));
       $$('.ref', refsEl).filter(r => r._file).forEach((r, i) => fd.append('ref' + i, r._file));
@@ -1357,21 +1391,21 @@ const lPrev = previewPanel($('#lPreview'), L, {
 const lUpd = paramsCard($('#lParams'), L, {
   n: 4, duration: false, onChange: () => {
     lPrev();
-    $('#refHint').textContent = L.refSize === 'max'
-      ? 'Лицо и детали переносятся точнее всего, но генерация в несколько раз дольше.'
-      : 'Референсы уменьшаются до размера видео — заметно быстрее, сходство чуть слабее.';
+    $('#refHint').textContent = REF_HINT[L.refSize];
   },
   extraRow: `
     <div class="row">
-      <div class="row-l">Обработка референсов</div>
+      <div class="row-l">Точность переноса с картинок</div>
       <div class="seg" style="grid-template-columns:1fr 1fr">
-        <button data-r="match">Быстро<small>под размер видео</small></button>
+        <button data-r="match">Быстро<small>картинки уменьшаются</small></button>
         <button data-r="max">Максимум<small>лучшее сходство</small></button>
       </div>
       <div class="hint" id="refHint"></div>
-    </div>`,
+    </div>
+    <div id="lLoras"></div>`,
 });
 lUpd();
+mountLoras($('#lLoras'), L, ['realism']);
 
 // refs
 const MAX_REFS = 9;
@@ -1965,7 +1999,7 @@ const ICON_AUD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" str
 
 function makeRefMode(cfg) {
   const root = $('#view-' + cfg.mode);
-  const S = { aspect: '16:9', q: 'HD+', dur: cfg.dur, steps: 6, refSize: 'max', realism: false, motion: false, len: () => S.dur };
+  const S = { aspect: '16:9', q: 'HD+', dur: cfg.dur, steps: 6, refSize: 'max', len: () => S.dur };
   root.innerHTML = `
     <div class="head"><div><h1>${cfg.title}</h1><p>${cfg.sub}</p></div><div class="mode-pill"><i></i><span class="rm-pill">${cfg.pill}</span></div></div>
     <div class="grid"><div class="col">
@@ -2062,7 +2096,7 @@ function makeRefMode(cfg) {
         fd.append('prompt', $('.rm-prompt', root).value.trim());
         fd.append('aspect', S.aspect); fd.append('quality', S.q); fd.append('duration', S.dur);
         fd.append('steps', S.steps); fd.append('ref_size', S.refSize);
-        fd.append('realism', S.realism ? '1' : '0'); fd.append('motion_repair', S.motion ? '1' : '0');
+        loraForm(S, fd);
         $$('.ref', imgsEl).filter(r => r._file).forEach((r, i) => fd.append('img' + i, r._file));
         if (vidsEl) files('.rm-vids .slot').forEach((s, i) => fd.append('vid' + i, s._file));
         files('.rm-auds .slot').forEach((s, i) => fd.append('aud' + i, s._file));
@@ -2080,28 +2114,28 @@ function makeRefMode(cfg) {
       <div class="seg rm-steps" style="grid-template-columns:repeat(3,1fr)">
         <button data-s="4">4<small>быстро</small></button><button data-s="6">6 ★<small>баланс</small></button><button data-s="8">8<small>динамика</small></button>
       </div><div class="hint rm-steps-hint"></div></div>
-    <div class="row"><div class="row-l">Обработка референсов</div>
-      <div class="seg rm-rs" style="grid-template-columns:1fr 1fr"><button data-r="match">Быстро<small>под размер видео</small></button><button data-r="max">Максимум<small>лучшее сходство</small></button></div></div>
-    <div class="row"><div class="row-l">Дополнительные LoRA</div>
-      <div class="toggles"><button class="chip rm-l" data-l="realism">Реализм людей</button><button class="chip rm-l" data-l="motion">Исправление движения</button></div>
-      <div class="hint">Включайте по необходимости: «Реализм» — для живых людей, «Исправление движения» — если движение рвётся или «плывёт».</div></div>`
-    : `<div class="row"><div class="row-l">Как запускается</div><div class="status-box rm-act"><span class="hint">Проверяем ComfyUI…</span></div></div>`;
+    <div class="row"><div class="row-l">Точность переноса с картинок</div>
+      <div class="seg rm-rs" style="grid-template-columns:1fr 1fr"><button data-r="match">Быстро<small>картинки уменьшаются</small></button><button data-r="max">Максимум<small>лучшее сходство</small></button></div>
+      <div class="hint rm-rs-hint"></div></div>
+    <div class="rm-loras"></div>`
+    : `<div class="row"><div class="row-l">Как запускается</div><div class="status-box rm-act"><span class="hint">Проверяем ComfyUI…</span></div></div>
+    <div class="rm-loras"></div>`;
   const upd = paramsCard($('.rm-params', root), S, {
     n: 3, duration: true, extraRow,
     onChange: () => {
       prev();
       $$('.rm-steps button', root).forEach(b => b.classList.toggle('on', +b.dataset.s === S.steps));
       $$('.rm-rs button', root).forEach(b => b.classList.toggle('on', b.dataset.r === S.refSize));
-      $$('.rm-l', root).forEach(b => b.classList.toggle('on', !!S[b.dataset.l]));
       const h = $('.rm-steps-hint', root); if (h) h.textContent = STEPS_HINT[S.steps];
+      const rh = $('.rm-rs-hint', root); if (rh) rh.textContent = REF_HINT[S.refSize];
     },
   });
   $('.rm-params', root).addEventListener('click', e => {
     const s = e.target.closest('.rm-steps button'); if (s) { S.steps = +s.dataset.s; upd(); }
     const r = e.target.closest('.rm-rs button'); if (r) { S.refSize = r.dataset.r; upd(); }
-    const l = e.target.closest('.rm-l'); if (l) { S[l.dataset.l] = !S[l.dataset.l]; upd(); }
   });
   upd();
+  if (cfg.mode === 'refs') mountLoras($('.rm-loras', root), S, ['realism', 'motion']);
 
   if (cfg.mode === 'action' && API) {
     const box = $('.rm-act', root);
@@ -2109,12 +2143,14 @@ function makeRefMode(cfg) {
       try {
         const a = await (await fetch('/api/action/info')).json();
         S.faithful = a.faithful; upd();
+        // only the LoRAs this ComfyUI actually has can be switched and tuned
+        mountLoras($('.rm-loras', root), S, [...(a.dmad ? ['dmad'] : []), ...(a.speed ? ['speed'] : [])]);
         const row = (ok, t) => `<div class="${ok ? 'ok-t' : 'warn-t'}">${ok ? '✓' : '—'} ${t}</div>`;
         box.innerHTML = (a.faithful ? '<b class="ok-t">Точная копия вашего workflow</b>' : '<b class="warn-t">Упрощённая схема (то же 8 + 4 шага)</b>')
           + row(a.selflift, 'SelfLift сэмплер (8 шагов в низком разрешении + 4 в высоком)')
           + row(a.refiner, 'H3 Sigma Refiner (+1 финальный шаг)')
           + row(a.upscaler, 'апскейлер h3_upscaler_lms')
-          + row(!!a.dmad, 'LoRA dmad 0.8') + row(!!a.speed, 'LoRA Speed Slider 4')
+          + row(!!a.dmad, 'LoRA DMAD') + row(!!a.speed, 'LoRA Speed Slider')
           + (a.faithful ? '' : '<span class="hint">Чего нет — заменяется ближайшим: обычный двухпроходный сэмплинг с тем же графиком 8 + 4. Установите недостающее в ComfyUI, и приложение само переключится на точную копию.</span>');
       } catch { box.innerHTML = '<span class="hint">ComfyUI не отвечает</span>'; }
     };

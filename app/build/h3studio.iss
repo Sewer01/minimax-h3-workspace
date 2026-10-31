@@ -1,6 +1,6 @@
 ; Inno Setup script: ISCC.exe app\build\h3studio.iss  (after the PyInstaller build)
 #define AppName "Minimax H3 Workspace"
-#define AppVersion "1.3.0"
+#define AppVersion "1.0.0"
 #define AppExe "MinimaxH3Workspace.exe"
 
 [Setup]

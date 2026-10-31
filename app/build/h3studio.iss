@@ -1,6 +1,6 @@
 ; Inno Setup script: ISCC.exe app\build\h3studio.iss  (after the PyInstaller build)
 #define AppName "Minimax H3 Workspace"
-#define AppVersion "1.2.3"
+#define AppVersion "1.3.0"
 #define AppExe "MinimaxH3Workspace.exe"
 
 [Setup]
@@ -14,7 +14,7 @@ DisableProgramGroupPage=yes
 ; per-user install: no admin rights needed, and the app can write next to itself
 PrivilegesRequired=lowest
 OutputDir=output
-OutputBaseFilename=Minimax.H3.Workspace_{#AppVersion}_x64-setup
+OutputBaseFilename=Minimax.H3.Workspace-Setup
 SetupIconFile=icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2/ultra64

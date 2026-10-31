@@ -859,9 +859,15 @@ class App:
         variant = await self.llm_variant()
         v = ag.LLM_VARIANTS[variant]
         custom = self.config.get("llm_custom")
+        vram = (self.hw or {}).get("vram_gb") or 0
+        candidates = []
+        if custom and custom.get("dir") and Path(custom["dir"]).is_dir():
+            _, _, found = await asyncio.to_thread(ag.find_gguf, custom["dir"])
+            candidates = [{"path": str(p), "name": p.name, "gb": round(p.stat().st_size / 1e9, 1),
+                           "fits": ag.fits(p, vram), "current": str(p) == custom["model"]} for p in found]
         return web.json_response({
             "variant": variant, "title": Path(custom["model"]).stem if custom else v["title"],
-            "size": 37e6 if custom else v["model_size"] + v["mmproj_size"],
+            "size": 37e6 if custom else v["model_size"] + v["mmproj_size"], "candidates": candidates, "vram": vram,
             "custom": custom, "vision": self.llm.vision(variant), "has_model": self.llm.has_model(variant),
             "installed": self.llm.installed(variant), "running": self.llm.alive(),
             "installing": bool(self.agent_installer), "dir": str(self.llm.root),
@@ -902,11 +908,13 @@ class App:
             folder = (body.get("dir") or "").strip().strip('"')
             if not Path(folder).is_dir():
                 return web.json_response({"error": f"Папка не найдена: {folder}"}, status=400)
-            model, proj, models = await asyncio.to_thread(ag.find_gguf, folder)
+            if self.hw is None:
+                self.hw = await asyncio.to_thread(engine.detect_hardware)
+            model, proj, models = await asyncio.to_thread(ag.find_gguf, folder, body.get("model"), self.hw.get("vram_gb"))
             if not model:
                 return web.json_response({"error": "В папке нет моделей .gguf. Нужна обычная Gemma в формате GGUF "
                                                    "(версия для LTX в text_encoders не подойдёт)."}, status=400)
-            self.config.update(llm_custom={"model": str(model), "mmproj": str(proj) if proj else None})
+            self.config.update(llm_custom={"model": str(model), "mmproj": str(proj) if proj else None, "dir": folder})
         await self.stop_llm()
         return await self.h_agent_status(req)
 

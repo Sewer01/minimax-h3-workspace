@@ -195,10 +195,17 @@ def system_prompt(skills_text, target, ctx):
 """
 
 
-def find_gguf(folder):
+def fits(model, vram_gb):
+    """A model of this file size runs comfortably when it takes at most ~60% of video memory
+    (the rest goes to the context, which the skills need to be large)."""
+    return not vram_gb or Path(model).stat().st_size <= vram_gb * 1024 ** 3 * 0.6
+
+
+def find_gguf(folder, prefer=None, vram_gb=None):
     """Pick a chat model and its vision projector from a folder the user already has.
 
     Returns (model, mmproj_or_None, all_models). Draft/MTP helper files are skipped.
+    With no explicit choice, a Gemma that fits the user's video memory wins, never simply the biggest file.
     """
     folder = Path(folder)
     files = [p for p in folder.rglob("*.gguf") if len(p.relative_to(folder).parts) <= 3]
@@ -206,11 +213,31 @@ def find_gguf(folder):
     models = [p for p in files if p not in mmproj and not p.name.lower().startswith(("mtp-", "dflash-"))]
     if not models:
         return None, None, []
-    models.sort(key=lambda p: ("gemma" not in p.name.lower(), -p.stat().st_size))
-    model = models[0]
+    models.sort(key=lambda p: p.name.lower())
+    model = next((p for p in models if prefer and str(p) == str(prefer)), None)
+    if model is None:
+        ok = [p for p in models if fits(p, vram_gb)]
+        pool = ok or models
+        # among suitable files prefer Gemma, then the largest that still fits; if nothing fits, the smallest
+        pool.sort(key=lambda p: ("gemma" not in p.name.lower(), -p.stat().st_size if ok else p.stat().st_size))
+        model = pool[0]
     # a projector from the same folder belongs to the same model most of the time
     proj = sorted(mmproj, key=lambda p: (p.parent != model.parent, p.stat().st_size))
     return model, (proj[0] if proj else None), models
+
+
+def explain_failure(log):
+    """Turn a llama.cpp start-up log into one sentence a normal user can act on."""
+    low = log.lower()
+    if "outofdevicememory" in low or "failed to allocate" in low or "out of memory" in low:
+        return ("Не хватило видеопамяти: эта модель слишком большая для вашей видеокарты. "
+                "Выберите модель поменьше, например Gemma 4 12B в сжатии Q4 (около 7 ГБ), "
+                "или вернитесь к встроенной Gemma кнопкой «Вернуть встроенную Gemma».")
+    if "unknown model architecture" in low or "unsupported" in low:
+        return "Эта модель не поддерживается движком llama.cpp. Выберите другую модель (лучше Gemma 4 в формате GGUF)."
+    if "failed to load model" in low or "error loading model" in low:
+        return "Не удалось открыть файл модели: возможно, он скачан не до конца или повреждён."
+    return None
 
 
 class LlamaServer:
@@ -257,8 +284,11 @@ class LlamaServer:
         m, p = self.model_paths(variant)
         self.port = engine.free_port(8280)
         self.variant = key
+        # -ngl is left unset on purpose: llama.cpp then fits the layers to free video memory by itself
+        # (heavier models run partly on the CPU, slower but they start); the context stays fixed
+        # because the skills need about 20k tokens
         args = [str(self.exe()), "-m", str(m), "--host", "127.0.0.1", "--port", str(self.port),
-                "-ngl", "99", "-c", str(LLM_VARIANTS[variant]["ctx"]), "--jinja", "-np", "1"]
+                "-c", str(LLM_VARIANTS[variant]["ctx"]), "-fit", "on", "-fitt", "1536", "--jinja", "-np", "1"]
         if p:
             args += ["--mmproj", str(p)]
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -305,7 +335,8 @@ async def wait_ready(session, server, timeout=240):
     end = loop.time() + timeout
     while loop.time() < end:
         if not server.alive():
-            raise RuntimeError("Модель не запустилась:\n" + server.log_tail())
+            log = server.log_tail(80)
+            raise RuntimeError(explain_failure(log) or "Модель не запустилась:\n" + server.log_tail(6))
         try:
             async with session.get(server.url + "/health", timeout=aiohttp.ClientTimeout(total=3)) as r:
                 if r.status == 200:

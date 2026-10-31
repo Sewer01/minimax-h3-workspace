@@ -640,6 +640,10 @@ details[open] summary::before{content:'－ '}
               <summary>У меня уже есть модель — указать папку</summary>
               <div class="hint" style="margin:8px 0">Папка с моделью в формате <b>.gguf</b> (например Gemma 4 от ggml-org или unsloth). Если рядом лежит файл <b>mmproj…gguf</b>, агент будет видеть картинки. Скачается только движок llama.cpp (37 МБ).</div>
               <div class="path on"><input id="agOwnDir" spellcheck="false" placeholder="D:\Models\gemma-4"><button class="btn" data-pick="agOwnDir">Обзор…</button></div>
+              <div id="agOwnPickWrap" hidden style="margin-top:8px">
+                <label class="hint" style="display:block;margin-bottom:4px">В папке несколько моделей — выберите:</label>
+                <select id="agOwnPick" style="width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:9px 10px;font-size:12.5px;outline:none"></select>
+              </div>
               <div class="wz-go" style="margin-top:8px"><button class="btn" id="agOwnReset" hidden>Вернуть встроенную Gemma</button><button class="btn pri" id="agOwnUse">Подключить</button></div>
             </details>
           </div>
@@ -979,7 +983,7 @@ function paramsCard(el, st, opts) {
     opts.onChange();
   };
   el.addEventListener('click', e => {
-    const c = e.target.closest('.chip'); if (c) { st.aspect = c.dataset.a; upd(); }
+    const c = e.target.closest('.chip'); if (c) { st.aspect = c.dataset.a; st.userAspect = true; upd(); }
     const q = e.target.closest('.seg button[data-q]'); if (q) { st.q = q.dataset.q; upd(); }
     const r = e.target.closest('.seg button[data-r]'); if (r) { st.refSize = r.dataset.r; upd(); }
   });
@@ -1209,6 +1213,19 @@ function previewPanel(el, st, opts) {
 }
 
 /* ---------- dropzones ---------- */
+// pick the format closest to a picture's proportions once it has loaded
+function fitAspect(st, img, upd, force) {
+  if (st.userAspect && !force) return;
+  const apply = () => {
+    const r = img.naturalWidth / img.naturalHeight; if (!r) return;
+    const best = ASPECTS.reduce((a, b) => Math.abs(Math.log(b.w / b.h / r)) < Math.abs(Math.log(a.w / a.h / r)) ? b : a);
+    if (best.id === st.aspect) return;
+    st.aspect = best.id; upd();
+    toast(`Формат подстроен под картинку: ${best.name}${best.name !== best.id ? ' ' + best.id : ''}`);
+  };
+  img.complete && img.naturalWidth ? apply() : img.addEventListener('load', apply, { once: true });
+}
+
 function wireDrop(zone, onFile) {
   const input = $('input', zone);
   const set = file => {
@@ -1218,7 +1235,7 @@ function wireDrop(zone, onFile) {
     img.src = URL.createObjectURL(file);
     zone.classList.add('filled'); $('.ph', zone).hidden = true;
     const tag = $('.tag', zone); if (tag) tag.hidden = false;
-    onFile(true);
+    onFile(true, img);
   };
   input.onchange = () => set(input.files[0]);
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
@@ -1263,7 +1280,8 @@ function vMode() {
   $('#lastHint').textContent = V.first ? 'необязательно' : 'сначала загрузите первый';
 }
 const lastDrop = wireDrop($('#dLast'), on => { V.last = on; vUpd(); });
-wireDrop($('#dFirst'), on => { V.first = on; if (!on) lastDrop.clear(); vUpd(); });
+// the first frame decides the composition, so the format always follows it
+wireDrop($('#dFirst'), (on, img) => { V.first = on; if (!on) lastDrop.clear(); vUpd(); if (on) fitAspect(V, img, vUpd, true); });
 $('#vPrompt').oninput = e => $('#vCount').textContent = e.target.value.length + ' символов';
 vUpd();
 
@@ -1329,6 +1347,7 @@ for (let i = 1; i <= MAX_REFS; i++) {
     $('img', r)?.remove(); $('select', r)?.remove();
     r._file = f;
     const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
+    if (!$$('.ref.filled', refsEl).length) fitAspect(L, img, lUpd);
     const sel = document.createElement('select');
     sel.innerHTML = ['Персонаж', 'Локация', 'Одежда', 'Предмет', 'Стиль'].map(o => `<option>${o}</option>`).join('');
     if (i > 1) sel.selectedIndex = 1;
@@ -1935,6 +1954,7 @@ function makeRefMode(cfg) {
       if (!f || !f.type.startsWith('image/')) return;
       $('img', r)?.remove(); r._file = f;
       const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
+      if (!$$('.ref.filled', imgsEl).length) fitAspect(S, img, () => upd());
       r.classList.add('filled'); $('.plus', r).hidden = true; $('.tag', r).hidden = false; changed();
     };
     input.onchange = () => set(input.files[0]);
@@ -2281,6 +2301,13 @@ async function agStatus() {
   $('#agInstall').hidden = s.installed || s.installing || (s.custom && !s.has_model);
   $('#agInstall').textContent = s.custom ? 'Скачать движок llama.cpp (37 МБ)' : `Скачать модель (~${(s.size / 1e9).toFixed(1)} ГБ)`;
   $('#agOwnReset').hidden = !s.custom;
+  const cands = s.candidates || [];
+  $('#agOwnPickWrap').hidden = cands.length < 2;
+  $('#agOwnPick').innerHTML = cands.map(c =>
+    `<option value="${esc(c.path)}" ${c.current ? 'selected' : ''}>${esc(c.name)} · ${c.gb} ГБ${c.fits ? '' : ' · ⚠ может не поместиться в видеопамять'}</option>`).join('');
+  if (s.custom && cands.some(c => c.current && !c.fits)) {
+    $('#agModel').insertAdjacentHTML('beforeend', `<br><span class="warn-t">Эта модель крупная для вашей видеокарты (${s.vram} ГБ): она может работать медленно или не запуститься. Лучше Gemma 4 12B Q4 (~7 ГБ).</span>`);
+  }
   if (s.custom && !$('#agOwnDir').value) $('#agOwnDir').value = s.custom.model.replace(/[\\/][^\\/]+$/, '');
   $('#agDl').hidden = !s.installing;
   renderSkills(s.skills);
@@ -2288,6 +2315,10 @@ async function agStatus() {
 $('#agOwnUse').onclick = async () => {
   try { await postJSON('/api/agent/model', { dir: $('#agOwnDir').value }); toast('Модель подключена'); agStatus(); }
   catch (e) { toast(e.message); }
+};
+$('#agOwnPick').onchange = async e => {
+  try { await postJSON('/api/agent/model', { dir: $('#agOwnDir').value, model: e.target.value }); toast('Модель выбрана'); agStatus(); }
+  catch (err) { toast(err.message); }
 };
 $('#agOwnReset').onclick = async () => { await postJSON('/api/agent/model', { reset: true }); $('#agOwnDir').value = ''; toast('Снова встроенная Gemma'); agStatus(); };
 $('#agInstall').onclick = async () => { try { await postJSON('/api/agent/install'); agStatus(); } catch (e) { toast(e.message); } };

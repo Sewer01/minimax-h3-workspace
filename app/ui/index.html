@@ -62,7 +62,13 @@ button{cursor:pointer;border:0;background:none}
 .stat b{color:var(--text);font-weight:700}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(63,209,139,.18);margin-right:7px;vertical-align:1px}
 .vram{height:5px;border-radius:9px;background:var(--surface-2);overflow:hidden}
-.vram i{display:block;height:100%;width:0;background:var(--grad)}
+.vram i{display:block;height:100%;width:0;background:var(--grad);transition:width .6s,background .3s}
+.vram i.mid{background:var(--warn)}
+.vram i.hi{background:#ff4d4d}
+.meter{display:grid;gap:5px}
+.side-foot .stat b{font-variant-numeric:tabular-nums}
+.side-foot .stat small{color:var(--dim);font-size:11px}
+@media (max-height:760px){.side-foot{gap:6px;padding:10px 12px}.side-foot .stat{font-size:11.5px}}
 
 /* main */
 .main{overflow:auto}
@@ -487,11 +493,16 @@ details[open] summary::before{content:'－ '}
       Модели <span class="badge" id="modelsBadge" hidden></span>
     </button>
 
-    <div class="side-foot">
+    <div class="side-foot" id="sysBox" title="Нагрузка компьютера, обновляется каждые 2 секунды">
       <div class="stat"><span><span class="dot" id="engDot"></span>Движок</span><b id="engTxt">запущен</b></div>
       <div class="stat"><span>Видеокарта</span><b id="gpuName">—</b></div>
-      <div class="vram"><i id="vramBar"></i></div>
-      <div class="stat"><span>VRAM</span><b id="vramTxt">—</b></div>
+      <div class="meter"><div class="stat"><span>Нагрузка GPU</span><b id="gpuLoad">—</b></div><div class="vram"><i id="gpuBar"></i></div></div>
+      <div class="meter"><div class="stat"><span>Видеопамять</span><b id="vramTxt">—</b></div><div class="vram"><i id="vramBar"></i></div></div>
+      <div class="meter"><div class="stat"><span>Процессор</span><b id="cpuTxt">—</b></div><div class="vram"><i id="cpuBar"></i></div></div>
+      <div class="meter"><div class="stat"><span>Память (ОЗУ)</span><b id="ramTxt">—</b></div><div class="vram"><i id="ramBar"></i></div></div>
+      <div class="stat" id="tempRow" hidden><span>Температура GPU</span><b id="gpuTemp">—</b></div>
+      <div class="stat" id="powerRow" hidden><span>Питание GPU</span><b id="gpuPower">—</b></div>
+      <div class="stat"><span>Диск <small id="diskName"></small></span><b id="diskTxt">—</b></div>
     </div>
   </aside>
 
@@ -946,13 +957,36 @@ async function loadStatus() {
     const s = await (await fetch('/api/status')).json();
     setEngine(s.online);
     if (!s.online) return;
-    const gb = b => (b / 1024 ** 3).toFixed(0);
-    $('#gpuName').textContent = (s.gpu || '—').replace('NVIDIA GeForce ', '');
-    $('#vramTxt').textContent = `${gb(s.vram_total - s.vram_free)} / ${gb(s.vram_total)} ГБ`;
-    $('#vramBar').style.width = Math.round((1 - s.vram_free / s.vram_total) * 100) + '%';
     renderModels(s);
   } catch { setEngine(false); }
 }
+
+/* live load of this computer in the sidebar (CPU, RAM, video card, disk) */
+function meter(valId, barId, pct, text) {
+  $(valId).textContent = text;
+  const bar = $(barId); bar.style.width = Math.min(100, Math.max(0, pct || 0)) + '%';
+  bar.className = pct > 90 ? 'hi' : pct > 75 ? 'mid' : '';
+}
+const g1 = n => (+n).toFixed(n >= 100 ? 0 : 1).replace(/\.0$/, '');
+async function pollSystem() {
+  if (!API || document.hidden) return;
+  try {
+    const s = await (await fetch('/api/system')).json();
+    const gpu = s.gpu;
+    if (gpu) {
+      $('#gpuName').textContent = gpu.name;
+      meter('#gpuLoad', '#gpuBar', gpu.util, gpu.util != null ? `${Math.round(gpu.util)} %` : '—');
+      meter('#vramTxt', '#vramBar', gpu.vram_used_gb / gpu.vram_total_gb * 100, `${g1(gpu.vram_used_gb)} / ${g1(gpu.vram_total_gb)} ГБ`);
+      $('#tempRow').hidden = gpu.temp == null; if (gpu.temp != null) $('#gpuTemp').textContent = `${Math.round(gpu.temp)} °C`;
+      $('#powerRow').hidden = gpu.power == null;
+      if (gpu.power != null) $('#gpuPower').textContent = `${Math.round(gpu.power)}` + (gpu.power_limit ? ` / ${Math.round(gpu.power_limit)}` : '') + ' Вт';
+    } else $('#gpuName').textContent = 'не найдена';
+    meter('#cpuTxt', '#cpuBar', s.cpu, s.cpu != null ? `${Math.round(s.cpu)} %` : '—');
+    meter('#ramTxt', '#ramBar', s.ram.used_gb / s.ram.total_gb * 100, `${g1(s.ram.used_gb)} / ${g1(s.ram.total_gb)} ГБ`);
+    if (s.disk) { $('#diskName').textContent = s.disk.drive; $('#diskTxt').textContent = `свободно ${s.disk.free_gb} ГБ`; }
+  } catch { /* the server is restarting; try again on the next tick */ }
+}
+setInterval(pollSystem, 2000);
 const normItem = it => ({ ...it, date: new Date(it.date) });
 
 /* ---------- navigation ---------- */
@@ -1649,7 +1683,6 @@ async function openSetup() {
   if (setupInfo.installing) { showSetupPane('progress'); setStep(2); replaySetup(setupInfo); return; }
   const hw = setupInfo.hardware, c = setupInfo.config;
   // before setup ComfyUI may not exist yet, so the sidebar shows the detected card instead
-  if (hw.nvidia && $('#gpuName').textContent === '—') { $('#gpuName').textContent = hw.gpu; $('#vramTxt').textContent = `${hw.vram_gb} ГБ`; }
   $('#hwGrid').innerHTML = [
     ['Видеокарта', hw.nvidia ? hw.gpu : 'не найдена NVIDIA'], ['Видеопамять', hw.vram_gb ? hw.vram_gb + ' ГБ' : '—'],
     ['Оперативная память', hw.ram_gb + ' ГБ'], ['Свободно на диске', hw.disk_free_gb != null ? hw.disk_free_gb + ' ГБ' : '—'],
@@ -2640,7 +2673,7 @@ $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx
 })();
 
 if (API) {
-  connectEvents(); loadStatus(); loadCloud();
+  connectEvents(); loadStatus(); loadCloud(); pollSystem();
   fetch('/api/status').then(r => r.json()).then(s => {
     if (!s.configured) { setNavLocked(true); goTo('models'); }
   });

@@ -28,6 +28,7 @@ import agent as ag
 import catalog
 import cloud
 import engine
+import monitor
 import speech
 import workflows as wf
 
@@ -90,6 +91,7 @@ class App:
         self.agent_installer = None
         self.hw = None
         self.rh_models = None  # model paths found in the user's RunningHub workflow
+        self.monitor = monitor.Monitor()
 
     def llm_root(self):
         if self.config.get("llm_dir"):
@@ -374,6 +376,11 @@ class App:
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "models": models,
         })
+
+    async def h_system(self, _req):
+        """CPU / RAM / GPU / disk readings for the sidebar."""
+        where = self.output_dir or self.config.get("install_dir") or HOME
+        return web.json_response(await asyncio.to_thread(self.monitor.sample, where))
 
     # ---------- first-run setup ----------
 
@@ -1167,6 +1174,7 @@ def build_app(comfy_override=None):
     app.add_routes([
         web.get("/", state.h_index),
         web.get("/api/status", state.h_status),
+        web.get("/api/system", state.h_system),
         web.get("/api/setup/info", state.h_setup_info),
         web.post("/api/setup/external", state.h_setup_external),
         web.post("/api/setup/install", state.h_setup_install),

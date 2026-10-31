@@ -1,0 +1,200 @@
+"""What a fresh install needs: ComfyUI build, node packs, and model variants per GPU class.
+
+Every model has a role (what the workflows use it for). A role can have several
+variants; `choose_models` picks one per role from the detected hardware.
+"""
+
+COMFY_VERSION = "0.43.0"
+COMFY_URL = ("https://github.com/Comfy-Org/ComfyUI/releases/download/"
+             f"v{COMFY_VERSION}/ComfyUI_windows_portable_nvidia.7z")
+COMFY_SIZE = 2_040_000_000
+COMFY_DIRNAME = "ComfyUI_windows_portable"
+
+# Downloaded as GitHub archives of a fixed commit, so users need no git.
+NODE_PACKS = [
+    {"name": "ComfyUI-H3-NativeAudioLock", "repo": "SveSop/ComfyUI-H3-NativeAudioLock",
+     "commit": "699e58e51b1c8e12b8c0f0dd55da603d870d20e6"},
+    {"name": "Comfyui_Minimax_h3_latent_Upscaler", "repo": "LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler",
+     "commit": "40316cf008b2fd8663263270669eb4da23f89d2c"},
+    # loads reference videos at 24 fps for the references mode
+    {"name": "ComfyUI-VideoHelperSuite", "repo": "Kosinkadink/ComfyUI-VideoHelperSuite",
+     "commit": "4d907bee61e92c2e65af3bd6383a4e4d356126d1"},
+]
+
+HF = "https://huggingface.co/{repo}/resolve/main/{path}"
+SUB = "MinimaxH3"  # subfolder inside each model category, same as the original workflows
+
+
+def _m(repo, path, size_gb, category, name=None, sub=SUB):
+    """A downloadable file. `name` is how it is saved (defaults to the file name in the repo)."""
+    fname = name or path.rsplit("/", 1)[-1]
+    return {"url": HF.format(repo=repo, path=path), "size": int(size_gb * 1e9), "category": category,
+            "file": fname, "name": f"{sub}\\{fname}" if sub else fname}
+
+
+VARIANTS = {
+    "fast_unet": {
+        "int8": _m("FastVideo/FastVideo-FastH3-Comfy",
+                   "diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors", 22.13, "diffusion_models"),
+        "nvfp4": _m("FastVideo/FastVideo-FastH3-8-Step-V2-NVFP4-Comfy",
+                    "diffusion_models/fastvideo_fasth3_8step_v2_pruned_nvfp4.safetensors", 13.61, "diffusion_models"),
+    },
+    "lipsync_unet": {
+        "full": _m("WarmBloodAban/Minimax-h3_Singularity",
+                   "Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors", 34.0, "diffusion_models"),
+        "pruned": _m("WarmBloodAban/Minimax-h3_Singularity",
+                     "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors", 20.97, "diffusion_models"),
+        "lite": _m("WarmBloodAban/Minimax-h3_Singularity",
+                   "Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors", 11.77, "diffusion_models"),
+    },
+    "text_encoder": {
+        "nvfp4": _m("Comfy-Org/MiniMax-H3", "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+                    15.69, "text_encoders"),
+    },
+    "video_vae": {
+        "int8": _m("Comfy-Org/MiniMax-H3", "vae/minimax_h3_video_vae_int8_convrot.safetensors", 2.81, "vae"),
+    },
+    "audio_vae": {
+        "fp32": _m("Comfy-Org/MiniMax-H3", "vae/minimax_h3_audio_vae_fp32.safetensors", 0.61, "vae"),
+    },
+    "ref2v_turbo_lora": {
+        "bf16": _m("Comfy-Org/MiniMax-H3", "loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+                   1.96, "loras"),
+    },
+    "upscaler": {
+        # same file (same sha256) the original workflow knows as minimax_h3_latent_upscaler_3d_bf16
+        "bf16": _m("LBH-123-AI/Minimax_h3_latent_Upscaler",
+                   "minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
+                   0.69, "latent_upscale_models", name="minimax_h3_latent_upscaler_3d_bf16.safetensors", sub=None),
+    },
+    "preview": {
+        "taeh3": _m("Alissonerdx/Minimax-H3-ComfyUI", "vae_approx/taeh3.safetensors", 0.02, "vae_approx", sub=None),
+    },
+    # action scenes (Prompt Mastery workflow): FL2VA/Ref2VA hybrid
+    "action_unet": {
+        "int8": _m("smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models",
+                   "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors", 20.97, "diffusion_models"),
+        "lite": _m("binglingzhimeng/minimax_h3_hybrid_fl2va_ref2va_b25-49_w6a8",
+                   "minimax_h3_hybrid_fl2va_ref2va_b25-49_w6a8.safetensors", 15.98, "diffusion_models"),
+    },
+    "speed_slider_lora": {
+        "v1.1": _m("RunningHubAI/rh-h3-speed-slider-1.1-lora", "H3_speed_slider_1.1.safetensors", 0.01, "loras"),
+    },
+    "action_upscaler": {
+        "lms": _m("Alissonerdx/Minimax-H3-ComfyUI", "latent_upscaler/h3_upscaler_lms_v0.1.safetensors",
+                  0.69, "latent_upscale_models", sub=None),
+    },
+    # optional LoRAs for the references mode
+    "realism_lora": {
+        "v1": _m("fal/MiniMax-H3-Realism-People-LoRA", "h3-realism-people-t2v-i2v-r2v.safetensors", 0.13, "loras"),
+    },
+    "motion_repair_lora": {
+        "v1": _m("JOKER141/MiniMax-H3-General-Motion-Continuity-Repair", "Motion_Repair.safetensors", 0.16, "loras"),
+    },
+}
+
+# LoRA from the original action workflow that has no public download; used when the user has it
+ACTION_DMAD_LORA = "minimax_h3_dmad_full_dareties_v4_step600_comfy_fro"
+
+ROLE_TITLES = {
+    "fast_unet": "Основная модель — Генерация видео (FastH3)",
+    "lipsync_unet": "Основная модель — Lipsync (Singularity)",
+    "text_encoder": "Текстовый энкодер (Qwen3-VL 32B)",
+    "video_vae": "Видео VAE",
+    "audio_vae": "Аудио VAE",
+    "ref2v_turbo_lora": "LoRA ускорения для Lipsync",
+    "upscaler": "Апскейлер второго прохода",
+    "preview": "Декодер живого превью",
+    "action_unet": "Основная модель — Экшн-сцены (Hybrid FL2VA/Ref2VA)",
+    "speed_slider_lora": "LoRA Speed Slider (экшн)",
+    "action_upscaler": "Апскейлер SelfLift (экшн, точный режим)",
+    "realism_lora": "LoRA «Реализм людей» (по желанию)",
+    "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
+}
+
+MODE_TITLES = {"video": "Генерация видео", "lipsync": "Lipsync", "refs": "Референсы", "action": "Экшн-сцены"}
+
+# Which roles each mode needs.
+MODE_ROLES = {
+    "video": ["fast_unet", "text_encoder", "video_vae", "audio_vae"],
+    "lipsync": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora", "upscaler"],
+    "refs": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora"],
+    "action": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
+}
+# Small extras downloaded with a mode but not required to run it.
+MODE_OPTIONAL = {
+    "refs": ["realism_lora", "motion_repair_lora"],
+    "action": ["speed_slider_lora", "action_upscaler"],
+}
+ALL_ROLES = list(VARIANTS)
+
+# The user's original files, for connecting to an existing ComfyUI that already has them.
+DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
+                  "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
+                  "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms",
+                  "realism_lora": "v1", "motion_repair_lora": "v1"}
+
+
+PROFILES = {
+    "lite": {"title": "Лёгкий", "lipsync_unet": "lite", "action_unet": "lite",
+             "about": "Самые лёгкие версии: меньше качать и меньше памяти, качество немного ниже"},
+    "standard": {"title": "Стандарт", "lipsync_unet": "pruned", "action_unet": "int8",
+                 "about": "Облегчённая (pruned) Singularity — качество почти как у полной"},
+    "max": {"title": "Максимум", "lipsync_unet": "full", "action_unet": "int8",
+            "about": "Полные модели, как в исходных workflow"},
+}
+
+
+def recommended_profile(hw):
+    vram, ram = hw.get("vram_gb") or 0, hw.get("ram_gb") or 0
+    if vram + ram >= 48 and vram >= 16:
+        return "max"
+    if vram + ram >= 40:
+        return "standard"
+    return "lite"
+
+
+def roles_for(modes, optional=True):
+    roles = {r for m in modes for r in MODE_ROLES[m]} | {"preview"}
+    if optional:
+        roles |= {r for m in modes for r in MODE_OPTIONAL.get(m, [])}
+    return [r for r in ALL_ROLES if r in roles]
+
+
+def plan_size(choice, modes):
+    return sum(VARIANTS[r][choice[r]]["size"] for r in roles_for(modes))
+
+
+def choose_models(hw, profile=None):
+    """Pick a variant per role for this computer. Returns (choice, notes, verdict, profile).
+
+    ComfyUI keeps what does not fit in VRAM in system RAM, so the real budget is VRAM + RAM.
+    """
+    vram, ram = hw.get("vram_gb") or 0, hw.get("ram_gb") or 0
+    blackwell = (hw.get("compute_cap") or 0) >= 12
+    profile = profile if profile in PROFILES else recommended_profile(hw)
+    choice = dict(DEFAULT_CHOICE, lipsync_unet=PROFILES[profile]["lipsync_unet"],
+                  action_unet=PROFILES[profile]["action_unet"])
+    notes = []
+
+    if blackwell and vram >= 16:
+        choice["fast_unet"] = "nvfp4"
+        notes.append("Видеокарта RTX 50-й серии: для генерации видео берём версию NVFP4 — она легче и быстрее на этих картах.")
+
+    if vram < 8 or not hw.get("nvidia"):
+        verdict = "unsupported"
+        notes.insert(0, "Нужна видеокарта NVIDIA минимум с 8 ГБ памяти.")
+    elif vram < 12 or ram < 32:
+        verdict = "weak"
+        if vram < 12:
+            notes.insert(0, f"Видеопамяти {vram:g} ГБ — генерация будет медленной, лучше выбирать 480p или 720p.")
+        if ram < 32:
+            notes.insert(0, f"Оперативной памяти {ram:g} ГБ, а рекомендуется 32 ГБ: модели могут не поместиться, "
+                            "Windows начнёт использовать файл подкачки и всё сильно замедлится.")
+    else:
+        verdict = "ok"
+    return choice, notes, verdict, profile
+
+
+def model_entry(role, variant):
+    return dict(VARIANTS[role][variant], role=role, variant=variant, title=ROLE_TITLES[role])

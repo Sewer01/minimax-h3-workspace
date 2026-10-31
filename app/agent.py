@@ -1,0 +1,336 @@
+"""Agent mode: a local LLM (Gemma 4 via llama.cpp) that writes MiniMax H3 prompts using skills.
+
+Skills are folders with SKILL.md (+ optional references/*.md). Built-in ones ship in
+app/skills, the user's own are uploaded into data/skills. Each skill is "always" on,
+"auto" (included when the chat mentions one of its keywords) or "off".
+"""
+
+import asyncio
+import json
+import re
+import shutil
+import subprocess
+import zipfile
+from pathlib import Path
+
+import aiohttp
+
+import engine
+
+LLAMA_BUILD = "b11985"
+LLAMA_URL = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_BUILD}/llama-{LLAMA_BUILD}-bin-win-vulkan-x64.zip"
+
+HF = "https://huggingface.co/{repo}/resolve/main/{path}"
+LLM_VARIANTS = {
+    "gemma4-12b": {"title": "Gemma 4 12B", "repo": "ggml-org/gemma-4-12B-it-GGUF",
+                   "model": "gemma-4-12B-it-Q4_0.gguf", "model_size": 7.22e9,
+                   "mmproj": "mmproj-gemma-4-12B-it-Q8_0.gguf", "mmproj_size": 0.16e9, "ctx": 49152},
+    "gemma4-e4b": {"title": "Gemma 4 E4B (лёгкая)", "repo": "ggml-org/gemma-4-E4B-it-GGUF",
+                   "model": "gemma-4-E4B-it-Q4_0.gguf", "model_size": 4.59e9,
+                   "mmproj": "mmproj-gemma-4-E4B-it-Q8_0.gguf", "mmproj_size": 0.56e9, "ctx": 32768},
+}
+
+# Keywords that switch on the acting skill in "auto" mode (matched as word starts, any case).
+DEFAULT_SKILL_SETTINGS = {
+    "hailuo-h3": {"mode": "always", "keywords": []},
+    "akterskaya-igra": {"mode": "auto", "keywords": [
+        "актер", "актёр", "диалог", "реплик", "эмоци", "игра", "драм", "ссор", "спор", "плач", "слез", "слёз",
+        "прощан", "признан", "разговор", "говорит", "говорят", "кричит", "шепчет", "обид", "ревн", "страх",
+        "гнев", "грусть", "печал", "радост", "микромимик", "dialog", "dialogue", "emotion", "acting", "actor"]},
+}
+
+
+def pick_variant(hw):
+    return "gemma4-12b" if (hw.get("vram_gb") or 0) >= 12 else "gemma4-e4b"
+
+
+def parse_frontmatter(text):
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.S)
+    meta = {}
+    if m:
+        for line in m.group(1).splitlines():
+            k, _, v = line.partition(":")
+            if v:
+                meta[k.strip()] = v.strip().strip("'\"")
+        text = text[m.end():]
+    return meta, text.strip()
+
+
+class Skills:
+    def __init__(self, builtin_dir, user_dir, config):
+        self.builtin_dir, self.user_dir, self.config = Path(builtin_dir), Path(user_dir), config
+
+    def settings(self, sid):
+        saved = (self.config.get("skills") or {}).get(sid, {})
+        return {**DEFAULT_SKILL_SETTINGS.get(sid, {"mode": "always", "keywords": []}), **saved}
+
+    def list(self):
+        out = []
+        for base, builtin in ((self.builtin_dir, True), (self.user_dir, False)):
+            if not base.exists():
+                continue
+            for d in sorted(p for p in base.iterdir() if (p / "SKILL.md").exists()):
+                if not builtin and (self.builtin_dir / d.name).exists():
+                    continue
+                meta, _ = parse_frontmatter((d / "SKILL.md").read_text(encoding="utf-8", errors="replace"))
+                refs = sorted((d / "references").glob("*.md")) if (d / "references").exists() else []
+                out.append({"id": d.name, "name": meta.get("name", d.name), "description": meta.get("description", ""),
+                            "builtin": builtin, "path": d, "refs": refs, **self.settings(d.name)})
+        return out
+
+    def save_settings(self, sid, mode=None, keywords=None):
+        all_s = dict(self.config.get("skills") or {})
+        cur = dict(all_s.get(sid, {}))
+        if mode in ("always", "auto", "off"):
+            cur["mode"] = mode
+        if keywords is not None:
+            cur["keywords"] = [k.strip().lower() for k in keywords if k.strip()]
+        all_s[sid] = cur
+        self.config.update(skills=all_s)
+
+    def active(self, chat_text):
+        text = chat_text.lower()
+        res = []
+        for s in self.list():
+            if s["mode"] == "always":
+                res.append(s)
+            elif s["mode"] == "auto" and any(re.search(r"\b" + re.escape(k), text) for k in s["keywords"]):
+                res.append(s)
+        # always-on skills first: the prompt prefix stays the same, so the model reuses its cache
+        return sorted(res, key=lambda s: s["mode"] != "always")
+
+    def text(self, skill):
+        _, body = parse_frontmatter((skill["path"] / "SKILL.md").read_text(encoding="utf-8", errors="replace"))
+        parts = [f"# СКИЛЛ «{skill['name']}»\n\n{body}"]
+        for ref in skill["refs"]:
+            if ref.name == "platform-adapters.md":  # only for platforms without their own skill
+                continue
+            parts.append(f"## Справочник {skill['name']}: {ref.name}\n\n"
+                         + ref.read_text(encoding="utf-8", errors="replace").strip())
+        return "\n\n".join(parts)
+
+    def save_upload(self, files):
+        """files: list of (relative_path, bytes). Returns the new skill id."""
+        skill_md = next((p for p, _ in files if Path(p).name.lower() == "skill.md"), None)
+        if not skill_md:
+            raise ValueError("В загрузке нет файла SKILL.md")
+        root = Path(skill_md).parent
+        meta, _ = parse_frontmatter(next(b for p, b in files if p == skill_md).decode("utf-8", errors="replace"))
+        sid = re.sub(r"[^\w\-]+", "-", meta.get("name") or root.name or "skill").strip("-").lower() or "skill"
+        dest = self.user_dir / sid
+        if dest.exists():
+            shutil.rmtree(dest)
+        for p, data in files:
+            rel = Path(p).relative_to(root) if root != Path(".") and Path(p).is_relative_to(root) else Path(Path(p).name)
+            if rel.suffix.lower() not in (".md", ".txt"):
+                continue
+            target = (dest / rel).resolve()
+            if dest.resolve() not in target.parents:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        return sid
+
+    def delete(self, sid):
+        d = self.user_dir / sid
+        if d.exists() and (d / "SKILL.md").exists():
+            shutil.rmtree(d)
+
+
+def system_prompt(skills_text, target, ctx):
+    """App rules first (they decide the output format), then the skills."""
+    dur = ctx.get("duration")
+    n_img = ctx.get("images", 0)
+    if target == "lipsync":
+        mode_rules = (
+            "Режим приложения: LIPSYNC (Singularity Ref2V + Audio Lock). Видео делается по референс-картинкам и "
+            "аудиофайлу пользователя, длина видео = длине аудиофрагмента"
+            + (f" ({dur:.1f} с)" if dur else "") + ".\n"
+            "- Первая строка промпта - выравнивание референсов: для каждой картинки по порядку "
+            "`<Picture N> (from [Shot 1]) is fully referenced.` после фразы `For the target video, at 0.00 seconds "
+            "into the target video,`. Затем пустая строка и три поля H3.\n"
+            "- Реплики внутри <d>[Язык] ...</d> должны дословно совпадать со словами в аудио. Если пользователь не "
+            "дал текст песни или реплики - спроси его, не выдумывай.\n"
+            "- Звук берётся из аудио пользователя, поэтому `overall_soundscape: N/A` и `non_diegetic_music: N/A`, "
+            "если пользователь не просит иначе.\n"
+            "- Рот говорящего должен оставаться видимым, без больших поворотов головы.")
+    elif target in ("refs", "action"):
+        mode_rules = (
+            ("Режим приложения: ЭКШН-СЦЕНЫ (Hybrid FL2VA/Ref2VA, сэмплинг 8 шагов в низком разрешении + 4 в высоком): "
+             "бой, погоня, бег, прыжки, стрельба. Пиши энергичное действие по нарастанию, по 1 ключевому движению на шот, "
+             "быстрые, но мотивированные движения камеры (tracking, pull out, truck) с указанием скорости. "
+             if target == "action" else
+             "Режим приложения: РЕФЕРЕНСЫ (Singularity Ref2V, один проход, 4-8 шагов). ")
+            + f"Видео строится по референсам Omni-Reference: картинки (персонажи, локация, предметы), может быть "
+            f"референс-видео (движение/камера) и референс-аудио (голос/ритм). Длительность {dur or 6} с - таймкоды "
+            "шотов не выходят за неё.\n"
+            "- Перед тремя полями H3 перечисли роли референсов по правилам скилла: `@image1 - character reference (...)` "
+            "и т.д., одна роль на файл; на картинки в тексте ссылайся как <Picture N>.\n"
+            "- Пиши примерно одну реплику на 2,5 секунды, если в сцене есть речь.")
+    else:
+        if n_img >= 2:
+            align = "есть первый и последний кадр - используй строку выравнивания FL2VA"
+        elif n_img == 1:
+            align = "есть стартовый кадр - используй строку выравнивания I2VA"
+        else:
+            align = "картинок нет - T2VA, без строки выравнивания"
+        mode_rules = (f"Режим приложения: ГЕНЕРАЦИЯ ВИДЕО (FastH3: текст / первый кадр / первый и последний кадр). "
+                      f"Сейчас {align}. Длительность клипа {dur or 5} с - таймкоды шотов не выходят за неё.")
+    return f"""Ты - агент-режиссёр внутри приложения Minimax H3 Workspace. Пользователь описывает сцену, сценарий, персонажей, может приложить картинки. Ты пишешь готовый промпт для локальной видеомодели MiniMax H3 по правилам скиллов ниже.
+
+ПРАВИЛА ПРИЛОЖЕНИЯ (важнее указаний скиллов о формате ответа):
+1. Общайся на языке пользователя, коротко и по делу. Если не хватает критичного (что происходит, кто говорит, текст реплик) - задай 1-2 конкретных вопроса. Иначе сразу пиши промпт.
+2. Итоговый промпт выдай РОВНО ОДНИМ блоком кода с меткой prompt:
+```prompt
+...промпт...
+```
+Промпт на английском, реплики внутри <d>[Язык] ...</d> - на языке оригинала. Не дублируй промпт вторым блоком на русском, если пользователь сам не попросил. Перед блоком - максимум 2-3 строки (допущения, если что-то придумал).
+3. Промпт не длиннее 7000 символов. Без синтаксиса весов, без имён знаменитостей и чужих персонажей.
+4. Картинки, приложенные к чату, - это Picture 1, Picture 2... в порядке прикрепления (сейчас приложено: {n_img}). Внешность с картинок подробно не расписывай - модель видит их сама; бери только позу, взгляд, предметы, свет.
+5. Скиллы могут ссылаться на файлы references/... - все нужные справочники уже включены ниже, файлы открывать не нужно.
+
+{mode_rules}
+
+{skills_text}
+"""
+
+
+def find_gguf(folder):
+    """Pick a chat model and its vision projector from a folder the user already has.
+
+    Returns (model, mmproj_or_None, all_models). Draft/MTP helper files are skipped.
+    """
+    folder = Path(folder)
+    files = [p for p in folder.rglob("*.gguf") if len(p.relative_to(folder).parts) <= 3]
+    mmproj = [p for p in files if "mmproj" in p.name.lower()]
+    models = [p for p in files if p not in mmproj and not p.name.lower().startswith(("mtp-", "dflash-"))]
+    if not models:
+        return None, None, []
+    models.sort(key=lambda p: ("gemma" not in p.name.lower(), -p.stat().st_size))
+    model = models[0]
+    # a projector from the same folder belongs to the same model most of the time
+    proj = sorted(mmproj, key=lambda p: (p.parent != model.parent, p.stat().st_size))
+    return model, (proj[0] if proj else None), models
+
+
+class LlamaServer:
+    def __init__(self, root, log_path):
+        self.root = Path(root)
+        self.log_path = log_path
+        self.proc = None
+        self.port = None
+        self.variant = None
+        self.custom = None  # {"model": path, "mmproj": path|None} when the user points to their own GGUF
+
+    def exe(self):
+        hits = list((self.root / "llama.cpp").rglob("llama-server.exe")) if (self.root / "llama.cpp").exists() else []
+        return hits[0] if hits else None
+
+    def model_paths(self, variant):
+        if self.custom:
+            return Path(self.custom["model"]), Path(self.custom["mmproj"]) if self.custom.get("mmproj") else None
+        v = LLM_VARIANTS[variant]
+        return self.root / "models" / v["model"], self.root / "models" / v["mmproj"]
+
+    def has_model(self, variant):
+        m, p = self.model_paths(variant)
+        return m.exists() and (p is None or p.exists())
+
+    def installed(self, variant):
+        return bool(self.exe()) and self.has_model(variant)
+
+    def vision(self, variant):
+        return self.model_paths(variant)[1] is not None
+
+    def alive(self):
+        return self.proc is not None and self.proc.poll() is None
+
+    @property
+    def url(self):
+        return f"http://127.0.0.1:{self.port}"
+
+    def start(self, variant):
+        key = (variant, json.dumps(self.custom, sort_keys=True))
+        if self.alive() and self.variant == key:
+            return
+        self.stop()
+        m, p = self.model_paths(variant)
+        self.port = engine.free_port(8280)
+        self.variant = key
+        args = [str(self.exe()), "-m", str(m), "--host", "127.0.0.1", "--port", str(self.port),
+                "-ngl", "99", "-c", str(LLM_VARIANTS[variant]["ctx"]), "--jinja", "-np", "1"]
+        if p:
+            args += ["--mmproj", str(p)]
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        log = open(self.log_path, "w", encoding="utf-8", errors="replace")
+        self.proc = subprocess.Popen(args, cwd=self.exe().parent, stdout=log, stderr=subprocess.STDOUT,
+                                     creationflags=engine.CREATE_NO_WINDOW)
+
+    def stop(self):
+        if self.alive():
+            self.proc.terminate()
+            try:
+                self.proc.wait(10)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+        self.proc = None
+
+    def log_tail(self, n=12):
+        try:
+            return "\n".join(self.log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-n:])
+        except OSError:
+            return ""
+
+
+async def install(installer, root, variant, runtime_only=False):
+    """Download llama.cpp (Vulkan build, works on any NVIDIA/AMD card) and, unless the user has their own, Gemma."""
+    root = Path(root)
+    llama_dir = root / "llama.cpp"
+    if not (llama_dir.exists() and list(llama_dir.rglob("llama-server.exe"))):
+        zpath = root / "downloads" / f"llama-{LLAMA_BUILD}.zip"
+        await installer.download(LLAMA_URL, zpath, "agent", "llama.cpp", 37e6)
+        with zipfile.ZipFile(zpath) as z:
+            z.extractall(llama_dir)
+        zpath.unlink(missing_ok=True)
+    if runtime_only:
+        return
+    v = LLM_VARIANTS[variant]
+    for key, size in (("mmproj", v["mmproj_size"]), ("model", v["model_size"])):
+        dest = root / "models" / v[key]
+        await installer.download(HF.format(repo=v["repo"], path=v[key]), dest, "agent", f'{v["title"]}: {v[key]}', size)
+
+
+async def wait_ready(session, server, timeout=240):
+    loop = asyncio.get_running_loop()
+    end = loop.time() + timeout
+    while loop.time() < end:
+        if not server.alive():
+            raise RuntimeError("Модель не запустилась:\n" + server.log_tail())
+        try:
+            async with session.get(server.url + "/health", timeout=aiohttp.ClientTimeout(total=3)) as r:
+                if r.status == 200:
+                    return
+        except Exception:
+            pass
+        await asyncio.sleep(1)
+    raise RuntimeError("Модель долго загружается:\n" + server.log_tail())
+
+
+def to_openai(messages):
+    out = []
+    for m in messages:
+        if m.get("images") and m["role"] == "user":
+            content = [{"type": "text", "text": m.get("content", "")}]
+            content += [{"type": "image_url", "image_url": {"url": u}} for u in m["images"]]
+            out.append({"role": "user", "content": content})
+        else:
+            out.append({"role": m["role"], "content": m.get("content", "")})
+    return out
+
+
+def chat_text(messages):
+    return "\n".join(m.get("content", "") for m in messages if m["role"] == "user")
+
+
+def dumps(obj):
+    return json.dumps(obj, ensure_ascii=False)

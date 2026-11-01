@@ -120,19 +120,22 @@ ROLE_TITLES = {
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
 }
 
-MODE_TITLES = {"video": "Генерация видео", "lipsync": "Lipsync", "refs": "Референсы", "action": "Экшн-сцены"}
+MODE_TITLES = {"video": "Генерация видео", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены"}
 
 # Which roles each mode needs.
 MODE_ROLES = {
     "video": ["fast_unet", "text_encoder", "video_vae", "audio_vae"],
     "lipsync": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora", "upscaler"],
     "refs": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora"],
+    # same models as references: dialogue scenes with a voice sample, acting-first prompts
+    "actor": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora"],
     "action": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
 }
 # Small extras downloaded with a mode but not required to run it.
 MODE_OPTIONAL = {
     "lipsync": ["realism_lora", "vocal_model"],
     "refs": ["realism_lora", "motion_repair_lora"],
+    "actor": ["realism_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
 }
 ALL_ROLES = list(VARIANTS)

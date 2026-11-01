@@ -500,6 +500,10 @@ details[open] summary::before{content:'－ '}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg>
       Референсы
     </button>
+    <button class="nav" data-view="actor">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h0M15 9.5h0"/></svg>
+      Актёрская игра
+    </button>
     <button class="nav" data-view="action">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
       Экшн-сцены
@@ -670,6 +674,7 @@ details[open] summary::before{content:'－ '}
 
     <!-- ============ REFS & ACTION (built by makeRefMode) ============ -->
     <section class="view" id="view-refs"></section>
+    <section class="view" id="view-actor"></section>
     <section class="view" id="view-action"></section>
 
     <!-- ============ AGENT ============ -->
@@ -752,6 +757,7 @@ details[open] summary::before{content:'－ '}
               <button data-t="video" class="on">Генерация видео<small>текст / кадры</small></button>
               <button data-t="lipsync">Lipsync<small>референсы + аудио</small></button>
               <button data-t="refs">Референсы<small>картинки, видео, аудио</small></button>
+              <button data-t="actor">Актёрская игра<small>диалог, голос, эмоции</small></button>
               <button data-t="action">Экшн-сцены<small>бой, погоня, бег</small></button>
             </div>
             <small class="hint" id="agCtx" style="display:block;margin-top:8px"></small>
@@ -781,6 +787,7 @@ details[open] summary::before{content:'－ '}
           <button class="chip" data-f="video">Генерация видео</button>
           <button class="chip" data-f="lipsync">Lipsync</button>
           <button class="chip" data-f="refs">Референсы</button>
+          <button class="chip" data-f="actor">Актёрская игра</button>
           <button class="chip" data-f="action">Экшн</button>
           <button class="chip" data-f="fav">★ Избранное</button>
         </div>
@@ -851,6 +858,7 @@ details[open] summary::before{content:'－ '}
               <button class="mcard" data-m="video"><i></i><b>Генерация видео</b><span>Видео по тексту, по картинке, по первому и последнему кадру</span><small></small></button>
               <button class="mcard" data-m="lipsync"><i></i><b>Lipsync / клип</b><span>Персонаж поёт или говорит под ваше аудио</span><small></small></button>
               <button class="mcard" data-m="refs"><i></i><b>Референсы</b><span>Видео по нескольким картинкам, референс-видео и аудио</span><small></small></button>
+              <button class="mcard" data-m="actor"><i></i><b>Актёрская игра</b><span>Диалоги и крупные планы: эмоции, голос по образцу</span><small></small></button>
               <button class="mcard" data-m="action"><i></i><b>Экшн-сцены</b><span>Бой, погоня, бег, прыжки</span><small></small></button>
             </div>
             <div class="note" id="modeTotal" style="margin-top:4px"></div>
@@ -1811,7 +1819,7 @@ function stop() {
 
 /* ---------- SETUP & MODELS view ---------- */
 const GB = b => b < 1e9 ? Math.round(b / 1e6) + ' МБ' : (b / 1e9).toFixed(1).replace(/\.0$/, '') + ' ГБ';
-const MODE_ORDER = ['video', 'lipsync', 'refs', 'action'];
+const MODE_ORDER = ['video', 'lipsync', 'refs', 'actor', 'action'];
 // start with one mode: a full set is ~100 GB, most people need one task to begin with
 let setupInfo = null, setupOpt = 'new', setupProfile = null, setupModes = ['video'];
 const SETUP_STEPS = [['comfy', 'ComfyUI'], ['nodes', 'Ноды'], ['start', 'Запуск ComfyUI'], ['models', 'Модели']];
@@ -1991,11 +1999,11 @@ function renderModels(s) {
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
-    const modes = m.modes.map(x => ({ video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', action: 'Экшн' })[x]).join(', ') || 'дополнительно';
+    const modes = m.modes.map(x => ({ video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' })[x]).join(', ') || 'дополнительно';
     return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
-  const MN = { video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', action: 'Экшн-сцены' };
+  const MN = { video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' };
   $('#mdAdd').innerHTML = s.engine === 'managed' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
     `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${gb} ГБ)</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
@@ -2088,7 +2096,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 });
 
 /* ---------- LIBRARY ---------- */
-const MODE_NAME = { video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', action: 'Экшн' };
+const MODE_NAME = { video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' };
 const LIB = [];
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
 const ICON = {
@@ -2345,9 +2353,9 @@ function makeRefMode(cfg) {
   changed();
 
   const prev = previewPanel($('.rm-preview', root), S, {
-    extraLabel: cfg.mode === 'refs' ? 'Шаги' : 'Схема',
-    extra: () => cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
-    passes: () => cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],
+    extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' ? 'Шаги' : 'Схема',
+    extra: () => cfg.mode === 'actor' ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
+    passes: () => cfg.mode === 'actor' ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],
     get twoPass() { return cfg.mode === 'action' && !S.faithful; },
     target: () => $('.ref img', imgsEl),
     meta: () => ({ mode: cfg.mode, prompt: $('.rm-prompt', root).value.trim(), sub: '' }),
@@ -2384,6 +2392,8 @@ function makeRefMode(cfg) {
       <div class="seg rm-rs" style="grid-template-columns:1fr 1fr"><button data-r="match">Быстро<small>картинки уменьшаются</small></button><button data-r="max">Максимум<small>лучшее сходство</small></button></div>
       <div class="hint rm-rs-hint"></div></div>
     <div class="rm-loras"></div>`
+    : cfg.mode === 'actor' ? `<div class="row"><div class="row-l">Как работает</div><div class="hint" style="font-size:12.5px;line-height:1.5">Один проход, 10 шагов — настройки из вашего workflow «Direct AI Actor» (ER-SDE, разреженное внимание). Первая картинка — стартовый кадр. Голос берётся из загруженного аудио только как тембр, а слова — те, что вы напишете в промпте в &lt;d&gt;[Язык] …&lt;/d&gt;.</div></div>
+    <div class="rm-loras"></div>`
     : `<div class="row"><div class="row-l">Как запускается</div><div class="status-box rm-act"><span class="hint">Проверяем ComfyUI…</span></div></div>
     <div class="rm-loras"></div>`;
   const upd = paramsCard($('.rm-params', root), S, {
@@ -2402,6 +2412,7 @@ function makeRefMode(cfg) {
   });
   upd();
   if (cfg.mode === 'refs') mountLoras($('.rm-loras', root), S, ['realism', 'motion']);
+  if (cfg.mode === 'actor') { S.loras = { realism: { on: true, v: .7 } }; mountLoras($('.rm-loras', root), S, ['realism']); }
 
   if (cfg.mode === 'action' && API) {
     const box = $('.rm-act', root);
@@ -2423,7 +2434,7 @@ function makeRefMode(cfg) {
     $(`.nav[data-view="action"]`).addEventListener('click', check);
     check();
   }
-  return { root, S, upd, prompt: () => $('.rm-prompt', root), imgSlots: () => $$('.ref input', imgsEl) };
+  return { root, S, upd, voice: () => files('.rm-auds .slot').length, prompt: () => $('.rm-prompt', root), imgSlots: () => $$('.ref input', imgsEl) };
 }
 const RM = {
   refs: makeRefMode({
@@ -2431,6 +2442,12 @@ const RM = {
     sub: 'Видео по картинкам, видео и аудио: персонаж, локация, движение, голос',
     refHint: 'Картинки — персонажи, локация, предметы (до 9). Видео задаёт движение или камеру, аудио — голос, ритм или атмосферу (всего до 12 файлов). В промпте ссылайтесь на картинки как &lt;Picture 1&gt;, &lt;Picture 2&gt;…',
     placeholder: '<Picture 1> идёт по ночной улице к камере, дождь, неон…',
+  }),
+  actor: makeRefMode({
+    mode: 'actor', title: 'Актёрская игра', pill: 'Singularity Ref2V · 10 шагов', dur: 14, maxImages: 3, videos: false,
+    sub: 'Диалоги и крупные планы: актёрская игра, эмоции и голос по образцу — лучше всего для реализма',
+    refHint: 'Первая картинка — стартовый кадр видео (его композиция сохранится). Аудио — образец голоса: из него берётся только тембр и манера, а слова произносятся новые, из вашего промпта. Нужны два голоса — запишите оба в одно аудио. Промпт удобно писать в разделе «Агент» (цель «Актёрская игра»).',
+    placeholder: '@image1 - keyframe, first frame of the target video… Лучше всего писать в «Агенте»: он знает формат этого режима',
   }),
   action: makeRefMode({
     mode: 'action', title: 'Экшн-сцены', pill: 'Hybrid · 8 + 4 шага', dur: 8, maxImages: 6, videos: false,
@@ -2474,7 +2491,7 @@ function agCtx() {
     ? `Длительность ${V.dur} с (как в «Генерации видео»). Картинки в чате: ${n} — 1-я станет первым кадром, 2-я последним.`
     : AG.target === 'lipsync'
       ? `Длина видео = длине аудио${L.dur0 ? ` (${L.len().toFixed(1)} с)` : ''}. Картинки в чате: ${n} — станут референсами Picture 1, 2…`
-      : `Длительность ${RM[AG.target].S.dur} с (как в разделе «${AG.target === 'refs' ? 'Референсы' : 'Экшн-сцены'}»). Картинки в чате: ${n} — станут Picture 1, 2…`;
+      : `Длительность ${RM[AG.target].S.dur} с (как в разделе «${{ refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' }[AG.target]}»). Картинки в чате: ${n} — станут Picture 1, 2…`;
 }
 function mdLite(s) {
   return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
@@ -2486,8 +2503,8 @@ function renderAssistant(el, m) {
     if (i % 2 === 0) { if (p.trim()) html += mdLite(p.trim()); return; }
     const closed = i < parts.length - 1;
     html += `<div class="pblock"><pre>${esc(p.replace(/\n$/, ''))}</pre>${closed ? `<div class="pb-act">
-      <button class="btn pri" data-send="${AG.target}">${{ video: 'В Генерацию видео', lipsync: 'В Lipsync', refs: 'В Референсы', action: 'В Экшн-сцены' }[AG.target]}</button>
-      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Генерация видео</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="action">Экшн-сцены</option></select>
+      <button class="btn pri" data-send="${AG.target}">${{ video: 'В Генерацию видео', lipsync: 'В Lipsync', refs: 'В Референсы', actor: 'В Актёрскую игру', action: 'В Экшн-сцены' }[AG.target]}</button>
+      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Генерация видео</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="action">Экшн-сцены</option></select>
       <button class="btn" data-copy>Копировать</button><small>${p.length} симв.</small></div>` : ''}</div>`;
   });
   if (m.status && !m.content) html += `<div class="st">${esc(m.status)}</div>`;
@@ -2593,6 +2610,7 @@ async function agSend() {
   const el = $('#agMsgs .msg:last-child');
   AG.busy = true; $('#agSend').textContent = 'Стоп'; AG.ctrl = new AbortController();
   const ctx = { duration: AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
+  if (AG.target === 'actor') ctx.voice = RM.actor.voice() ? 1 : 0;
   try {
     const r = await fetch('/api/agent/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AG.ctrl.signal,
@@ -2696,7 +2714,7 @@ async function sendPrompt(blk, to) {
   const au = [...AG.msgs].reverse().find(m => m.audioFile)?.audioFile;
   if (to === 'lipsync' && au) await setDropFile($('#aFile'), au);
   goTo(to);
-  const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', action: '«Экшн-сцены»' }[to];
+  const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', actor: '«Актёрскую игру»', action: '«Экшн-сцены»' }[to];
   toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' ? ' вместе с картинками' : '') + (to === 'lipsync' ? (au ? ' и аудио — выделите нужный фрагмент' : ' — добавьте аудио') : ''));
 }
 $('#agMsgs').addEventListener('click', async e => {

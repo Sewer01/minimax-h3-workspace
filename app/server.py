@@ -130,7 +130,10 @@ class App:
         return {**catalog.DEFAULT_CHOICE, **(self.config.get("choice") or {})}
 
     def modes(self):
-        return self.config.get("modes") or list(catalog.MODE_ROLES)
+        modes = list(self.config.get("modes") or catalog.MODE_ROLES)
+        if "actor" not in modes and ("refs" in modes or "lipsync" in modes):
+            modes.append("actor")  # same models, so set-ups made before this mode existed get it too
+        return modes
 
     # ---------- ComfyUI connection ----------
 
@@ -740,6 +743,22 @@ class App:
             "mode": "refs", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed, "steps": steps, "ref_size": ref_size})
 
+    async def h_generate_actor(self, req):
+        await self.need_models("actor")
+        form, prompt, aspect, quality, seed, images, videos, audios, seconds = await self.read_ref_form(req, 3)
+        realism = None
+        v = lora_strength(form, "realism", 0.7)  # on by default, as in the original workflow
+        missing = {m["role"] for m in self.missing}
+        if v is not None and "realism_lora" not in missing and "realism_lora" in self.model_names:
+            realism = (self.model_names["realism_lora"], v)
+        width, height = wf.resolution(aspect, quality)
+        graph, stages = wf.actor_graph(self.model_names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed,
+                                       images, audios, realism)
+        sub = f"{len(images)} карт." + (f", голос ({len(audios)})" if audios else ", без голоса") + " · 10 шагов"
+        return await self.queue(graph, stages, {
+            "mode": "actor", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
+            "res": f"{width}×{height}", "seed": seed})
+
     async def action_setup(self):
         """What the original action workflow needs and what this ComfyUI has."""
         if not self.model_names:
@@ -1091,6 +1110,9 @@ class App:
                 await send({"type": "status", "text": "У этой модели нет файла «зрения» (mmproj) — картинки она не увидит"})
             ctx["images"] = sum(len(m.get("images") or []) for m in messages if m["role"] == "user")
             active = self.skills.active(ag.chat_text(messages))
+            if target == "actor" and not any(s["id"] == "akterskaya-igra" for s in active):
+                # this mode is acting-first: its skill is always on here
+                active += [s for s in self.skills.list() if s["id"] == "akterskaya-igra" and s["mode"] != "off"]
             await send({"type": "skills", "names": [s["name"] for s in active]})
             system = ag.system_prompt("\n\n".join(self.skills.text(s) for s in active), target, ctx)
             await send({"type": "status", "text": "Читаю скиллы и думаю…"})
@@ -1249,6 +1271,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/lipsync", state.h_generate_lipsync),
         web.post("/api/generate/refs", state.h_generate_refs),
+        web.post("/api/generate/actor", state.h_generate_actor),
         web.post("/api/generate/action", state.h_generate_action),
         web.get("/api/action/info", state.h_action_info),
         web.get("/api/cloud", state.h_cloud_get),

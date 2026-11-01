@@ -156,6 +156,55 @@ def ref_graph(m, prompt, width, height, seconds, seed, images, videos, audios, s
     return g, stages
 
 
+# MiniMax_H3_Direct-ai-Actor: one pass, 10 steps with the author's own sigma list
+ACTOR_SIGMAS = "1, .9882, .973, .9524, .9231, .878, .8, .6316, .4737, .1579, 0"
+
+
+def actor_graph(m, prompt, width, height, seconds, seed, images, audios, realism=None):
+    """Acting scenes: first frame + a voice sample, new speech written in the prompt (<d>...</d>).
+
+    Same Singularity Ref2V model as the references mode, but with sol-attn sparse attention,
+    sigma shift 12.2 / 3, er_sde and the turbo LoRA at full strength, as in the original workflow.
+    `realism` is the (file, strength) of the people-realism LoRA when it is on.
+    """
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["lipsync_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "ModelAttentionBackend", "inputs": {"model": ["1", 0], "attention": "comfy kitchen attention"}},
+        "3": {"class_type": "BlockSparseAttention", "inputs": {
+            "model": ["2", 0], "selection": "sol-attn", "selection.tau": 1.3, "start_percent": 0.2, "end_percent": 1.0,
+            "dense_blocks": "", "min_tokens": 12288, "extra_tokens": 256, "sink_conditioning": "exact_kv_and_rows",
+            "verbose": False}},
+        "4": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["text_encoder"], "type": "minimax", "device": "default"}},
+        "5": {"class_type": "VAELoader", "inputs": {"vae_name": m["video_vae"]}},
+        "6": {"class_type": "VAELoader", "inputs": {"vae_name": m["audio_vae"]}},
+        "7": {"class_type": "MiniMaxH3SigmaShift", "inputs": {"model": ["3", 0], "shift_video": 12.2, "shift_audio": 3.0}},
+        "8": {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": {
+            "clip": ["4", 0], "vae": ["5", 0], "audio_vae": ["6", 0], "prompt": prompt,
+            "width": width, "height": height, "length": frames(seconds), "ref_image_size": "match"}},
+    }
+    loras = [(m["ref2v_turbo_lora"], 1.0)] + ([realism] if realism else [])
+    model = _lora_chain(g, ["7", 0], loras)
+    g.update({
+        "10": {"class_type": "ManualSigmas", "inputs": {"sigmas": ACTOR_SIGMAS}},
+        "11": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "12": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "er_sde"}},
+        "13": {"class_type": "BasicGuider", "inputs": {"model": model, "conditioning": ["8", 0]}},
+        "14": {"class_type": "SamplerCustomAdvanced", "inputs": {
+            "noise": ["11", 0], "guider": ["13", 0], "sampler": ["12", 0], "sigmas": ["10", 0], "latent_image": ["8", 1]}},
+        "15": {"class_type": "VAEDecode", "inputs": {"samples": ["14", 1], "vae": ["5", 0]}},
+        "16": {"class_type": "VAEDecodeAudio", "inputs": {"samples": ["14", 1], "vae": ["6", 0]}},
+        "17": {"class_type": "CreateVideo", "inputs": {
+            "images": ["15", 0], "audio": ["16", 0], "fps": float(FPS), "bit_depth": "auto", "color_space": "sRGB", "codec": "none"}},
+        "18": {"class_type": "SaveVideo", "inputs": {
+            "video": ["17", 0], "filename_prefix": "H3Workspace/actor", "format": "auto", "format.codec": "auto"}},
+    })
+    loaders = _refs(g, "8", images, (), audios)
+    stages = {n: "load" for n in ["1", "2", "3", "4", "5", "6", "7"] + [k for k in g if k.isdigit() and 60 <= int(k) < 70]}
+    stages.update({n: "encode" for n in ["8"] + loaders})
+    stages.update({"14": "sample", "15": "decode", "16": "decode", "17": "save", "18": "save"})
+    return g, stages
+
+
 ACTION_LOWRES = 0.6  # SelfLift lowres_scale in the original
 
 

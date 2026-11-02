@@ -271,12 +271,14 @@ class Installer:
             label = f'{m["title"]} — {m["file"]}'
             base = done_before
 
-            async def emit_overall(ev, base=base, label=label, idx=i):
+            original_emit = self.emit  # emit_overall must call this one: self.emit is replaced below
+
+            async def emit_overall(ev, base=base, idx=i, original_emit=original_emit):
                 if ev.get("done") is not None:
                     ev = dict(ev, overall_done=base + ev["done"], overall_total=total, index=idx + 1, count=len(missing))
-                await self.emit(ev)
+                await original_emit(ev)
 
-            original_emit, self.emit = self.emit, emit_overall
+            self.emit = emit_overall
             try:
                 await self.download(m["url"], dest, "models", label, m["size"])
             finally:

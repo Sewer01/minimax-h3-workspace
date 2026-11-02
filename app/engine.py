@@ -195,7 +195,13 @@ class Installer:
         if not seven:
             # official standalone 7-Zip extractor (~600 KB)
             seven = Path(install_dir) / "tools" / "7zr.exe"
-            await self.download("https://www.7-zip.org/a/7zr.exe", seven, "comfy", "распаковщик 7-Zip")
+            for url in ("https://github.com/ip7z/7zip/releases/latest/download/7zr.exe", "https://www.7-zip.org/a/7zr.exe"):
+                try:
+                    await self.download(url, seven, "comfy", "распаковщик 7-Zip")
+                    break
+                except RuntimeError:
+                    if url.startswith("https://www."):
+                        raise
         await self.step("comfy", "progress", label="Распаковываем ComfyUI… (пара минут)", done=0, total=100)
         proc = await asyncio.create_subprocess_exec(
             str(seven), "x", "-y", "-bsp1", f"-o{install_dir}", str(archive),

@@ -196,6 +196,10 @@ details[open] summary::before{content:'－ '}
 .hdl{position:absolute;top:50%;width:14px;height:40px;margin-top:-20px;border-radius:6px;background:#fff;cursor:ew-resize;box-shadow:0 2px 8px rgba(0,0,0,.5);display:grid;place-items:center}
 .hdl::after{content:'';width:2px;height:16px;background:var(--accent);border-radius:2px}
 .hdl.l{left:-8px}.hdl.r{right:-8px}
+.mode-cards.ext .mcard small{display:none}
+.btn.mini{padding:5px 10px;font-size:12px}
+.m .pm{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.m .pm select{flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 8px;color:var(--text);font-family:var(--mono);font-size:12px}
 /* audio editor tools: the part to cut out is hatched */
 .cutsel{position:absolute;top:0;bottom:0;border-left:2px solid #ff9fb2;border-right:2px solid #ff9fb2;background:repeating-linear-gradient(135deg,rgba(255,159,178,.28) 0 6px,rgba(255,159,178,.1) 6px 12px)}
 .cutsel .hdl::after{background:#ff4d6d}
@@ -852,8 +856,8 @@ details[open] summary::before{content:'－ '}
             <div class="path on"><input id="comfyUrl" value="http://127.0.0.1:8188" spellcheck="false"></div>
             <small class="hint">ComfyUI должен быть запущен. Приложение подключится к нему, как браузер.</small>
           </div>
-          <div class="fld" data-for="new">
-            <label>Что вы хотите делать? <span class="hint">— отметьте только нужное, остальное можно докачать потом в разделе «Модели»</span></label>
+          <div class="fld" data-for="new external">
+            <label>Что вы хотите делать? <span class="hint" id="modeHint">— отметьте только нужное, остальное можно докачать потом в разделе «Модели»</span></label>
             <div class="mode-cards" id="modePick">
               <button class="mcard" data-m="video"><i></i><b>Генерация видео</b><span>Видео по тексту, по картинке, по первому и последнему кадру</span><small></small></button>
               <button class="mcard" data-m="lipsync"><i></i><b>Lipsync / клип</b><span>Персонаж поёт или говорит под ваше аудио</span><small></small></button>
@@ -1895,6 +1899,9 @@ function pickOpt(opt) {
   $$('#wzChoose .opt').forEach(o => o.classList.toggle('on', o.dataset.opt === opt));
   $$('#wzForm .fld').forEach(f => f.hidden = !f.dataset.for.split(' ').includes(opt));
   $('#wzStart').textContent = opt === 'external' ? 'Подключиться' : 'Установить';
+  // with your own ComfyUI nothing is downloaded: the choice only says which sections are in use
+  $('#modePick').classList.toggle('ext', opt === 'external'); $('#modeTotal').hidden = opt === 'external';
+  $('#modeHint').textContent = opt === 'external' ? '— отметьте разделы, которыми будете пользоваться; остальные приложение проверять не будет' : '— отметьте только нужное, остальное можно докачать потом в разделе «Модели»';
   $('#wzErr').textContent = '';
 }
 $$('#wzChoose .opt').forEach(o => o.onclick = () => pickOpt(o.dataset.opt));
@@ -1915,7 +1922,7 @@ $('#wzStart').onclick = async () => {
   $('#wzErr').textContent = ''; $('#wzStart').disabled = true;
   try {
     if (setupOpt === 'external') {
-      const r = await postJSON('/api/setup/external', { url: $('#comfyUrl').value });
+      const r = await postJSON('/api/setup/external', { url: $('#comfyUrl').value, modes: setupModes });
       toast(`Подключено к ComfyUI ${r.version}`);
       await afterSetup();
     } else {
@@ -2000,7 +2007,7 @@ function renderModels(s) {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
     const modes = m.modes.map(x => ({ video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' })[x]).join(', ') || 'дополнительно';
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}</div>`;
+    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}${m.have ? '' : `<button class="btn mini" type="button" data-pickmodel="${m.role}" title="Если файл у вас называется иначе — выберите его вручную">Указать файл…</button>`}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   const MN = { video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' };
@@ -2866,6 +2873,22 @@ $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx
   });
 })();
 
+
+// a model file with another name than the app expects: pick it from what ComfyUI sees
+$('#mlist').addEventListener('click', async e => {
+  const b = e.target.closest('[data-pickmodel]'); if (!b) return;
+  const row = b.closest('.m'), role = b.dataset.pickmodel;
+  try {
+    const r = await (await fetch('/api/models/files?role=' + role)).json();
+    if (!r.files?.length) { toast(`ComfyUI не видит файлов в папке ${r.folder}`); return; }
+    b.hidden = true;
+    row.insertAdjacentHTML('beforeend', `<div class="pm"><select>${r.files.map(f => `<option>${esc(f)}</option>`).join('')}</select><button class="btn mini pri" type="button">Выбрать</button></div>`);
+    $('.pm .pri', row).onclick = async () => {
+      await postJSON('/api/models/pick', { role, name: $('.pm select', row).value });
+      await loadStatus(); toast('Файл выбран');
+    };
+  } catch { toast('ComfyUI не отвечает'); }
+});
 if (API) {
   connectEvents(); loadStatus(); loadCloud(); pollSystem();
   fetch('/api/status').then(r => r.json()).then(s => {

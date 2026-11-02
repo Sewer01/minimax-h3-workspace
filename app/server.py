@@ -185,8 +185,9 @@ class App:
         needed = catalog.roles_for(self.modes())
         for role, variant in self.choice().items():
             entry = catalog.model_entry(role, variant)
-            hit = next((n for n in visible[entry["category"]]
-                        if n.replace("/", "\\").split("\\")[-1] == entry["file"]), None)
+            picked = (self.config.get("model_pick") or {}).get(role)  # a file the user chose by hand
+            hit = picked if picked in visible[entry["category"]] else next(
+                (n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] == entry["file"]), None)
             if hit:
                 names[role] = hit
             else:
@@ -203,7 +204,16 @@ class App:
             return r.status, data
 
     async def system_stats(self):
-        status, data = await self.comfy_json("GET", "/system_stats", timeout=aiohttp.ClientTimeout(total=4))
+        try:
+            status, data = await self.comfy_json("GET", "/system_stats", timeout=aiohttp.ClientTimeout(total=8))
+            if status != 200 or not isinstance(data, dict) or "system" not in data:
+                raise ValueError("no stats")
+        except Exception:
+            # some builds hide or slow down /system_stats; a queue answer still means ComfyUI is alive
+            status, _ = await self.comfy_json("GET", "/queue", timeout=aiohttp.ClientTimeout(total=8))
+            if status != 200:
+                raise
+            data = {"system": {}, "devices": []}
         argv = data["system"].get("argv", [])
         if "--output-directory" in argv:
             self.output_dir = Path(argv[argv.index("--output-directory") + 1])
@@ -380,6 +390,32 @@ class App:
             "models": models,
         })
 
+    async def h_models_files(self, req):
+        """Files ComfyUI sees in the folder this model role lives in, for picking one by hand."""
+        role = req.query.get("role", "")
+        if role not in catalog.VARIANTS:
+            raise web.HTTPBadRequest(text="Неизвестная модель")
+        cat = next(iter(catalog.VARIANTS[role].values()))["category"]
+        try:
+            _, lst = await self.comfy_json("GET", f"/models/{cat}")
+        except Exception:
+            raise web.HTTPServiceUnavailable(text="ComfyUI не отвечает")
+        return web.json_response({"files": lst or [], "folder": cat})
+
+    async def h_models_pick(self, req):
+        body = await req.json()
+        role, name = body.get("role"), body.get("name") or ""
+        if role not in catalog.VARIANTS:
+            raise web.HTTPBadRequest(text="Неизвестная модель")
+        picks = dict(self.config.get("model_pick") or {})
+        if name:
+            picks[role] = name
+        else:
+            picks.pop(role, None)
+        self.config.update(model_pick=picks)
+        await self.resolve_models()
+        return web.json_response({"ok": True})
+
     async def h_system(self, _req):
         """CPU / RAM / GPU / disk readings for the sidebar."""
         where = self.output_dir or self.config.get("install_dir") or HOME
@@ -428,11 +464,13 @@ class App:
         self.process = None
         try:
             stats = await self.system_stats()
-        except Exception:
+        except Exception as e:
             self.config.data["comfy_url"] = old
-            return web.json_response({"error": f"ComfyUI не отвечает по адресу {url}. Он запущен?"}, status=400)
-        self.config.update(engine="external", comfy_url=url, setup_done=True, choice=catalog.DEFAULT_CHOICE,
-                           modes=list(catalog.MODE_ROLES))
+            return web.json_response({"error": f"ComfyUI не отвечает по адресу {url} ({type(e).__name__}). Откройте этот адрес "
+                                      "в браузере: если страница ComfyUI не открывается, проверьте адрес и порт в окне, "
+                                      "где запущен ComfyUI."}, status=400)
+        modes = [m for m in (body.get("modes") or []) if m in catalog.MODE_ROLES] or list(catalog.MODE_ROLES)
+        self.config.update(engine="external", comfy_url=url, setup_done=True, choice=catalog.DEFAULT_CHOICE, modes=modes)
         names, missing = await self.resolve_models()
         return web.json_response({"ok": True, "version": stats["system"].get("comfyui_version"),
                                   "missing": [m["file"] for m in missing]})
@@ -1270,6 +1308,8 @@ def build_app(comfy_override=None):
         web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/lipsync", state.h_generate_lipsync),
+        web.get("/api/models/files", state.h_models_files),
+        web.post("/api/models/pick", state.h_models_pick),
         web.post("/api/generate/refs", state.h_generate_refs),
         web.post("/api/generate/actor", state.h_generate_actor),
         web.post("/api/generate/action", state.h_generate_action),

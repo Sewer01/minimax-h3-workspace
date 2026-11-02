@@ -930,6 +930,12 @@ details[open] summary::before{content:'－ '}
           <div class="card-h"><h3>Движок</h3><button class="btn" id="mdReset">Изменить настройки</button></div>
           <div class="kv" id="mdEngine"></div>
         </div>
+        <div class="card" id="mdNodesCard" style="margin-bottom:16px" hidden>
+          <div class="card-h"><h3>Ноды ComfyUI</h3><button class="btn" id="mdNodesRe" type="button">Проверить ещё раз</button></div>
+          <div class="mlist" id="mdNodes"></div>
+          <div class="note" id="mdNodesNote" style="margin-top:12px" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg>
+            <span>Скачайте недостающую ноду по ссылке (кнопка «Code» → «Download ZIP» на GitHub), распакуйте папку в <b>ComfyUI\custom_nodes</b> и <b>перезапустите ComfyUI</b>. Потом нажмите «Проверить ещё раз».</span></div>
+        </div>
         <div class="card">
           <div class="card-h"><h3>Модели</h3><span><span id="mdAdd"></span> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button></span></div>
           <div class="mlist" id="mlist"></div>
@@ -1923,8 +1929,9 @@ $('#wzStart').onclick = async () => {
   try {
     if (setupOpt === 'external') {
       const r = await postJSON('/api/setup/external', { url: $('#comfyUrl').value, modes: setupModes });
-      toast(`Подключено к ComfyUI ${r.version}`);
+      toast(`Подключено к ComfyUI ${r.version || ''}`);
       await afterSetup();
+      if (r.nodes_missing?.length) { goTo('models'); toast(`В вашем ComfyUI нет нод: ${r.nodes_missing.join(', ')}. Подробности в разделе «Модели».`); }
     } else {
 
       await postJSON('/api/setup/install', { install_dir: $('#instDir').value.trim(), profile: setupProfile, modes: setupModes });
@@ -2092,6 +2099,25 @@ async function mountCloud(host, wizard) {
 $('#mdReset').onclick = async () => {
   try { await postJSON('/api/setup/reset'); setNavLocked(true); openSetup(); } catch (e) { toast(e.message); }
 };
+// custom nodes the sections need, for people who use their own ComfyUI
+async function loadNodes() {
+  const card = $('#mdNodesCard'), st = await (await fetch('/api/status')).json().catch(() => ({}));
+  card.hidden = st.engine !== 'external';
+  if (card.hidden) return;
+  let r; try { r = await (await fetch('/api/nodes')).json(); } catch { return; }
+  const list = r.nodes || [];
+  $('#mdNodes').innerHTML = list.map(n => `<div class="m"><b>${esc(n.pack)}<small>${esc(n.why)}${n.optional ? ' · необязательно' : ''}</small></b>
+    <span class="hint" style="font-family:var(--mono);font-size:11px;word-break:break-all">${n.have ? '' : esc(n.url)}</span>
+    ${n.have ? '<span class="st ok">✓ есть</span>' : n.optional ? '<span class="st opt">нет</span>' : '<span class="st miss">нет</span>'}
+    ${n.have ? '' : `<button class="btn mini" type="button" data-copyurl="${esc(n.url)}">Скопировать ссылку</button>`}</div>`).join('')
+    || '<span class="hint">Для выбранных разделов особые ноды не нужны.</span>';
+  $('#mdNodesNote').hidden = list.every(n => n.have);
+}
+$('#mdNodesRe').onclick = loadNodes;
+$('#mdNodes').addEventListener('click', e => {
+  const b = e.target.closest('[data-copyurl]'); if (!b) return;
+  navigator.clipboard?.writeText(b.dataset.copyurl).then(() => toast('Ссылка скопирована'), () => toast(b.dataset.copyurl));
+});
 function setNavLocked(lock) {
   $$('.nav[data-view]').forEach(n => { if (n.dataset.view !== 'models') n.disabled = lock; });
 }
@@ -2099,7 +2125,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
   if (!API) return;
   const s = await (await fetch('/api/status')).json();
   if (!s.configured) openSetup();
-  else { showSetupPane('status'); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false); }
+  else { showSetupPane('status'); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false); loadNodes(); }
 });
 
 /* ---------- LIBRARY ---------- */

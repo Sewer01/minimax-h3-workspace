@@ -390,6 +390,32 @@ class App:
             "models": models,
         })
 
+    async def nodes_status(self):
+        """Which custom nodes the chosen sections need, and whether this ComfyUI knows them."""
+        modes = set(self.modes())
+        out = []
+        for c in catalog.NODE_CHECKS:
+            used = [m for m in c["modes"] if m in modes]
+            if not used:
+                continue
+            have = True
+            for cls in c["classes"]:
+                try:
+                    status, data = await self.comfy_json("GET", f"/object_info/{cls}", timeout=aiohttp.ClientTimeout(total=8))
+                    have = have and status == 200 and isinstance(data, dict) and cls in data
+                except Exception:
+                    have = False
+            repo = catalog.node_repo(c["pack"])
+            out.append({"pack": c["pack"], "have": have, "optional": c["optional"], "why": c["why"], "modes": used,
+                        "url": f"https://github.com/{repo}"})
+        return out
+
+    async def h_nodes(self, _req):
+        try:
+            return web.json_response({"nodes": await self.nodes_status()})
+        except aiohttp.ClientError:
+            return web.json_response({"error": "ComfyUI не отвечает"}, status=503)
+
     async def h_models_files(self, req):
         """Files ComfyUI sees in the folder this model role lives in, for picking one by hand."""
         role = req.query.get("role", "")
@@ -472,8 +498,12 @@ class App:
         modes = [m for m in (body.get("modes") or []) if m in catalog.MODE_ROLES] or list(catalog.MODE_ROLES)
         self.config.update(engine="external", comfy_url=url, setup_done=True, choice=catalog.DEFAULT_CHOICE, modes=modes)
         names, missing = await self.resolve_models()
+        try:
+            nodes = [n["pack"] for n in await self.nodes_status() if not n["have"] and not n["optional"]]
+        except Exception:
+            nodes = []
         return web.json_response({"ok": True, "version": stats["system"].get("comfyui_version"),
-                                  "missing": [m["file"] for m in missing]})
+                                  "missing": [m["file"] for m in missing], "nodes_missing": nodes})
 
     async def h_setup_install(self, req):
         if self.installer:
@@ -1308,6 +1338,7 @@ def build_app(comfy_override=None):
         web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/lipsync", state.h_generate_lipsync),
+        web.get("/api/nodes", state.h_nodes),
         web.get("/api/models/files", state.h_models_files),
         web.post("/api/models/pick", state.h_models_pick),
         web.post("/api/generate/refs", state.h_generate_refs),

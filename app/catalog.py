@@ -24,6 +24,24 @@ NODE_PACKS = [
      "commit": "4d907bee61e92c2e65af3bd6383a4e4d356126d1"},
 ]
 
+# What each mode needs from custom nodes: checked in a user's own ComfyUI (a new install gets them by itself).
+# `classes` are node names ComfyUI must know; `optional` ones only switch a feature on.
+NODE_CHECKS = [
+    {"pack": "ComfyUI-H3-NativeAudioLock", "classes": ["MiniMaxH3NativeAudioLock"], "modes": ["lipsync"],
+     "optional": False, "why": "точный липсинг под ваше аудио"},
+    {"pack": "Comfyui_Minimax_h3_latent_Upscaler", "classes": ["MinimaxH3LatentUpscaler3D"], "modes": ["lipsync", "action"],
+     "optional": False, "why": "второй проход (увеличение кадра)"},
+    {"pack": "ComfyUI-MelBandRoFormer", "classes": ["MelBandRoFormerSampler", "MelBandRoFormerModelLoader"],
+     "modes": ["lipsync"], "optional": True, "why": "кнопка «Отделить голос» в редакторе аудио"},
+    {"pack": "ComfyUI-VideoHelperSuite", "classes": ["VHS_LoadVideo"], "modes": ["refs"],
+     "optional": True, "why": "референс-видео"},
+]
+
+
+def node_repo(pack):
+    return next(p["repo"] for p in NODE_PACKS if p["name"] == pack)
+
+
 HF = "https://huggingface.co/{repo}/resolve/main/{path}"
 SUB = "MinimaxH3"  # subfolder inside each model category, same as the original workflows
 

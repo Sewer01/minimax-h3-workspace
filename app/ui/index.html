@@ -954,6 +954,8 @@ details[open] summary::before{content:'－ '}
       <div class="lib-bar">
         <div class="chips" id="libFilter">
           <button class="chip on" data-f="all">Все</button>
+          <button class="chip" data-f="videos">Видео</button>
+          <button class="chip" data-f="images">Изображения</button>
           <button class="chip" data-f="video">Image-to-Video</button>
           <button class="chip" data-f="lipsync">Lipsync</button>
           <button class="chip" data-f="refs">Референсы</button>
@@ -2410,7 +2412,7 @@ function addToLib(item, date = new Date()) {
 }
 function renderLib() {
   $('#libBadge').textContent = LIB.length;
-  const items = LIB.filter(it => libFilter === 'all' || (libFilter === 'fav' ? it.fav : it.mode === libFilter));
+  const items = LIB.filter(it => libFilter === 'all' || (libFilter === 'fav' ? it.fav : libFilter === 'images' ? it.kind === 'image' : libFilter === 'videos' ? it.kind !== 'image' : it.mode === libFilter));
   const lib = $('#lib');
   lib.classList.toggle('selecting', selecting);
   lib.innerHTML = items.length ? items.map(it => `

@@ -71,10 +71,25 @@
 .q-bar i{display:block;height:100%;background:var(--grad);transition:width .4s}
 .q-row.ok .q-s{color:var(--ok)}.q-row.err .q-s{color:var(--pink)}
 .q-empty{color:var(--muted);padding:30px 6px}
-.cw-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,520px);gap:16px;align-items:start}
+.cw-cols{display:grid;grid-template-columns:minmax(0,1fr) 10px var(--cw-rw,520px);gap:6px;align-items:start}
+.cw-rs{align-self:stretch;cursor:col-resize;position:relative;touch-action:none}
+.cw-rs::before{content:'';position:absolute;left:4px;top:0;bottom:0;width:2px;border-radius:2px;background:var(--line-2);transition:.15s}
+.cw-rs:hover::before,.cw-rs.drag::before{background:var(--accent);width:3px;left:3.5px}
+.cw-zb{position:absolute;right:10px;top:10px;width:36px;height:36px;border-radius:10px;background:rgba(var(--ov-rgb),.78);display:grid;place-items:center;color:var(--text);z-index:2;backdrop-filter:blur(6px)}
+.cw-zb:hover{background:var(--accent);color:#fff}
+.cw-frame img#cwImage{cursor:zoom-in}
+.cw-th{position:relative}
+.cw-pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:14px}
+.cw-lib{margin-top:4px}
+.cw-lb{position:absolute;left:0;right:0;bottom:0;font-size:10px;font-weight:700;background:rgba(var(--ov-rgb),.82);padding:2px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zoomv{position:fixed;inset:0;z-index:80;background:rgba(var(--ov-rgb),.96);display:flex;flex-direction:column}
+.zv-bar{display:flex;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.zv-stage{flex:1;overflow:auto;display:flex;cursor:grab}
+.zv-stage img{margin:auto;display:block;max-width:none;user-select:none}
+.zv-stage.drag{cursor:grabbing}
 .cw-left{display:grid;gap:16px;min-width:0}
 .cw-right{position:sticky;top:12px;display:grid;gap:12px}
-@media (max-width:1150px){.cw-cols{grid-template-columns:1fr}.cw-right{position:static}}
+@media (max-width:1150px){.cw-cols{grid-template-columns:1fr}.cw-right{position:static}.cw-rs{display:none}}
 .cw-res{display:grid;gap:12px}
 .cw-frame{position:relative;border-radius:14px;overflow:hidden;background:var(--screen);min-height:260px;display:grid;place-items:center;border:1px solid var(--line)}
 .cw-frame img,.cw-frame video{width:100%;height:100%;object-fit:contain;display:block}
@@ -83,7 +98,7 @@
 .cw-time{font-size:13.5px}
 .cw-acts{display:flex;gap:8px;flex-wrap:wrap}
 .cw-hh{font-weight:800;font-size:12.5px;margin-top:4px}
-.cw-hist{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.cw-hist{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
 .cw-th{aspect-ratio:1;border-radius:10px;overflow:hidden;border:2px solid var(--line);background:var(--screen);padding:0;display:grid;place-items:center}
 .cw-th.on{border-color:var(--accent)}.cw-th img,.cw-th video{width:100%;height:100%;object-fit:cover}
 .cw-ok{color:var(--ok);font-weight:700;padding:2px 4px}
@@ -1129,6 +1144,10 @@ details[open] summary::before{content:'－ '}
   </div>
 </div>
 
+<div class="zoomv" id="zoomv" hidden>
+  <div class="zv-bar"><button class="btn" id="zvFit" type="button">По размеру</button><button class="btn" id="zv100" type="button">100%</button><button class="btn" id="zvOut" type="button">−</button><button class="btn" id="zvIn" type="button">+</button><span id="zvPct"></span><span style="flex:1"></span><button class="btn" id="zvClose" type="button">✕ Закрыть</button></div>
+  <div class="zv-stage" id="zvStage"><img id="zvImg" alt="" draggable="false"></div>
+</div>
 <div class="modal" id="confirm" hidden>
   <div class="box confirm">
     <h3 id="cfTitle">Удалить видео?</h3>
@@ -3308,7 +3327,7 @@ function cwRender() {
   if (prompts.length) main += `<div class="cw-prompts">${prompts.map(w => `<div class="cw-pp ${w.role === 'negative' ? 'neg' : 'pos'}"><div class="cw-pb">${w.role === 'negative' ? '✕ Негативный промпт' : '✓ Основной промпт'} <small>${esc(w.title)}</small></div>${cwField(w)}</div>`).join('')}</div>`;
   if (media.length) main += `<div class="cw-media">${media.map(w => `<label class="cw-file"><input type="file" data-f="${esc(w.key)}" accept="${w.mkind}/*" hidden>
       <div class="cw-fp"><i>${{ image: '🖼', audio: '🎵', video: '🎬' }[w.mkind]}</i></div>
-      <b>${{ image: 'Картинка', audio: 'Аудио', video: 'Видео' }[w.mkind]}</b><small class="cw-fn">${esc(w.title)} · ${w.has_default ? 'можно не менять' : 'нужно выбрать'}</small></label>`).join('')}</div>`;
+      <b>${{ image: 'Картинка', audio: 'Аудио', video: 'Видео' }[w.mkind]}</b><small class="cw-fn">${esc(w.title)} · ${w.has_default ? 'можно не менять' : 'нужно выбрать'}</small>${w.mkind === 'audio' ? '' : `<button class="btn mini cw-lib" data-lib="${esc(w.key)}" type="button">Из Библиотеки</button>`}</label>`).join('')}</div>`;
   let tl = '';
   tl += aspects.map(w => `<div class="cw-t cw-asp"><span>Формат · ${esc(w.title)}</span>${cwField(w)}</div>`).join('');
   const bySizeNode = cwGroupBy(sizes);
@@ -3325,7 +3344,7 @@ function cwRender() {
   if (other.length) html += det('Дополнительные настройки', `${other.length} · обычно менять не нужно`, cwGroupBy(other).map(ws => cwBox(ws[0].title, ws)).join(''));
 
   const result = `<div class="card cw-res"><div class="card-h"><h3>Результат</h3></div>
-    <div class="cw-frame" id="cwFrame"><div class="cw-wait" id="cwWait">Здесь появится результат</div>
+    <div class="cw-frame" id="cwFrame"><button class="cw-zb" id="cwZoomBtn" type="button" title="Увеличить" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6M8 11h6"/></svg></button><div class="cw-wait" id="cwWait">Здесь появится результат</div>
       <img id="cwLive" alt="" hidden><video id="cwVideo" controls loop playsinline hidden></video><img id="cwImage" alt="" hidden>
       <div class="cw-bar"><i id="cwBar"></i></div></div>
     <div class="cw-acts" id="cwActs" hidden><button class="btn" data-a="save" type="button">Сохранить</button><button class="btn" data-a="lib" type="button">В Библиотеке</button><button class="btn" data-a="restore" type="button" title="Вернуть в форму настройки этой генерации">Вернуть настройки</button></div>
@@ -3333,7 +3352,7 @@ function cwRender() {
     <button class="go" id="cwGo"${r.missing_nodes.length ? ' disabled' : ''}>Сгенерировать</button>
     <button class="stop" id="cwStop" hidden><i></i>Остановить</button>
     <div class="cw-hh" id="cwHH" hidden>История</div><div class="cw-hist" id="cwHist"></div></div>`;
-  $('#cwBody').innerHTML = `<div class="cw-cols"><div class="cw-left">${html}</div><div class="cw-right">${result}</div></div>`;
+  $('#cwBody').innerHTML = `<div class="cw-cols"><div class="cw-left">${html}</div><div class="cw-rs" id="cwRs" title="Потяните, чтобы изменить ширину окна. Двойной клик: вернуть"></div><div class="cw-right">${result}</div></div>`;
   cwTick();
   if (!CW.run) cwShowLast();
   cwHist();
@@ -3346,11 +3365,74 @@ $('#cwBody').addEventListener('input', e => {
 });
 $('#cwBody').addEventListener('change', e => {
   const k = e.target.dataset?.f; if (!k) return;
-  const f = CW.files[k] = e.target.files[0] || null, tile = e.target.closest('.cw-file');
-  $('.cw-fn', tile).textContent = f ? f.name : 'Выберите файл';
-  const box = $('.cw-fp', tile); box.innerHTML = f && f.type.startsWith('image/') ? `<img src="${URL.createObjectURL(f)}" alt="">` : '<i>✓</i>';
-  tile.classList.toggle('on', !!f);
+  cwSetFile(k, e.target.files[0] || null);
 });
+/* ---------- picture viewer with zoom (magnifier) ---------- */
+const ZV = { s: 1, fit: 1 };
+function zvApply(s, cx, cy) {
+  const st = $('#zvStage'), im = $('#zvImg'); if (!im.naturalWidth) return;
+  s = Math.min(10, Math.max(ZV.fit * .4, s));
+  const rx = (st.scrollLeft + cx) / (im.clientWidth || 1), ry = (st.scrollTop + cy) / (im.clientHeight || 1);
+  ZV.s = s; im.style.width = im.naturalWidth * s + 'px'; im.style.height = im.naturalHeight * s + 'px';
+  st.scrollLeft = rx * im.clientWidth - cx; st.scrollTop = ry * im.clientHeight - cy;
+  $('#zvPct').textContent = Math.round(s * 100) + '%';
+}
+function zoomFit() { const st = $('#zvStage'), im = $('#zvImg'); ZV.fit = Math.min(st.clientWidth / im.naturalWidth, st.clientHeight / im.naturalHeight); zvApply(ZV.fit, 0, 0); st.scrollLeft = st.scrollTop = 0; }
+function zoomOpen(url) {
+  const im = $('#zvImg'); $('#zoomv').hidden = false; im.style.width = im.style.height = '';
+  im.onload = zoomFit; im.src = url; if (im.complete && im.naturalWidth) zoomFit();
+}
+function zoomClose() { $('#zoomv').hidden = true; $('#zvImg').removeAttribute('src'); }
+(() => {
+  const st = $('#zvStage'), mid = () => [st.clientWidth / 2, st.clientHeight / 2];
+  $('#zvClose').onclick = zoomClose; $('#zvFit').onclick = zoomFit;
+  $('#zv100').onclick = () => zvApply(1, ...mid()); $('#zvIn').onclick = () => zvApply(ZV.s * 1.25, ...mid()); $('#zvOut').onclick = () => zvApply(ZV.s / 1.25, ...mid());
+  st.addEventListener('wheel', e => { e.preventDefault(); const r = st.getBoundingClientRect(); zvApply(ZV.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+  st.addEventListener('dblclick', e => { const r = st.getBoundingClientRect(); Math.abs(ZV.s - 1) < .01 ? zoomFit() : zvApply(1, e.clientX - r.left, e.clientY - r.top); });
+  let drag = null;
+  st.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, l: st.scrollLeft, t: st.scrollTop }; st.classList.add('drag'); st.setPointerCapture(e.pointerId); });
+  st.addEventListener('pointermove', e => { if (drag) { st.scrollLeft = drag.l - (e.clientX - drag.x); st.scrollTop = drag.t - (e.clientY - drag.y); } });
+  st.addEventListener('pointerup', () => { drag = null; st.classList.remove('drag'); });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#zoomv').hidden) zoomClose(); });
+})();
+
+/* ---------- own workflows: files, library picker, width of the result window ---------- */
+function cwSetFile(key, f) {
+  CW.files[key] = f;
+  const inp = $(`[data-f="${key}"]`, $('#cwBody')), tile = inp && inp.closest('.cw-file'); if (!tile) return;
+  $('.cw-fn', tile).textContent = f ? f.name : 'Выберите файл';
+  $('.cw-fp', tile).innerHTML = f && f.type.startsWith('image/') ? `<img src="${URL.createObjectURL(f)}" alt="">` : '<i>✓</i>';
+  tile.classList.toggle('on', !!f);
+}
+function cwPick(key) {
+  const w = CW.rep.widgets.find(x => x.key === key); if (!w) return;
+  const items = LIB.filter(it => !it.missing && it.url && (w.mkind === 'image' ? it.kind === 'image' : it.kind !== 'image')).sort((a, b) => b.date - a.date);
+  let m = $('#cwPick');
+  if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'cwPick'; document.body.append(m); }
+  m.hidden = false;
+  m.innerHTML = `<div class="box" style="padding:20px"><div class="card-h"><h3>Из Библиотеки · ${w.mkind === 'image' ? 'картинки' : 'видео'}</h3><button class="btn" data-x type="button">Закрыть</button></div>`
+    + (items.length ? `<div class="cw-pickgrid">${items.map(it => `<button class="cw-th" data-id="${it.id}" type="button" title="${esc((it.label ? it.label + ' · ' : '') + (it.prompt || '').slice(0, 80))}">${w.mkind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video>`}${it.label ? `<span class="cw-lb">${esc(it.label)}</span>` : ''}</button>`).join('')}</div>`
+      : '<div class="hint" style="padding:20px 4px">В Библиотеке пока нет подходящих файлов.</div>') + '</div>';
+  m.onclick = async e => {
+    if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; }
+    const th = e.target.closest('.cw-th'); if (!th) return;
+    const it = LIB.find(x => x.id === th.dataset.id); if (!it) return;
+    try {
+      const blob = await (await fetch(it.url)).blob();
+      cwSetFile(key, new File([blob], `${it.id}.${it.ext || (w.mkind === 'image' ? 'png' : 'mp4')}`, { type: blob.type }));
+      m.hidden = true; toast('Файл взят из Библиотеки');
+    } catch { toast('Не удалось взять файл'); }
+  };
+}
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest('#cwRs'); if (!h) return;
+  const cols = h.parentElement, box = $('#cwBody'); h.classList.add('drag'); h.setPointerCapture(e.pointerId);
+  const move = ev => { const r = cols.getBoundingClientRect(); const w = Math.round(Math.min(r.width * .7, Math.max(300, r.right - ev.clientX - 5))); box.style.setProperty('--cw-rw', w + 'px'); try { localStorage.setItem('h3-cw-rw', w); } catch {} };
+  const up = () => { h.classList.remove('drag'); h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); };
+  h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
+});
+document.addEventListener('dblclick', e => { if (e.target.closest('#cwRs')) { $('#cwBody').style.removeProperty('--cw-rw'); try { localStorage.removeItem('h3-cw-rw'); } catch {} } });
+try { const rw = +localStorage.getItem('h3-cw-rw'); if (rw >= 300) $('#cwBody').style.setProperty('--cw-rw', rw + 'px'); } catch {}
 const cwMine = () => LIB.filter(x => x.mode === 'custom' && (x.wf ? x.wf === CW.id : x.sub === CW.rep.name)).sort((a, b) => b.date - a.date);
 function cwFit(w, h) {  // the window takes the shape of the picture, never taller than 68% of the screen
   const f = $('#cwFrame'); if (!f || !w || !h) return;
@@ -3364,7 +3446,8 @@ function cwShow(it) {
   if (pic) { v.removeAttribute('src'); im.onload = () => cwFit(im.naturalWidth, im.naturalHeight); im.src = it.url; }
   else { v.onloadedmetadata = () => cwFit(v.videoWidth, v.videoHeight); v.src = it.url; v.muted = true; v.play().catch(() => {}); }
   $('#cwActs').hidden = false; $('#cwActs [data-a="restore"]').hidden = !it.cw_values;
-  if (!CW.run) { $('#cwBar').style.width = '0'; $('#cwTime').innerHTML = `<b>${pic ? 'Картинка' : 'Видео'}</b> · ${fmtDate(it.date)}`; $('#cwStatus').textContent = [it.res, it.sub].filter(Boolean).join(' · '); }
+  if (!CW.run) { $('#cwBar').style.width = '0'; $('#cwTime').innerHTML = `<b>${pic ? 'Картинка' : 'Видео'}${it.label ? ' · ' + esc(it.label) : ''}</b> · ${fmtDate(it.date)}`; $('#cwStatus').textContent = [it.res, it.sub].filter(Boolean).join(' · '); }
+  $('#cwZoomBtn').hidden = !pic;
   $$('#cwHist .cw-th').forEach(t => t.classList.toggle('on', t.dataset.id === it.id));
 }
 function cwShowLast() { const mine = cwMine(); const it = mine.find(x => x.id === CW.shown) || mine[0]; if (it && !it.missing) cwShow(it); }
@@ -3372,8 +3455,8 @@ function cwHist() {
   const box = $('#cwHist'); if (!box) return;
   const mine = cwMine().slice(0, 16);
   $('#cwHH').hidden = !mine.length;
-  box.innerHTML = mine.map(it => `<button class="cw-th${it.id === CW.shown ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc(fmtDate(it.date))}">${it.missing ? '<i>—</i>'
-    : it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video>`}</button>`).join('');
+  box.innerHTML = mine.map(it => `<button class="cw-th${it.id === CW.shown ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc((it.label ? it.label + ' · ' : '') + fmtDate(it.date))}">${it.missing ? '<i>—</i>'
+    : it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video>`}${it.label ? `<span class="cw-lb">${esc(it.label)}</span>` : ''}</button>`).join('');
 }
 function cwTick() {
   const r = CW.run, bar = $('#cwBar'); if (!r || !bar) return;
@@ -3406,6 +3489,8 @@ function cwFinish(kind, ev) {
   }
 }
 $('#cwBody').addEventListener('click', async e => {
+  const lb = e.target.closest('[data-lib]'); if (lb) { e.preventDefault(); cwPick(lb.dataset.lib); return; }
+  if (e.target.closest('#cwZoomBtn') || e.target.closest('#cwImage')) { zoomOpen($('#cwImage').src); return; }
   const th = e.target.closest('.cw-th'); if (th) { const it = LIB.find(x => x.id === th.dataset.id); if (it) cwShow(it); return; }
   const act = e.target.closest('#cwActs [data-a]');
   if (act) {

@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import random
+import re
 import struct
 import subprocess
 import sys
@@ -307,8 +308,10 @@ class App:
         self.jobs.pop(pid, None)
         _, hist = await self.comfy_json("GET", f"/history/{pid}")
         outputs = (hist or {}).get(pid, {}).get("outputs", {})
-        files = [f for out in outputs.values() for lst in out.values() if isinstance(lst, list)
-                 for f in lst if isinstance(f, dict) and "filename" in f]
+        tagged = [(nid, f) for nid, out in outputs.items() for lst in out.values() if isinstance(lst, list)
+                  for f in lst if isinstance(f, dict) and "filename" in f]
+        files = [f for _, f in tagged]
+        node_of = {id(f): nid for nid, f in tagged}
         videos = [f for f in files if f["filename"].lower().endswith((".mp4", ".webm", ".mkv", ".mov"))]
         images = [f for f in files if f["filename"].lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
                   and f.get("type", "output") == "output"]
@@ -326,6 +329,10 @@ class App:
                         ext=Path(f["filename"]).suffix.lstrip(".").lower() or "mp4")
             if not videos:
                 item["kind"] = "image"
+                title = (job.get("titles") or {}).get(node_of.get(id(f)), "")  # "Результат: апскейл (после…)" -> "апскейл"
+                label = re.split(r"\s*[(\[]", title.split(":")[-1].strip())[0].strip()[:24]
+                if label:
+                    item["label"] = label
             meta = f.get("metadata") or {}
             if meta.get("width") and meta.get("height"):
                 item["res"] = f'{meta["width"]}×{meta["height"]}'
@@ -722,7 +729,7 @@ class App:
         seed = int(form["seed"]) if form.get("seed", "").isdigit() else random.randrange(2 ** 50)
         return form, files, prompt, aspect, quality, seed
 
-    async def queue(self, graph, stages, meta, last_output=False):
+    async def queue(self, graph, stages, meta, last_output=False, titles=None):
         rh = self.rh()
         if rh:
             return await self.queue_cloud(rh, graph, stages, meta)
@@ -733,7 +740,7 @@ class App:
         if status != 200:
             return web.json_response({"error": comfy_error_text(res)}, status=400)
         pid = res["prompt_id"]
-        self.jobs[pid] = {"prompt_id": pid, "state": "queued", "stages": stages, "stage": None, "meta": meta, "last_output": last_output}
+        self.jobs[pid] = {"prompt_id": pid, "state": "queued", "stages": stages, "stage": None, "meta": meta, "last_output": last_output, "titles": titles or {}}
         return web.json_response({"prompt_id": pid, "seed": meta["seed"], "queue_number": res.get("number")})
 
     async def need_models(self, mode):
@@ -829,7 +836,8 @@ class App:
         return await self.queue(graph, customwf.stage_map(graph), {
             "mode": "custom", "sub": wf_file["name"], "wf": form.get("wf"), "cw_values": values,
             "prompt": prompt, "aspect": "", "q": "", "len": 0.0, "res": "",
-            "seed": seed if isinstance(seed, (int, float)) else None}, last_output=True)
+            "seed": seed if isinstance(seed, (int, float)) else None}, last_output=True,
+            titles={nid: (n.get("_meta") or {}).get("title", "") for nid, n in graph.items() if n["class_type"].startswith("Save")})
 
     async def h_generate_video(self, req):
         await self.need_models("video")

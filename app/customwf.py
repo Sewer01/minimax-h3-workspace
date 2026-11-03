@@ -66,27 +66,47 @@ def basename(name):
     return str(name).replace("\\", "/").split("/")[-1]
 
 
+RATIO = re.compile(r"\d{1,2}(\.\d+)?\s*[:/]\s*\d{1,2}(\.\d+)?|\d{3,4}\s*[x×]\s*\d{3,4}", re.I)
+SYSTEM_TEXT = re.compile(r"system|rewrit|системн|переписыв|инструкц", re.I)
+SIZE_WORDS = re.compile(r"megapix|^mp$|resolution|scale_by|upscale_by|^scale$|longest|shortest|target_size|max_size|side_length", re.I)
+
+
 def role_of(cls, name, title, sp, negative):
-    """What this field is for: prompt / negative / media / seed / size / length / steps / cfg / other."""
+    """What this field is for: prompt / negative / media / aspect / size / length / steps / cfg / seed / toggle / param / other."""
     if (cls, name) in MEDIA:
         return "media"
     label = name
     if cls.startswith("Primitive") and name == "value":  # primitives are named by their title
         label = re.sub(r"[^a-z]+", "_", title.lower()).strip("_") if re.search(r"[a-z]", title.lower()) else title.lower()
     low, t = label.lower(), title.lower()
-    if sp["kind"] == "string" and (name in PROMPT_NAMES or cls.startswith("CLIPTextEncode") or "prompt" in t or "промпт" in t):
-        return "negative" if negative or "negative" in low or "negative" in t or "негатив" in t else "prompt"
-    if sp["kind"] in ("int", "float"):
+    kind = sp["kind"]
+    if kind == "string":
+        texty = name in PROMPT_NAMES or "prompt" in low or cls.startswith("CLIPTextEncode") or "prompt" in t or "промпт" in t
+        if texty and not SYSTEM_TEXT.search(name + " " + title):
+            return "negative" if negative or "negative" in low or "negative" in t or "негатив" in t else "prompt"
+        if cls.startswith("Primitive") and not SYSTEM_TEXT.search(title) and len(str(sp.get("value", ""))) < 80:
+            return "param"
+        return "other"
+    if kind == "combo":
+        opts = [str(o) for o in sp.get("options") or []]
+        if sum(1 for o in opts if RATIO.search(o)) >= 2 or re.search(r"aspect|ratio|orientation", low):
+            return "aspect"
+        return "other"
+    if kind == "bool":
+        return "toggle" if cls.startswith("Primitive") else "other"
+    if kind in ("int", "float"):
         if "seed" in low:
             return "seed"
-        if low in SIZE_NAMES or low in ("w", "h"):
+        if low in SIZE_NAMES or low in ("w", "h") or SIZE_WORDS.search(low):
             return "size"
-        if low in LENGTH_NAMES or "length" in low or "frames" in low or "duration" in low or "секунд" in t or "длин" in t:
+        if low in LENGTH_NAMES or re.fullmatch(r"(video_)?(length|frames|duration|seconds)", low) or "секунд" in t or "длин" in t:
             return "length"
         if low in ("steps", "step_count"):
             return "steps"
         if low in ("cfg", "guidance", "cfg_scale"):
             return "cfg"
+        if cls.startswith("Primitive"):
+            return "param"
     return "other"
 
 

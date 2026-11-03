@@ -71,7 +71,27 @@
 .q-bar i{display:block;height:100%;background:var(--grad);transition:width .4s}
 .q-row.ok .q-s{color:var(--ok)}.q-row.err .q-s{color:var(--pink)}
 .q-empty{color:var(--muted);padding:30px 6px}
+.cw-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,520px);gap:16px;align-items:start}
+.cw-left{display:grid;gap:16px;min-width:0}
+.cw-right{position:sticky;top:12px;display:grid;gap:12px}
+@media (max-width:1150px){.cw-cols{grid-template-columns:1fr}.cw-right{position:static}}
+.cw-res{display:grid;gap:12px}
+.cw-frame{position:relative;border-radius:14px;overflow:hidden;background:var(--screen);min-height:260px;display:grid;place-items:center;border:1px solid var(--line)}
+.cw-frame img,.cw-frame video{width:100%;max-height:60vh;object-fit:contain;display:block}
+.cw-wait{color:var(--muted);padding:20px;text-align:center}
+.cw-bar{position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(var(--ov-rgb),.5)}.cw-bar i{display:block;height:100%;width:0;background:var(--grad);transition:width .4s}
+.cw-time{font-size:13.5px}
 .cw-ok{color:var(--ok);font-weight:700;padding:2px 4px}
+.cw-prompts{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+.cw-pp{border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:14px;padding:12px 14px;background:var(--bg-2)}
+.cw-pp.neg{border-left-color:var(--pink)}
+.cw-pb{font-weight:800;font-size:12.5px;margin-bottom:8px;color:var(--ok)}.cw-pp.neg .cw-pb{color:var(--pink)}
+.cw-pb small{color:var(--dim);font-weight:500;margin-left:6px}
+.cw-pp textarea{min-height:120px;background:var(--surface)}
+.cw-asp{grid-column:span 2}
+.cw-toggles{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}
+.cw-sw{display:flex;gap:12px;align-items:center;padding:12px 14px;background:var(--bg-2);border:1px solid var(--line);border-radius:14px;cursor:pointer}
+.cw-sw b{font-weight:600;font-size:13px}
 .cw-bt{font-weight:800;font-size:12.5px;letter-spacing:.02em;margin-bottom:7px}
 .cw-wide textarea{min-height:110px}
 .cw-media{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
@@ -888,7 +908,7 @@ details[open] summary::before{content:'－ '}
       </div>
       <div class="note" id="cwHowto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg>
         <span>В ComfyUI откройте свой workflow и выберите <b>Workflow → Export (API)</b>. Полученный файл .json загрузите сюда. Обычный сохранённый workflow не подойдёт.</span></div>
-      <div id="cwBody" style="display:grid;gap:16px;margin-top:16px"></div>
+      <div id="cwBody" style="margin-top:16px"></div>
     </section>
 
     <!-- ============ QUEUE ============ -->
@@ -3222,7 +3242,7 @@ memRestore();
 
 $('#optCloudShow').onclick = () => { $('.opt[data-opt="cloud"]').hidden = false; $('#optCloudShow').hidden = true; };
 /* ---------- свои workflow ---------- */
-const CW = { id: null, rep: null, vals: {}, files: {}, cur: null };
+const CW = { id: null, rep: null, vals: {}, files: {}, run: null };
 async function cwList(select) {
   let items = [];
   try { items = await (await fetch('/api/wf/list')).json(); } catch {}
@@ -3264,6 +3284,7 @@ function cwRender() {
   const r = CW.rep, W = r.widgets;
   const missing = W.filter(w => w.missing), prompts = W.filter(w => w.role === 'prompt' || w.role === 'negative'), media = W.filter(w => w.role === 'media');
   const seeds = W.filter(w => w.role === 'seed'), sizes = W.filter(w => w.role === 'size');
+  const aspects = W.filter(w => w.role === 'aspect'), toggles = W.filter(w => w.role === 'toggle'), params = W.filter(w => w.role === 'param');
   const tiles = W.filter(w => ['length', 'steps', 'cfg'].includes(w.role));
   const models = W.filter(w => CW_MODEL(w) && !w.missing);
   const other = W.filter(w => w.role === 'other' && !w.missing && !CW_MODEL(w));
@@ -3277,25 +3298,34 @@ function cwRender() {
   else html += `<div class="cw-ok">✓ «${esc(r.name)}»: все ноды и файлы на месте</div>`;
 
   let main = '';
-  main += prompts.map(w => `<div class="cw-wide"><div class="cw-bt">${w.role === 'negative' ? 'Негативный промпт' : 'Промпт'} <small style="color:var(--dim);font-weight:500">${esc(w.title)}</small></div>${cwField(w)}</div>`).join('');
+  if (prompts.length) main += `<div class="cw-prompts">${prompts.map(w => `<div class="cw-pp ${w.role === 'negative' ? 'neg' : 'pos'}"><div class="cw-pb">${w.role === 'negative' ? '✕ Негативный промпт' : '✓ Основной промпт'} <small>${esc(w.title)}</small></div>${cwField(w)}</div>`).join('')}</div>`;
   if (media.length) main += `<div class="cw-media">${media.map(w => `<label class="cw-file"><input type="file" data-f="${esc(w.key)}" accept="${w.mkind}/*" hidden>
       <div class="cw-fp"><i>${{ image: '🖼', audio: '🎵', video: '🎬' }[w.mkind]}</i></div>
       <b>${{ image: 'Картинка', audio: 'Аудио', video: 'Видео' }[w.mkind]}</b><small class="cw-fn">${esc(w.title)} · ${w.has_default ? 'можно не менять' : 'нужно выбрать'}</small></label>`).join('')}</div>`;
   let tl = '';
+  tl += aspects.map(w => `<div class="cw-t cw-asp"><span>Формат · ${esc(w.title)}</span>${cwField(w)}</div>`).join('');
   const bySizeNode = cwGroupBy(sizes);
   bySizeNode.forEach(ws => { tl += `<div class="cw-t"><span>Размер · ${esc(ws[0].title)}</span><div class="cw-pair">${ws.map(w => `<label>${esc(w.name)}${cwField(w)}</label>`).join('<b>×</b>')}</div></div>`; });
   tl += tiles.map(w => `<div class="cw-t"><span>${{ length: 'Длина', steps: 'Шаги', cfg: 'CFG' }[w.role]} · ${esc(w.title)}</span>${cwField(w)}</div>`).join('');
   tl += seeds.map(w => `<div class="cw-t"><span>Seed · ${esc(w.title)}</span>${cwField(w)}<label class="cw-chk"><input type="checkbox" data-rnd="${esc(w.key)}" checked> каждый раз новый</label></div>`).join('');
+  tl += params.map(w => `<div class="cw-t"><span>${esc(w.title)}</span>${cwField(w)}</div>`).join('');
   if (tl) main += `<div class="cw-tiles">${tl}</div>`;
+  if (toggles.length) main += `<div class="cw-toggles">${toggles.map(w => `<label class="cw-sw"><input type="checkbox" data-k="${esc(w.key)}"${CW.vals[w.key] ? ' checked' : ''}><b>${esc(w.title)}</b></label>`).join('')}</div>`;
   html += `<div class="card"><div class="card-h"><h3>Основное</h3></div><div style="display:grid;gap:14px">${main || '<div class="hint">Основных полей не нашлось. Всё остальное внизу.</div>'}</div></div>`;
 
   const det = (title, n, body) => `<details class="card cw-det"><summary>${title} <small>${n}</small></summary><div class="cw-boxes">${body}</div></details>`;
   if (models.length) html += det('Модели и файлы', `${models.length} · обычно менять не нужно`, cwGroupBy(models).map(ws => cwBox(ws[0].title, ws)).join(''));
   if (other.length) html += det('Дополнительные настройки', `${other.length} · обычно менять не нужно`, cwGroupBy(other).map(ws => cwBox(ws[0].title, ws)).join(''));
 
-  html += `<div class="card"><button class="go" id="cwGo"${r.missing_nodes.length ? ' disabled' : ''}>Сгенерировать</button><div class="status" id="cwStatus" style="margin-top:10px"></div>`
-    + `<video id="cwVideo" controls loop playsinline hidden style="width:100%;margin-top:12px;border-radius:12px;background:#000"></video><img id="cwImage" alt="" hidden style="max-width:100%;margin-top:12px;border-radius:12px"></div>`;
-  $('#cwBody').innerHTML = html;
+  const result = `<div class="card cw-res"><div class="card-h"><h3>Результат</h3></div>
+    <div class="cw-frame" id="cwFrame"><div class="cw-wait" id="cwWait">Здесь появится результат</div>
+      <img id="cwLive" alt="" hidden><video id="cwVideo" controls loop playsinline hidden></video><img id="cwImage" alt="" hidden>
+      <div class="cw-bar"><i id="cwBar"></i></div></div>
+    <div class="cw-time" id="cwTime"></div><div class="status" id="cwStatus"></div>
+    <button class="go" id="cwGo"${r.missing_nodes.length ? ' disabled' : ''}>Сгенерировать</button>
+    <button class="stop" id="cwStop" hidden><i></i>Остановить</button></div>`;
+  $('#cwBody').innerHTML = `<div class="cw-cols"><div class="cw-left">${html}</div><div class="cw-right">${result}</div></div>`;
+  cwTick();
 }
 $('#cwBody').addEventListener('input', e => {
   const k = e.target.dataset?.k; if (!k) return;
@@ -3310,7 +3340,42 @@ $('#cwBody').addEventListener('change', e => {
   const box = $('.cw-fp', tile); box.innerHTML = f && f.type.startsWith('image/') ? `<img src="${URL.createObjectURL(f)}" alt="">` : '<i>✓</i>';
   tile.classList.toggle('on', !!f);
 });
+function cwTick() {
+  const r = CW.run, bar = $('#cwBar'); if (!r || !bar) return;
+  const el = (performance.now() - r.t0) / 1000, sampling = r.stage.startsWith('sample') && r.max;
+  const base = { queued: .02, load: .05, encode: .12, sample: .15, upscale: .7, sample2: .75, decode: .92, save: .98 }[r.stage] ?? .1;
+  let p = base, line = QSTAGE[r.stage] || 'идёт', eta = '';
+  if (sampling) {
+    const frac = (r.step || 0) / r.max, two = r.stage === 'sample2';
+    p = (two ? .75 : .15) + (two ? .15 : .55) * frac; line += ` · шаг ${r.step || 0} из ${r.max}`;
+    if (r.step) eta = ` · до конца этапа ~${fmtTime((r.max - r.step) * ((r.stepT - r.sampleT0) / r.step) / 1000)}`;
+  }
+  bar.style.width = (p * 100) + '%';
+  $('#cwTime').innerHTML = r.stage === 'queued' ? `<b>В очереди</b> · ждём своей очереди · ${fmtTime(el)}` : `<b>Идёт</b> · прошло ${fmtTime(el)}${eta}`;
+  $('#cwStatus').textContent = line;
+}
+function cwFinish(kind, ev) {
+  const r = CW.run; if (!r) return;
+  clearInterval(r.tick); offPrompt(r.id); previewHandlers.delete('cw'); CW.run = null;
+  const took = fmtTime((performance.now() - r.t0) / 1000);
+  if (!$('#cwLive')) return;
+  $('#cwLive').hidden = true; $('#cwStop').hidden = true; $('#cwGo').disabled = !!CW.rep.missing_nodes.length;
+  if (kind === 'done') {
+    const pic = ev.item.kind === 'image', v = $('#cwVideo'), im = $('#cwImage');
+    $('#cwWait').hidden = true; v.hidden = pic; im.hidden = !pic; $('#cwBar').style.width = '100%';
+    if (pic) im.src = ev.item.url; else { v.src = ev.item.url; v.muted = true; v.play().catch(() => {}); }
+    $('#cwTime').innerHTML = `<b style="color:var(--ok)">Готово</b> · за ${took}`; $('#cwStatus').textContent = `${pic ? 'Картинка сохранена' : 'Видео сохранено'} в Библиотеку`;
+  } else {
+    $('#cwBar').style.width = '0'; $('#cwWait').hidden = false; $('#cwWait').textContent = 'Здесь появится результат';
+    $('#cwTime').innerHTML = kind === 'error' ? '<b style="color:var(--pink)">Ошибка</b>' : '<b>Остановлено</b>';
+    $('#cwStatus').textContent = kind === 'error' ? 'Ошибка ComfyUI: ' + ev.message : 'Генерация остановлена';
+  }
+}
 $('#cwBody').addEventListener('click', async e => {
+  if (e.target.closest('#cwStop')) {
+    if (CW.run) { $('#cwStatus').textContent = 'Останавливаем…'; fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: CW.run.id }) }); }
+    return;
+  }
   if (!e.target.closest('#cwGo')) return;
   const status = $('#cwStatus'), W = CW.rep.widgets;
   const bad = W.find(w => w.missing && !CW.vals[w.key]); if (bad) { status.textContent = `Выберите файл: ${bad.title}`; return; }
@@ -3322,29 +3387,36 @@ $('#cwBody').addEventListener('click', async e => {
   });
   const fd = new FormData(); fd.append('wf', CW.id); fd.append('values', JSON.stringify(CW.vals));
   Object.entries(CW.files).forEach(([k, f]) => f && fd.append('f:' + k, f));
-  e.target.closest('#cwGo').disabled = true; status.textContent = 'Отправляем задание в ComfyUI…';
+  $('#cwGo').disabled = true; status.textContent = 'Отправляем задание в ComfyUI…';
   try {
     const r = await fetch('/api/generate/custom', { method: 'POST', body: fd }), txt = await r.text();
     let res; try { res = JSON.parse(txt); } catch { res = { error: txt }; }
     if (!r.ok) throw new Error(res.error || txt || r.statusText);
     const prompt = (W.find(w => w.role === 'prompt') || {}).key;
     qAdd(res.prompt_id, 'custom', prompt ? String(CW.vals[prompt]) : CW.rep.name);
-    CW.cur = res.prompt_id; $('#cwVideo').hidden = true; $('#cwImage').hidden = true; status.textContent = 'Задание в очереди — смотрите раздел «Очередь»';
-    onPrompt(res.prompt_id, ev => {
-      if (CW.cur !== ev.prompt_id) return;
-      const st = $('#cwStatus'); if (!st) return;
-      if (ev.type === 'stage') st.textContent = (QSTAGE[ev.stage] || 'идёт') + (ev.max ? ` · шаг ${ev.step || 0} из ${ev.max}` : '');
-      else if (ev.type === 'done') {
-        const pic = ev.item.kind === 'image'; st.textContent = `Готово — ${pic ? 'картинка' : 'видео'} в Библиотеке`;
-        const v = $('#cwVideo'), im = $('#cwImage'); v.hidden = pic; im.hidden = !pic;
-        if (pic) im.src = ev.item.url; else { v.src = ev.item.url; v.play().catch(() => {}); }
-        offPrompt(ev.prompt_id);
-      }
-      else if (ev.type === 'error') { st.textContent = 'Ошибка ComfyUI: ' + ev.message; offPrompt(ev.prompt_id); }
-      else if (ev.type === 'interrupted') { st.textContent = 'Остановлено'; offPrompt(ev.prompt_id); }
+    if (CW.run) { clearInterval(CW.run.tick); offPrompt(CW.run.id); }  // the older job goes on in the queue
+    CW.run = { id: res.prompt_id, t0: performance.now(), stage: 'queued' };
+    $('#cwVideo').hidden = true; $('#cwImage').hidden = true; $('#cwLive').hidden = true; $('#cwWait').hidden = false; $('#cwWait').textContent = 'Задание в очереди…';
+    $('#cwStop').hidden = false; $('#cwGo').disabled = false;
+    CW.run.tick = setInterval(cwTick, 1000); cwTick();
+    previewHandlers.set('cw', blob => {
+      const run = CW.run, im = $('#cwLive'); if (!run || run.stage === 'queued' || !im) return;
+      URL.revokeObjectURL(im.dataset.url || ''); im.dataset.url = im.src = URL.createObjectURL(blob); im.hidden = false; $('#cwWait').hidden = true;
     });
-  } catch (err) { status.textContent = 'Ошибка: ' + err.message; }
-  const go = $('#cwGo'); if (go) go.disabled = !!CW.rep.missing_nodes.length;
+    onPrompt(res.prompt_id, ev => {
+      const run = CW.run; if (!run || run.id !== ev.prompt_id) return;
+      if (ev.type === 'stage') {
+        const sampling = ev.stage.startsWith('sample');
+        if (sampling && run.stage !== ev.stage) run.sampleT0 = performance.now();
+        run.stage = ev.stage; run.step = ev.step; run.max = ev.max;
+        if (sampling && ev.step) run.stepT = performance.now();
+        if ($('#cwWait')) $('#cwWait').textContent = QSTAGE[ev.stage] || 'Идёт генерация…';
+        cwTick();
+      } else if (ev.type === 'done') cwFinish('done', ev);
+      else if (ev.type === 'error') cwFinish('error', ev);
+      else if (ev.type === 'interrupted') cwFinish('stopped', ev);
+    });
+  } catch (err) { status.textContent = 'Ошибка: ' + err.message; $('#cwGo').disabled = !!CW.rep.missing_nodes.length; }
 });
 $('#cwSel').onchange = e => e.target.value && cwOpen(e.target.value);
 $('#cwDel').onclick = async () => {

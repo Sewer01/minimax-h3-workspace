@@ -3426,6 +3426,47 @@ function cwPick(key) {
     } catch { toast('Не удалось взять файл'); }
   };
 }
+/* ---------- picture slots: choose "from the library" or "from the computer" ---------- */
+document.addEventListener('click', e => {
+  const lb = e.target.closest('label.drop, label.ref'); if (!lb || e.target.closest('.x, select, input')) return;
+  const input = $('input[type=file]', lb); if (!input) return;
+  e.preventDefault(); e.stopPropagation();
+  let m = $('#picSrc');
+  if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'picSrc'; document.body.append(m); }
+  m.hidden = false;
+  const showSrc = () => {
+    m.innerHTML = '<div class="box" style="padding:20px;max-width:360px"><div class="card-h"><h3>Откуда взять картинку?</h3><button class="btn" data-x type="button">Закрыть</button></div>'
+      + '<div style="display:grid;gap:10px"><button class="btn pri" data-s="lib" type="button">Из Библиотеки</button><button class="btn" data-s="pc" type="button">С компьютера</button></div></div>';
+  };
+  const showLib = () => {
+    const items = LIB.filter(it => !it.missing && it.url).sort((a, b) => b.date - a.date);
+    m.innerHTML = '<div class="box" style="padding:20px"><div class="card-h"><h3>Из Библиотеки</h3><button class="btn" data-x type="button">Закрыть</button></div>'
+      + (items.length ? `<div class="cw-pickgrid">${items.map(it => `<button class="cw-th" data-id="${it.id}" type="button" title="${esc((it.label ? it.label + ' · ' : '') + (it.prompt || '').slice(0, 80))}">${it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video><span class="cw-lb">последний кадр видео</span>`}</button>`).join('')}</div>`
+        : '<div class="hint" style="padding:20px 4px">В Библиотеке пока ничего нет.</div>') + '</div>';
+  };
+  showSrc();
+  m.onclick = async ev => {
+    if (ev.target === m || ev.target.closest('[data-x]')) { m.hidden = true; return; }
+    const s = ev.target.closest('[data-s]');
+    if (s) { if (s.dataset.s === 'pc') { m.hidden = true; input.click(); } else showLib(); return; }
+    const th = ev.target.closest('.cw-th'); if (!th) return;
+    const it = LIB.find(x => x.id === th.dataset.id); if (!it) return;
+    try {
+      let blob;
+      if (it.kind === 'image') blob = await (await fetch(it.url)).blob();
+      else {  // a video: take its last frame, handy for continuing a scene
+        const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = it.url;
+        await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = no; });
+        v.currentTime = Math.max(0, v.duration - 0.05);
+        await new Promise((ok, no) => { v.onseeked = ok; v.onerror = no; });
+        const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
+        blob = await new Promise(ok => c.toBlob(ok, 'image/png'));
+      }
+      await setDropFile(input, new File([blob], `${it.id}.${it.kind === 'image' ? (it.ext || 'png') : 'png'}`, { type: blob.type || 'image/png' }));
+      m.hidden = true; toast('Картинка взята из Библиотеки');
+    } catch { toast('Не удалось взять файл'); }
+  };
+}, true);
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest('#cwRs'); if (!h) return;
   const cols = h.parentElement, box = $('#cwBody'); h.classList.add('drag'); h.setPointerCapture(e.pointerId);

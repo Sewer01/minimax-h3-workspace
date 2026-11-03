@@ -45,6 +45,8 @@ Type: files; Name: "{app}\data_location.txt"
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; an update started from inside the app runs silently: open the app again when it is done
+Filename: "{app}\{#AppExe}"; Flags: nowait skipifnotsilent
 
 ; ComfyUI and models live in the folder chosen in the app, outside {app}, and are kept on uninstall on purpose:
 ; they are tens of gigabytes. Settings go to <that folder>\data (see datadir.py).

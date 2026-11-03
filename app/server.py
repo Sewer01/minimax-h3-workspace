@@ -32,6 +32,7 @@ import customwf
 import engine
 import monitor
 import speech
+import updater
 import workflows as wf
 
 # frozen builds keep code inside the bundle but user data next to the exe
@@ -495,6 +496,27 @@ class App:
         entry = catalog.model_entry(role, self.choice()[role])
         have = role not in {m["role"] for m in self.missing}
         return web.json_response({"ok": True, "have": have, "size": entry["size"], "file": entry["file"]})
+
+    async def h_update_check(self, _req):
+        info = await updater.check(self.session)
+        self.update_info = info if info.get("available") else None
+        return web.json_response({**{k: v for k, v in info.items() if k not in ("asset", "sha256")},
+                                  "can_update": updater.can_update()})
+
+    async def h_update_install(self, _req):
+        info = getattr(self, "update_info", None)
+        if not info or not updater.can_update():
+            raise web.HTTPBadRequest(text="Обновление недоступно")
+        if self.jobs:
+            raise web.HTTPConflict(text="Сейчас идёт генерация. Дождитесь её конца и нажмите «Обновить» снова.")
+        try:
+            installer = await updater.download(self.session, info)
+        except Exception as e:
+            raise web.HTTPBadGateway(text=str(e))
+        updater.run(installer)
+        # the installer is already running on its own: leave, so it can replace the files and open the app again
+        asyncio.get_running_loop().call_later(3, lambda: os._exit(0))
+        return web.json_response({"ok": True})
 
     async def h_system(self, _req):
         """CPU / RAM / GPU / disk readings for the sidebar."""
@@ -1611,6 +1633,8 @@ def build_app(comfy_override=None):
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),
+        web.get("/api/update/check", state.h_update_check),
+        web.post("/api/update/install", state.h_update_install),
         web.post("/api/generate/qwen", state.h_generate_qwen),
         web.post("/api/generate/lipsync", state.h_generate_lipsync),
         web.get("/api/nodes", state.h_nodes),

@@ -219,6 +219,8 @@ h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
 .hresize{height:16px;margin:8px 0 -8px;cursor:row-resize;position:relative;touch-action:none}
 .hresize::after{content:'';position:absolute;left:50%;top:6px;width:56px;height:4px;margin-left:-28px;border-radius:4px;background:var(--line-2);transition:background .15s}
 .hresize:hover::after,.hresize.drag::after{background:var(--accent)}
+.upd{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:70;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:92vw;padding:10px 16px;border-radius:14px;background:var(--card,#2a1218);border:1px solid var(--accent);box-shadow:0 10px 40px rgba(0,0,0,.45);font-size:14px}
+.upd[hidden]{display:none}
 .ip-frame{position:relative;width:100%;aspect-ratio:16/9;background:var(--screen);border-radius:12px;overflow:hidden;display:grid;place-items:center}
 .ip-frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .ip-empty{color:var(--muted);font-size:13px}
@@ -3813,6 +3815,29 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   IMG.qwen = { fill: it => { if (it.sub === 'Лист персонажа') S.kind = 'sheet'; else { S.kind = 'edit'; $('.qw-prompt', root).value = it.prompt || ''; } upd(); } };
 })();
 
+
+/* ---------- updates: a new release on GitHub -> a bar with "Обновить" ---------- */
+(() => {
+  if (!API) return;
+  const bar = document.createElement('div'); bar.className = 'upd'; bar.hidden = true; document.body.append(bar);
+  setTimeout(async () => {
+    let u; try { u = await (await fetch('/api/update/check')).json(); } catch { return; }
+    if (!u.available || !u.can_update) return;
+    const paint = (html) => { bar.innerHTML = html; bar.hidden = false; };
+    const ask = () => paint(`<span>Вышла версия <b>${esc(u.version)}</b> (у вас ${esc(u.current)}). Настройки, Библиотека и модели останутся.</span><button class="btn pri" data-a="go" type="button">Обновить</button><button class="btn" data-a="later" type="button">Позже</button>`);
+    ask();
+    bar.onclick = async e => {
+      const a = e.target.closest('[data-a]')?.dataset.a; if (!a) return;
+      if (a === 'later') { bar.hidden = true; return; }
+      if (QUEUE.some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация. Дождитесь её конца и нажмите «Обновить» снова'); return; }
+      paint('<span>Скачиваем обновление… Не закрывайте программу.</span>');
+      try {
+        await postJSON('/api/update/install', {});
+        paint('<span>Устанавливаем. Программа закроется и сама откроется заново — это займёт около минуты.</span>');
+      } catch (err) { paint(`<span>Не получилось обновить: ${esc(err.message)}</span><button class="btn" data-a="go" type="button">Ещё раз</button><button class="btn" data-a="later" type="button">Закрыть</button>`); }
+    };
+  }, 4000);
+})();
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest('#cwRs'); if (!h) return;
   const cols = h.parentElement, box = $('#cwBody'); h.classList.add('drag'); h.setPointerCapture(e.pointerId);

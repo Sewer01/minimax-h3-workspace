@@ -541,7 +541,7 @@ details[open] summary::before{content:'－ '}
     </button>
     <button class="nav active" data-view="video">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>
-      Генерация видео
+      Image-to-Video
     </button>
     <button class="nav" data-view="lipsync">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3"/></svg>
@@ -589,8 +589,8 @@ details[open] summary::before{content:'－ '}
     <section class="view active" id="view-video">
       <div class="head">
         <div>
-          <h1>Генерация видео</h1>
-          <p>По тексту, по первому кадру или между первым и последним кадром</p>
+          <h1>Image-to-Video</h1>
+          <p>Изображение или текст в видео: по тексту, по первому кадру или между первым и последним кадром</p>
         </div>
         <div class="mode-pill"><i></i><span id="vMode">Режим: видео по тексту</span></div>
       </div>
@@ -805,7 +805,7 @@ details[open] summary::before{content:'－ '}
           <div class="card">
             <div class="card-h"><h3>Промпт для</h3></div>
             <div class="seg" id="agTarget" style="grid-template-columns:1fr 1fr;grid-auto-rows:auto">
-              <button data-t="video" class="on">Генерация видео<small>текст / кадры</small></button>
+              <button data-t="video" class="on">Image-to-Video<small>текст / кадры</small></button>
               <button data-t="lipsync">Lipsync<small>референсы + аудио</small></button>
               <button data-t="refs">Референсы<small>картинки, видео, аудио</small></button>
               <button data-t="actor">Актёрская игра<small>диалог, голос, эмоции</small></button>
@@ -835,7 +835,7 @@ details[open] summary::before{content:'－ '}
       <div class="lib-bar">
         <div class="chips" id="libFilter">
           <button class="chip on" data-f="all">Все</button>
-          <button class="chip" data-f="video">Генерация видео</button>
+          <button class="chip" data-f="video">Image-to-Video</button>
           <button class="chip" data-f="lipsync">Lipsync</button>
           <button class="chip" data-f="refs">Референсы</button>
           <button class="chip" data-f="actor">Актёрская игра</button>
@@ -906,7 +906,7 @@ details[open] summary::before{content:'－ '}
           <div class="fld" data-for="new external">
             <label>Что вы хотите делать? <span class="hint" id="modeHint">— отметьте только нужное, остальное можно докачать потом в разделе «Модели»</span></label>
             <div class="mode-cards" id="modePick">
-              <button class="mcard" data-m="video"><i></i><b>Генерация видео</b><span>Видео по тексту, по картинке, по первому и последнему кадру</span><small></small></button>
+              <button class="mcard" data-m="video"><i></i><b>Image-to-Video</b><span>Видео по тексту, по картинке, по первому и последнему кадру</span><small></small></button>
               <button class="mcard" data-m="lipsync"><i></i><b>Lipsync / клип</b><span>Персонаж поёт или говорит под ваше аудио</span><small></small></button>
               <button class="mcard" data-m="refs"><i></i><b>Референсы</b><span>Видео по нескольким картинкам, референс-видео и аудио</span><small></small></button>
               <button class="mcard" data-m="actor"><i></i><b>Актёрская игра</b><span>Диалоги и крупные планы: эмоции, голос по образцу</span><small></small></button>
@@ -1371,7 +1371,7 @@ function previewPanel(el, st, opts) {
   go.onclick = () => {
     const err = opts.validate(); if (err) { status.textContent = err; return; }
     if (API) {
-      if (!opts.real) { status.textContent = 'Этот режим ещё не подключён к ComfyUI — пока работает «Генерация видео»'; return; }
+      if (!opts.real) { status.textContent = 'Этот режим ещё не подключён к ComfyUI — пока работает «Image-to-Video»'; return; }
       return realStart();
     }
     const [w, h] = resFor(st.aspect, st.q);
@@ -2062,11 +2062,11 @@ function renderModels(s) {
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
-    const modes = m.modes.map(x => ({ video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' })[x]).join(', ') || 'дополнительно';
+    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' })[x]).join(', ') || 'дополнительно';
     return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}${m.have ? '' : `<button class="btn mini" type="button" data-pickmodel="${m.role}" title="Если файл у вас называется иначе — выберите его вручную">Указать файл…</button>`}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
-  const MN = { video: 'Генерация видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' };
+  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' };
   $('#mdAdd').innerHTML = s.engine === 'managed' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
     `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${gb} ГБ)</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
@@ -2586,7 +2586,7 @@ function renderAssistant(el, m) {
     const closed = i < parts.length - 1;
     html += `<div class="pblock"><pre>${esc(p.replace(/\n$/, ''))}</pre>${closed ? `<div class="pb-act">
       <button class="btn pri" data-send="${AG.target}">${{ video: 'В Генерацию видео', lipsync: 'В Lipsync', refs: 'В Референсы', actor: 'В Актёрскую игру', action: 'В Экшн-сцены' }[AG.target]}</button>
-      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Генерация видео</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="action">Экшн-сцены</option></select>
+      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Image-to-Video</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="action">Экшн-сцены</option></select>
       <button class="btn" data-copy>Копировать</button><small>${p.length} симв.</small></div>` : ''}</div>`;
   });
   if (m.status && !m.content) html += `<div class="st">${esc(m.status)}</div>`;

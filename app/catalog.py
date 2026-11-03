@@ -122,7 +122,7 @@ VARIANTS = {
 ACTION_DMAD_LORA = "minimax_h3_dmad_full_dareties_v4_step600_comfy_fro"
 
 ROLE_TITLES = {
-    "fast_unet": "Основная модель — Генерация видео (FastH3)",
+    "fast_unet": "Основная модель — Image-to-Video (FastH3)",
     "lipsync_unet": "Основная модель — Lipsync (Singularity)",
     "text_encoder": "Текстовый энкодер (Qwen3-VL 32B)",
     "video_vae": "Видео VAE",
@@ -138,7 +138,7 @@ ROLE_TITLES = {
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
 }
 
-MODE_TITLES = {"video": "Генерация видео", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены"}
+MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены"}
 
 # Which roles each mode needs.
 MODE_ROLES = {

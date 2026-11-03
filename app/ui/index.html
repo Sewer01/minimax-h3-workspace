@@ -320,6 +320,7 @@ details[open] summary::before{content:'－ '}
 .m .st{font-size:12px;font-weight:700;text-align:right}
 .st.ok{color:var(--ok)}.st.miss{color:var(--warn)}.st.dl{color:var(--accent-2)}
 .choose.three{grid-template-columns:repeat(3,1fr)}
+.choose.three:has(.opt[hidden]){grid-template-columns:repeat(2,1fr)}
 .mode-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .mcard{position:relative;text-align:left;padding:13px 14px 13px 44px;border-radius:13px;background:var(--bg-2);border:1.5px solid var(--line);display:grid;gap:3px;transition:.15s}
 .mcard:hover{border-color:var(--line-2)}
@@ -940,12 +941,13 @@ details[open] summary::before{content:'－ '}
             <b>У меня уже есть ComfyUI и модели</b>
             <span>Для опытных: подключиться к вашему запущенному ComfyUI — ничего не скачиваем и не ставим</span>
           </button>
-          <button class="opt" data-opt="cloud">
+          <button class="opt" data-opt="cloud" hidden>
             <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 0 0 4.5 12 3.5 3.5 0 0 0 6 19z"/></svg></div>
             <b>Только облако</b>
             <span>Слабый компьютер: генерировать на RunningHub по вашему API-ключу, ничего не скачивая</span>
           </button>
         </div>
+        <div style="margin:-6px 0 16px"><button class="btn mini" id="optCloudShow" type="button">Слабый компьютер? Показать вариант «Облако RunningHub» ▾</button></div>
 
         <div class="card" id="wzForm">
           <div class="fld" data-for="new">
@@ -2026,6 +2028,7 @@ $('#profilePick').onclick = e => {
 };
 function pickOpt(opt) {
   setupOpt = opt;
+  if (opt === 'cloud') { $('.opt[data-opt="cloud"]').hidden = false; $('#optCloudShow').hidden = true; }
   $('#wzForm').hidden = opt === 'cloud'; $('#wzCloud').hidden = opt !== 'cloud';
   if (opt === 'cloud') mountCloud($('#wzCloud'), true);
   $$('#wzChoose .opt').forEach(o => o.classList.toggle('on', o.dataset.opt === opt));
@@ -3193,6 +3196,7 @@ setInterval(memSave, 2000);
 addEventListener('beforeunload', memSave);
 memRestore();
 
+$('#optCloudShow').onclick = () => { $('.opt[data-opt="cloud"]').hidden = false; $('#optCloudShow').hidden = true; };
 /* ---------- свои workflow ---------- */
 const CW = { id: null, rep: null, vals: {}, files: {}, cur: null };
 async function cwList(select) {

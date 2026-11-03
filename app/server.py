@@ -168,7 +168,10 @@ class App:
         end = loop.time() + timeout
         while loop.time() < end:
             if self.process and not self.process.alive():
-                raise RuntimeError("ComfyUI не запустился:\n" + self.process.log_tail())
+                tail = self.process.log_tail()
+                hint = ("\n\nПохоже, проблема в драйвере видеокарты. Обновите драйвер NVIDIA (nvidia.com/drivers), "
+                        "перезагрузите компьютер и нажмите «Продолжить».") if re.search(r"cuda|nvidia|driver", tail, re.I) else ""
+                raise RuntimeError("ComfyUI не запустился:\n" + tail + hint)
             try:
                 await self.system_stats()
                 return
@@ -584,6 +587,10 @@ class App:
             await self.setup_emit({"type": "setup", "step": "finish", "state": "error", "label": str(e)})
         finally:
             self.installer = None
+
+    async def h_open_driver(self, _req):
+        webbrowser.open("https://www.nvidia.com/Download/index.aspx?lang=ru")
+        return web.json_response({"ok": True})
 
     async def h_setup_cancel(self, _req):
         if self.installer:
@@ -1484,6 +1491,7 @@ def build_app(comfy_override=None):
         web.post("/api/setup/external", state.h_setup_external),
         web.post("/api/setup/install", state.h_setup_install),
         web.post("/api/setup/cancel", state.h_setup_cancel),
+        web.post("/api/open-driver-page", state.h_open_driver),
         web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/lipsync", state.h_generate_lipsync),

@@ -2062,7 +2062,9 @@ async function openSetup() {
   ].map(([k, v]) => `<div><small>${k}</small><b>${esc(String(v))}</b></div>`).join('');
   const V = { ok: ['ok', 'Подходит'], weak: ['weak', 'Будет работать медленно'], unsupported: ['unsupported', 'Не подходит'] }[setupInfo.verdict];
   $('#hwVerdict').className = 'verdict ' + V[0]; $('#hwVerdict').textContent = V[1];
-  $('#hwNotes').innerHTML = setupInfo.notes.map(n => `<li>${esc(n)}</li>`).join('');
+  $('#hwNotes').innerHTML = setupInfo.notes.map(n => `<li>${esc(n)}</li>`).join('')
+    + (hw.nvidia && hw.driver && hw.driver < 580 ? '<li style="list-style:none;margin-left:-18px"><button class="btn pri" id="drvBtn" type="button">Скачать свежий драйвер NVIDIA</button></li>' : '');
+  const drvBtn = $('#drvBtn'); if (drvBtn) drvBtn.onclick = () => fetch('/api/open-driver-page', { method: 'POST' });
   if (!$('#instDir').value) $('#instDir').value = setupInfo.install_dir;
 
   if (c.comfy_url) $('#comfyUrl').value = c.comfy_url;

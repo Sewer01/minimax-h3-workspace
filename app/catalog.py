@@ -5,6 +5,7 @@ variants; `choose_models` picks one per role from the detected hardware.
 """
 
 COMFY_VERSION = "0.43.0"
+MIN_DRIVER = 580  # the bundled PyTorch is built for CUDA 13
 COMFY_URL = ("https://github.com/Comfy-Org/ComfyUI/releases/download/"
              f"v{COMFY_VERSION}/ComfyUI_windows_portable_nvidia.7z")
 COMFY_SIZE = 2_040_000_000
@@ -210,6 +211,9 @@ def choose_models(hw, profile=None):
     if blackwell and vram >= 16:
         choice["fast_unet"] = "nvfp4"
         notes.append("Видеокарта RTX 50-й серии: для генерации видео берём версию NVFP4 — она легче и быстрее на этих картах.")
+
+    if hw.get("nvidia") and 0 < (hw.get("driver") or 0) < MIN_DRIVER:
+        notes.insert(0, f"Драйвер видеокарты устарел ({hw['driver']:g}). Нужен {MIN_DRIVER} или новее, иначе ComfyUI не запустится — обновите драйвер.")
 
     if vram < 8 or not hw.get("nvidia"):
         verdict = "unsupported"

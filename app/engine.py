@@ -48,16 +48,20 @@ class Config:
 # ---------- hardware ----------
 
 def detect_hardware(install_dir=None):
-    hw = {"nvidia": False, "gpu": None, "vram_gb": 0, "compute_cap": 0, "ram_gb": 0, "disk_free_gb": None}
+    hw = {"nvidia": False, "gpu": None, "vram_gb": 0, "compute_cap": 0, "driver": 0, "ram_gb": 0, "disk_free_gb": None}
     try:
         out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,memory.total,compute_cap", "--format=csv,noheader,nounits"],
+            ["nvidia-smi", "--query-gpu=name,memory.total,compute_cap,driver_version", "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=10, creationflags=CREATE_NO_WINDOW).stdout
         gpus = [[x.strip() for x in line.split(",")] for line in out.strip().splitlines() if line.strip()]
         if gpus:
             best = max(gpus, key=lambda g: float(g[1]))  # pick the card with most memory
             hw.update(nvidia=True, gpu=best[0].replace("NVIDIA GeForce ", ""),
                       vram_gb=round(float(best[1]) / 1024), compute_cap=float(best[2]))
+            try:
+                hw["driver"] = float(best[3])
+            except (IndexError, ValueError):
+                pass
     except Exception:
         pass
 

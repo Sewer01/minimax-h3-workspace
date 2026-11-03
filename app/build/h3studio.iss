@@ -37,8 +37,13 @@ Source: "dist\MinimaxH3Workspace\*"; DestDir: "{app}"; Flags: ignoreversion recu
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
+[UninstallDelete]
+; the app's own small files (settings, library list, chats): removed together with the program
+Type: filesandordirs; Name: "{app}\data"
+Type: files; Name: "{app}\data_location.txt"
+
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
-; ComfyUI, models and settings live outside {app} (chosen in the app / %LOCALAPPDATA%\MinimaxH3Workspace)
-; and are kept on uninstall on purpose: they are tens of gigabytes.
+; ComfyUI and models live in the folder chosen in the app, outside {app}, and are kept on uninstall on purpose:
+; they are tens of gigabytes. Settings go to <that folder>\data (see datadir.py).

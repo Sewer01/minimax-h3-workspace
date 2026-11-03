@@ -31,7 +31,7 @@ def frames(seconds):
     return f + (5 - f % 17) % 17
 
 
-def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None):
+def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None, extra_loras=()):
     """MINIMAXH3_FASTvideo_I2V: text / first frame / first + last frame."""
     g = {
         "1": {"class_type": "UNETLoader", "inputs": {
@@ -78,6 +78,8 @@ def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None):
             "image": [load_id, 0], "upscale_method": "lanczos",
             "width": width, "height": height, "crop": "center"}}
         g["8"]["inputs"][slot] = [scale_id, 0]
+    if extra_loras:  # the user's own LoRAs go right after the model loader
+        g["2"]["inputs"]["model"] = _lora_chain(g, ["1", 0], list(extra_loras))
 
     stages = {n: "load" for n in ("1", "2", "3", "4", "5", "6", "7")}
     stages.update({n: "encode" for n in ("8", "20", "21", "22", "23")})
@@ -160,7 +162,7 @@ def ref_graph(m, prompt, width, height, seconds, seed, images, videos, audios, s
 ACTOR_SIGMAS = "1, .9882, .973, .9524, .9231, .878, .8, .6316, .4737, .1579, 0"
 
 
-def actor_graph(m, prompt, width, height, seconds, seed, images, audios, realism=None):
+def actor_graph(m, prompt, width, height, seconds, seed, images, audios, realism=None, extra_loras=()):
     """Acting scenes: first frame + a voice sample, new speech written in the prompt (<d>...</d>).
 
     Same Singularity Ref2V model as the references mode, but with sol-attn sparse attention,
@@ -182,7 +184,7 @@ def actor_graph(m, prompt, width, height, seconds, seed, images, audios, realism
             "clip": ["4", 0], "vae": ["5", 0], "audio_vae": ["6", 0], "prompt": prompt,
             "width": width, "height": height, "length": frames(seconds), "ref_image_size": "match"}},
     }
-    loras = [(m["ref2v_turbo_lora"], 1.0)] + ([realism] if realism else [])
+    loras = [(m["ref2v_turbo_lora"], 1.0)] + ([realism] if realism else []) + list(extra_loras)
     model = _lora_chain(g, ["7", 0], loras)
     g.update({
         "10": {"class_type": "ManualSigmas", "inputs": {"sigmas": ACTOR_SIGMAS}},

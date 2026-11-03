@@ -1009,6 +1009,11 @@ details[open] summary::before{content:'－ '}
           <div class="note" id="mdNodesNote" style="margin-top:12px" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg>
             <span>Скачайте недостающую ноду по ссылке (кнопка «Code» → «Download ZIP» на GitHub), распакуйте папку в <b>ComfyUI\custom_nodes</b> и <b>перезапустите ComfyUI</b>. Потом нажмите «Проверить ещё раз».</span></div>
         </div>
+        <div class="card" id="clCard" style="margin-bottom:16px" hidden>
+          <div class="card-h"><h3>Свои LoRA <small style="color:var(--muted);font-weight:500">· для тех, кто знает ComfyUI</small></h3><span><button class="btn" id="clRe" type="button">Обновить список</button> <button class="btn pri" id="clAdd" type="button">+ Добавить LoRA</button></span></div>
+          <div class="hint" style="margin-bottom:10px">Положите файл LoRA в папку <b>ComfyUI\models\loras</b>, нажмите «Обновить список» и добавьте её. Она подключится ко всем разделам сразу после основной модели. Новичкам ничего менять не нужно: всё уже готово. Свои VAE и модели меняются кнопкой «Заменить…» в списке ниже.</div>
+          <div class="mlist" id="clList"></div>
+        </div>
         <div class="card">
           <div class="card-h"><h3>Модели</h3><span><span id="mdAdd"></span> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button></span></div>
           <div class="mlist" id="mlist"></div>
@@ -1169,8 +1174,8 @@ function paramsCard(el, st, opts) {
     ${opts.duration ? `
     <div class="row">
       <div class="row-l">Длительность <span class="durv"></span></div>
-      <input type="range" min="3" max="15" step="1" class="dur">
-      <div class="ticks"><span>3 с</span><span>6</span><span>9</span><span>12</span><span>15 с</span></div>
+      <input type="range" min="3" max="25" step="1" class="dur">
+      <div class="ticks"><span>3 с</span><span>8</span><span>14</span><span>19</span><span>25 с</span></div>
     </div>` : ''}
     <div class="note warn vwarn" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 10v5M12 18h0"/></svg>
@@ -1200,8 +1205,8 @@ function paramsCard(el, st, opts) {
     $('.resv', el).textContent = `${w}×${h}`;
     if (opts.duration) {
       const d = $('.dur', el); d.value = st.dur;
-      d.style.setProperty('--p', ((st.dur - 3) / 12 * 100) + '%');
-      $('.durv', el).textContent = `${st.dur} с · ${frames(st.dur)} кадров`;
+      d.style.setProperty('--p', ((st.dur - 3) / 22 * 100) + '%');
+      $('.durv', el).textContent = `${st.dur} с · ${frames(st.dur)} кадров` + (st.dur > 15 ? ' · дольше 15 с модель держит качество хуже' : '');
     }
     $('.vwarn', el).hidden = !(st.q === '1080p' && st.len() > 8);
     $$('.seed-seg button', el).forEach(b => b.classList.toggle('on', (b.dataset.sf === '1') === !!st.seedFixed));
@@ -2097,7 +2102,7 @@ function renderModels(s) {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
     const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' })[x]).join(', ') || 'дополнительно';
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}${m.have ? '' : `<button class="btn mini" type="button" data-pickmodel="${m.role}" title="Если файл у вас называется иначе — выберите его вручную">Указать файл…</button>`}</div>`;
+    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button></div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' };
@@ -3044,13 +3049,47 @@ $('#mlist').addEventListener('click', async e => {
     const r = await (await fetch('/api/models/files?role=' + role)).json();
     if (!r.files?.length) { toast(`ComfyUI не видит файлов в папке ${r.folder}`); return; }
     b.hidden = true;
-    row.insertAdjacentHTML('beforeend', `<div class="pm"><select>${r.files.map(f => `<option>${esc(f)}</option>`).join('')}</select><button class="btn mini pri" type="button">Выбрать</button></div>`);
+    row.insertAdjacentHTML('beforeend', `<div class="pm"><select><option value="">как по умолчанию</option>${r.files.map(f => `<option>${esc(f)}</option>`).join('')}</select><button class="btn mini pri" type="button">Выбрать</button></div>`);
     $('.pm .pri', row).onclick = async () => {
       await postJSON('/api/models/pick', { role, name: $('.pm select', row).value });
       await loadStatus(); toast('Файл выбран');
     };
   } catch { toast('ComfyUI не отвечает'); }
 });
+/* the user's own LoRAs */
+const CL = { files: [], items: [] };
+async function loadCL() {
+  try {
+    const r = await (await fetch('/api/loras/custom')).json();
+    if (!r.files) return;
+    CL.files = r.files; CL.items = r.items; $('#clCard').hidden = false; renderCL();
+  } catch {}
+}
+function renderCL() {
+  $('#clList').innerHTML = CL.items.length ? CL.items.map((x, i) => `<div class="m" data-i="${i}">
+      <b><select class="cl-f">${CL.files.map(f => `<option${f === x.file ? ' selected' : ''}>${esc(f)}</option>`).join('')}${CL.files.includes(x.file) ? '' : `<option selected>${esc(x.file)}</option>`}</select></b>
+      <span class="hint">сила <input class="cl-s" type="number" step="0.05" min="-4" max="4" value="${x.strength}" style="width:70px"></span>
+      <button class="chip cl-on${x.on ? ' on' : ''}" type="button">${x.on ? 'включена' : 'выключена'}</button>
+      <button class="btn mini cl-x" type="button">Убрать</button></div>`).join('')
+    : '<div class="hint">Пока нет своих LoRA.</div>';
+}
+const saveCL = () => postJSON('/api/loras/custom', { items: CL.items }).catch(e => toast(e.message));
+$('#clAdd').onclick = () => {
+  if (!CL.files.length) { toast('ComfyUI не видит файлов в папке loras'); return; }
+  CL.items.push({ file: CL.files[0], strength: 0.8, on: true }); renderCL(); saveCL();
+};
+$('#clRe').onclick = loadCL;
+$('#clList').addEventListener('change', e => {
+  const row = e.target.closest('.m'); if (!row) return; const x = CL.items[+row.dataset.i];
+  if (e.target.matches('.cl-f')) x.file = e.target.value; else if (e.target.matches('.cl-s')) x.strength = +e.target.value || 0;
+  saveCL();
+});
+$('#clList').addEventListener('click', e => {
+  const row = e.target.closest('.m'); if (!row) return; const i = +row.dataset.i;
+  if (e.target.closest('.cl-on')) CL.items[i].on = !CL.items[i].on; else if (e.target.closest('.cl-x')) CL.items.splice(i, 1); else return;
+  renderCL(); saveCL();
+});
+$('.nav[data-view="models"]').addEventListener('click', loadCL);
 if (API) {
   connectEvents(); loadStatus(); loadCloud(); pollSystem();
   fetch('/api/status').then(r => r.json()).then(s => {

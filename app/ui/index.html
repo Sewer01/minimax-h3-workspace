@@ -2336,6 +2336,7 @@ const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: '
 const LIB = [];
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
 const ICON = {
+  use: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 3 2.8 5.8 6.2.9-4.5 4.4 1 6.3L12 17.5l-5.5 2.9 1-6.3L3 9.7l6.2-.9z"/></svg>',
   del: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>',
@@ -2424,6 +2425,7 @@ function renderLib() {
         ${it.fav ? `<span class="li-fav">${ICON.star}</span>` : ''}
         <span class="li-check">${selected.has(it.id) ? '✓' : ''}</span>
         <div class="li-act">
+          <button data-act="use" title="Использовать в workflow">${ICON.use}</button>
           <button data-act="save" title="Сохранить на компьютер">${ICON.save}</button>
           <button data-act="fav" title="Избранное">${ICON.star}</button>
           <button data-act="del" title="Удалить">${ICON.del}</button>
@@ -2519,6 +2521,7 @@ $('#lib').addEventListener('click', e => {
   const act = e.target.closest('[data-act]')?.dataset.act;
   if (act === 'del') askDelete([id]);
   else if (it.missing) toast('Файла этого видео нет на диске (его удалили). Нажмите корзину, чтобы убрать запись.');
+  else if (act === 'use') useMenu(it);
   else if (act === 'save') saveItems([it]);
   else if (act === 'fav') { setFav(it, !it.fav); renderLib(); toast(it.fav ? 'Добавлено в избранное' : 'Убрано из избранного'); }
   else openViewer(id);
@@ -3452,21 +3455,80 @@ document.addEventListener('click', e => {
     const th = ev.target.closest('.cw-th'); if (!th) return;
     const it = LIB.find(x => x.id === th.dataset.id); if (!it) return;
     try {
-      let blob;
-      if (it.kind === 'image') blob = await (await fetch(it.url)).blob();
-      else {  // a video: take its last frame, handy for continuing a scene
-        const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = it.url;
-        await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = no; });
-        v.currentTime = Math.max(0, v.duration - 0.05);
-        await new Promise((ok, no) => { v.onseeked = ok; v.onerror = no; });
-        const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
-        blob = await new Promise(ok => c.toBlob(ok, 'image/png'));
-      }
-      await setDropFile(input, new File([blob], `${it.id}.${it.kind === 'image' ? (it.ext || 'png') : 'png'}`, { type: blob.type || 'image/png' }));
+      await setDropFile(input, await libToFile(it));
       m.hidden = true; toast('Картинка взята из Библиотеки');
     } catch { toast('Не удалось взять файл'); }
   };
 }, true);
+async function libToFile(it) {
+  let blob;
+  if (it.kind === 'image') blob = await (await fetch(it.url)).blob();
+  else {  // a video: take its last frame, handy for continuing a scene
+    const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = it.url;
+    await new Promise((ok, no) => { v.onloadedmetadata = ok; v.onerror = no; });
+    v.currentTime = Math.max(0, v.duration - 0.05);
+    await new Promise((ok, no) => { v.onseeked = ok; v.onerror = no; });
+    const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
+    blob = await new Promise(ok => c.toBlob(ok, 'image/png'));
+  }
+  return new File([blob], `${it.id}.${it.kind === 'image' ? (it.ext || 'png') : 'png'}`, { type: blob.type || 'image/png' });
+}
+
+/* ---------- Library -> workflow: "Use in…" button and the side tray to drag from ---------- */
+const USE_TARGETS = [['video', 'Image-to-Video'], ['lipsync', 'Lipsync / клип'], ['refs', 'Референсы'], ['actor', 'Актёрская игра'], ['action', 'Экшн-сцены']];
+function freeSlot(view) {
+  const root = $('#view-' + view); if (!root) return null;
+  const s = $$('label.drop:not(.disabled):not(.filled), label.ref:not(.filled)', root)[0];
+  return s && $('input[type=file]', s);
+}
+async function useInWorkflow(it, view) {
+  const input = freeSlot(view);
+  if (!input) { toast('В этом разделе нет свободного места для картинки'); return false; }
+  try { const f = await libToFile(it); goTo(view); await setDropFile(input, f); toast('Картинка отправлена в «' + USE_TARGETS.find(t => t[0] === view)[1] + '»'); return true; }
+  catch { toast('Не удалось взять файл'); return false; }
+}
+function useMenu(it) {
+  let m = $('#useMenu');
+  if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'useMenu'; document.body.append(m); }
+  m.hidden = false;
+  m.innerHTML = '<div class="box" style="padding:20px;max-width:360px"><div class="card-h"><h3>Куда отправить?</h3><button class="btn" data-x type="button">Закрыть</button></div><div style="display:grid;gap:8px">'
+    + USE_TARGETS.filter(t => !$(`.nav[data-view="${t[0]}"]`)?.disabled).map(t => `<button class="btn" data-v="${t[0]}" type="button">${t[1]}</button>`).join('') + '</div>'
+    + (it.kind === 'image' ? '' : '<div class="hint" style="margin-top:10px">Из видео берётся последний кадр.</div>') + '</div>';
+  m.onclick = async e => {
+    if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; }
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    m.hidden = true; await useInWorkflow(it, b.dataset.v);
+  };
+}
+// the tray: the latest library pictures, drag one onto any picture slot
+(() => {
+  const tray = document.createElement('div'); tray.id = 'libTray';
+  tray.innerHTML = '<button class="lt-tab" type="button" title="Последние картинки из Библиотеки — перетащите на нужное место">Библиотека</button><div class="lt-body" hidden></div>';
+  document.body.append(tray);
+  const st = document.createElement('style');
+  st.textContent = '#libTray{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:30;display:flex;align-items:center}#libTray[hidden]{display:none}'
+    + '.lt-tab{writing-mode:vertical-rl;padding:12px 6px;border-radius:10px 0 0 10px;background:var(--card,#222);border:1px solid var(--line-2);border-right:0;color:var(--text);font-size:12px;font-weight:700;cursor:pointer}'
+    + '.lt-body{width:130px;max-height:70vh;overflow:auto;padding:8px;display:grid;gap:8px;background:var(--bg-2);border:1px solid var(--line-2);border-radius:12px 0 0 12px}'
+    + '.lt-body img,.lt-body video{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:grab;display:block}';
+  document.head.append(st);
+  const body = $('.lt-body', tray);
+  const fill = () => {
+    const items = LIB.filter(it => !it.missing && it.url).sort((a, b) => b.date - a.date).slice(0, 12);
+    body.innerHTML = items.length ? items.map(it => it.kind === 'image' ? `<img src="${it.url}" draggable="true" data-id="${it.id}" alt="">` : `<video src="${it.url}#t=0.5" preload="metadata" muted draggable="true" data-id="${it.id}"></video>`).join('') : '<div class="hint">Пока пусто</div>';
+  };
+  $('.lt-tab', tray).onclick = () => { body.hidden = !body.hidden; if (!body.hidden) fill(); };
+  body.addEventListener('dragstart', e => { const t = e.target.closest('[data-id]'); if (t) { e.dataTransfer.setData('text/h3lib', t.dataset.id); e.dataTransfer.effectAllowed = 'copy'; } });
+  const sync = () => { tray.hidden = !!$('#view-library.active, #view-models.active, #view-agent.active, #view-queue.active'); };
+  new MutationObserver(sync).observe($('main, body'), { subtree: true, attributes: true, attributeFilter: ['class'] }); sync();
+  document.addEventListener('dragover', e => { if (e.dataTransfer.types.includes('text/h3lib') && e.target.closest('label.drop, label.ref')) e.preventDefault(); }, true);
+  document.addEventListener('drop', async e => {
+    const id = e.dataTransfer.getData('text/h3lib'); if (!id) return;
+    const lb = e.target.closest('label.drop, label.ref'); if (!lb) return;
+    e.preventDefault(); e.stopPropagation(); lb.classList.remove('over');
+    const it = byId(id), input = $('input[type=file]', lb); if (!it || !input) return;
+    try { await setDropFile(input, await libToFile(it)); toast('Картинка взята из Библиотеки'); } catch { toast('Не удалось взять файл'); }
+  }, true);
+})();
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest('#cwRs'); if (!h) return;
   const cols = h.parentElement, box = $('#cwBody'); h.classList.add('drag'); h.setPointerCapture(e.pointerId);

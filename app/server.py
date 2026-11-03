@@ -137,7 +137,7 @@ class App:
         modes = list(self.config.get("modes") or catalog.MODE_ROLES)
         if "actor" not in modes and ("refs" in modes or "lipsync" in modes):
             modes.append("actor")  # same models, so set-ups made before this mode existed get it too
-        return modes
+        return modes + [m for m in getattr(self, "auto_modes", ()) if m not in modes]
 
     # ---------- ComfyUI connection ----------
 
@@ -188,19 +188,20 @@ class App:
             except Exception:
                 lst = []
             visible[cat] = lst or []
-        names, missing = {}, []
-        needed = catalog.roles_for(self.modes())
+        names, found, entries = {}, set(), {}
         for role, variant in self.choice().items():
-            entry = catalog.model_entry(role, variant)
+            entry = entries[role] = catalog.model_entry(role, variant)
             picked = (self.config.get("model_pick") or {}).get(role)  # a file the user chose by hand
             hit = picked if picked in visible[entry["category"]] else next(
                 (n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] == entry["file"]), None)
+            names[role] = hit or entry["name"]
             if hit:
-                names[role] = hit
-            else:
-                names[role] = entry["name"]
-                if role in needed:
-                    missing.append(entry)
+                found.add(role)
+        # modes added after a set-up was made: with your own ComfyUI they switch on by themselves when the files are there
+        self.auto_modes = {m for m in ("krea", "qwen") if self.config.get("engine") == "external"
+                           and all(r in found for r in catalog.MODE_ROLES[m])}
+        needed = catalog.roles_for(self.modes())
+        missing = [entries[r] for r in needed if r in entries and r not in found]
         self.model_names, self.missing = names, missing
         return names, missing
 
@@ -845,6 +846,55 @@ class App:
             "prompt": prompt, "aspect": "", "q": "", "len": 0.0, "res": "",
             "seed": seed if isinstance(seed, (int, float)) else None}, last_output=True,
             titles={nid: (n.get("_meta") or {}).get("title", "") for nid, n in graph.items() if n["class_type"].startswith("Save")})
+
+    async def read_image_form(self, req):
+        """Multipart form of the picture sections: text fields plus one optional file `image`."""
+        if self.rh():
+            raise web.HTTPBadRequest(text="Картинки работают только на своём ComfyUI (не в облаке RunningHub).")
+        form, image = {}, None
+        async for field in await req.multipart():
+            if field.name == "image" and field.filename:
+                image = await self.upload_input(field)
+            else:
+                form[field.name] = await field.text()
+        seed = int(form["seed"]) if form.get("seed", "").isdigit() else random.randrange(2 ** 50)
+        return form, image, seed
+
+    async def h_generate_krea(self, req):
+        await self.need_models("krea")
+        form, _, seed = await self.read_image_form(req)
+        prompt = form.get("prompt", "").strip()
+        if not prompt:
+            raise web.HTTPBadRequest(text="Напишите промпт")
+        aspect = form.get("aspect", "16:9")
+        if aspect not in wf.KREA_SIZES:
+            raise web.HTTPBadRequest(text="Неизвестный формат")
+        width, height = wf.KREA_SIZES[aspect]
+        graph, stages = wf.krea_graph(self.model_names, prompt, width, height, seed)
+        return await self.queue(graph, stages, {
+            "mode": "krea", "sub": "Картинка по тексту", "prompt": prompt, "aspect": aspect, "q": "1K",
+            "len": 0.0, "res": f"{width}×{height}", "seed": seed})
+
+    async def h_generate_qwen(self, req):
+        await self.need_models("qwen")
+        form, image, seed = await self.read_image_form(req)
+        if not image:
+            raise web.HTTPBadRequest(text="Загрузите картинку")
+        if form.get("kind") == "sheet":
+            graph, stages, prompt = wf.qwen_sheet_graph(
+                self.model_names, image, seed, headless=form.get("headless", "1") != "0",
+                background=form.get("background", "grey"), marks=form.get("marks", "")[:300])
+            sub, res = "Лист персонажа", "%d×%d" % wf.SHEET_SIZE
+            prompt = "Лист персонажа" + (": " + form["marks"].strip()[:80] if form.get("marks", "").strip() else "")
+        else:
+            prompt = form.get("prompt", "").strip()
+            if not prompt:
+                raise web.HTTPBadRequest(text="Напишите, что изменить на картинке")
+            mp = wf.QWEN_MP.get(form.get("size", "1"), 1.0)
+            graph, stages = wf.qwen_edit_graph(self.model_names, prompt, image, mp, seed)
+            sub, res = "Правка картинки", ""
+        return await self.queue(graph, stages, {
+            "mode": "qwen", "sub": sub, "prompt": prompt, "aspect": "", "q": "", "len": 0.0, "res": res, "seed": seed})
 
     async def h_generate_video(self, req):
         await self.need_models("video")
@@ -1494,6 +1544,8 @@ def build_app(comfy_override=None):
         web.post("/api/open-driver-page", state.h_open_driver),
         web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
+        web.post("/api/generate/krea", state.h_generate_krea),
+        web.post("/api/generate/qwen", state.h_generate_qwen),
         web.post("/api/generate/lipsync", state.h_generate_lipsync),
         web.get("/api/nodes", state.h_nodes),
         web.get("/api/models/files", state.h_models_files),

@@ -371,3 +371,93 @@ def lipsync_graph(m, prompt, width, height, seconds, seed, audio, ref_images, sc
     stages.update({"15": "sample", "16": "upscale", "17": "upscale", "18": "upscale",
                    "19": "sample2", "20": "decode", "21": "save", "22": "save"})
     return g, stages
+
+
+# ---------- pictures: Krea 2 (text) and Qwen Image 2.1 (edit, character sheet) ----------
+
+# Krea 2 works at about 1 MP only
+KREA_SIZES = {"16:9": (1376, 768), "9:16": (768, 1376), "1:1": (1024, 1024), "4:3": (1184, 896),
+              "3:4": (896, 1184), "3:2": (1248, 832), "2:3": (832, 1248)}
+QWEN_MP = {"1": 1.0, "2": 2.0}
+SHEET_SIZE = (1920, 1088)
+SHEET_BG = {"grey": "light grey", "white": "white", "black": "black"}
+
+
+def krea_graph(m, prompt, width, height, seed):
+    """Krea 2 Turbo, text to picture: 10 steps, CFG 1, no negative prompt (the model has none)."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["krea_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["krea_clip"], "type": "krea2", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["krea_vae"]}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "5": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["4", 0]}},
+        "6": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        "7": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 10, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+            "model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0], "latent_image": ["6", 0]}},
+        "8": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}},
+        "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/krea", "images": ["8", 0]}},
+    }
+    stages = {"1": "load", "2": "load", "3": "load", "4": "encode", "5": "encode", "6": "encode",
+              "7": "sample", "8": "decode", "9": "save"}
+    return g, stages
+
+
+def _qwen_base(m, image, megapixels, prompt, seed, size=None):
+    """The graph of the "One Image Edit" / "Character Sheet" workflows on plain ComfyUI nodes.
+    `size` (width, height) gives an empty canvas of its own; otherwise the result keeps the picture's shape."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["qwen_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["qwen_clip"], "type": "qwen_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["qwen_vae"]}},
+        "4": {"class_type": "QwenImage21Cache", "inputs": {"device": "auto", "dtype": "default", "model": ["1", 0]}},
+        "5": {"class_type": "LoadImage", "inputs": {"image": image}},
+        "6": {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "upscale_method": "lanczos", "megapixels": megapixels, "resolution_steps": 32, "image": ["5", 0]}},
+        "7": {"class_type": "TextEncodeQwenImage21", "inputs": {
+            "prompt": prompt, "negative_prompt": "", "resolution": 0, "clip": ["2", 0],
+            "images.image_1": ["6", 0], "vae": ["3", 0]}},
+        "9": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 25, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+            "model": ["4", 0], "positive": ["7", 0], "negative": ["7", 1], "latent_image": ["7", 2]}},
+        "10": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["3", 0]}},
+        "11": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/qwen", "images": ["10", 0]}},
+    }
+    if size:
+        g["8"] = {"class_type": "EmptyLatentImage", "inputs": {"width": size[0], "height": size[1], "batch_size": 1}}
+        g["9"]["inputs"]["latent_image"] = ["8", 0]
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load", "5": "encode", "6": "encode", "7": "encode",
+              "8": "encode", "9": "sample", "10": "decode", "11": "save"}
+    return g, stages
+
+
+def qwen_edit_graph(m, prompt, image, megapixels, seed):
+    return _qwen_base(m, image, megapixels, prompt, seed)
+
+
+def sheet_prompt(headless=True, background="grey", marks=""):
+    """Four panels: full body front (without the head by default), full body back, close-up front, close-up profile.
+    Tested on Qwen Image 2.1 with a cartoon character: same style and outfit on all panels."""
+    bg = SHEET_BG.get(background, "light grey")
+    first = ("full-body front view, the figure has no head at all, not a mannequin and not a neck stump, the collar is "
+             "simply empty and the plain background shows through the neckline, standing in a relaxed neutral pose, "
+             "showing the whole outfit from the neckline to the shoes." if headless else
+             "full-body front view facing the viewer, standing in a relaxed neutral pose, showing the whole outfit "
+             "from head to shoes.")
+    keep = "Keep the same face, hairstyle, " + (marks.strip().rstrip(".,") + ", " if marks.strip() else "") \
+        + "clothing, colors, proportions and art style as in <image1> in every panel."
+    return (
+        "A character reference sheet of the character from <image1>, split into four equal panels side by side in one "
+        "row, all at the same scale, in the same art style as <image1>.\n"
+        f"Panel one: {first}\n"
+        "Panel two: full-body back view of the same character in the same pose and outfit, seen from behind, head fully visible.\n"
+        "Panel three: close-up head-and-shoulders portrait facing the viewer with a neutral expression.\n"
+        "Panel four: close-up head-and-shoulders portrait in profile, with the same lighting and scale as panel three.\n"
+        f"{keep}\n"
+        f"Plain solid {bg} background, soft even lighting, no text, no labels.")
+
+
+def qwen_sheet_graph(m, image, seed, headless=True, background="grey", marks=""):
+    prompt = sheet_prompt(headless, background, marks)
+    g, stages = _qwen_base(m, image, SHEET_SIZE[0] * SHEET_SIZE[1] / 1048576, prompt, seed, size=SHEET_SIZE)
+    return g, stages, prompt

@@ -45,6 +45,7 @@ def node_repo(pack):
 
 HF = "https://huggingface.co/{repo}/resolve/main/{path}"
 SUB = "MinimaxH3"  # subfolder inside each model category, same as the original workflows
+IMG_SUB = "Images"
 
 
 def _m(repo, path, size_gb, category, name=None, sub=SUB):
@@ -117,6 +118,29 @@ VARIANTS = {
     "motion_repair_lora": {
         "v1": _m("JOKER141/MiniMax-H3-General-Motion-Continuity-Repair", "Motion_Repair.safetensors", 0.16, "loras"),
     },
+    # pictures: Krea 2 (by text) and Qwen Image 2.1 (edit a picture, character sheet); both are plain ComfyUI nodes
+    "krea_unet": {
+        "int8": _m("Comfy-Org/Krea-2", "diffusion_models/krea2_turbo_int8_convrot.safetensors", 13.49,
+                   "diffusion_models", sub=IMG_SUB),
+    },
+    "krea_clip": {
+        "fp8": _m("Comfy-Org/Krea-2", "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", 5.24,
+                  "text_encoders", sub=IMG_SUB),
+    },
+    "krea_vae": {
+        "bf16": _m("Comfy-Org/Krea-2", "vae/qwen_image_vae.safetensors", 0.25, "vae", sub=IMG_SUB),
+    },
+    "qwen_unet": {
+        "int8": _m("Comfy-Org/Qwen-Image-2.1", "diffusion_models/qwen_image_2.1_int8_convrot.safetensors", 7.26,
+                   "diffusion_models", sub=IMG_SUB),
+    },
+    "qwen_clip": {
+        "int8": _m("Comfy-Org/Qwen-Image-2.1", "text_encoders/qwen3vl_8b_int8_convrot.safetensors", 9.35,
+                   "text_encoders", sub=IMG_SUB),
+    },
+    "qwen_vae": {
+        "bf16": _m("Comfy-Org/Qwen-Image-2.1", "vae/qwen_image_2.1_vae_bf16.safetensors", 0.68, "vae", sub=IMG_SUB),
+    },
 }
 
 # LoRA from the original action workflow that has no public download; used when the user has it
@@ -137,9 +161,16 @@ ROLE_TITLES = {
     "vocal_model": "Отделение голоса от музыки (MelBand RoFormer)",
     "realism_lora": "LoRA «Реализм людей» (по желанию)",
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
+    "krea_unet": "Основная модель — Картинка по тексту (Krea 2)",
+    "krea_clip": "Текстовый энкодер Krea 2 (Qwen3-VL 4B)",
+    "krea_vae": "VAE для Krea 2",
+    "qwen_unet": "Основная модель — Правка картинки (Qwen Image 2.1)",
+    "qwen_clip": "Текстовый энкодер Qwen (Qwen3-VL 8B)",
+    "qwen_vae": "VAE для Qwen Image 2.1",
 }
 
-MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены"}
+MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены",
+               "krea": "Картинка по тексту", "qwen": "Правка картинки"}
 
 # Which roles each mode needs.
 MODE_ROLES = {
@@ -149,6 +180,8 @@ MODE_ROLES = {
     # same models as references: dialogue scenes with a voice sample, acting-first prompts
     "actor": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora"],
     "action": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
+    "krea": ["krea_unet", "krea_clip", "krea_vae"],
+    "qwen": ["qwen_unet", "qwen_clip", "qwen_vae"],
 }
 # Small extras downloaded with a mode but not required to run it.
 MODE_OPTIONAL = {
@@ -163,7 +196,9 @@ ALL_ROLES = list(VARIANTS)
 DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
                   "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
                   "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
-                  "realism_lora": "v1", "motion_repair_lora": "v1"}
+                  "realism_lora": "v1", "motion_repair_lora": "v1",
+                  "krea_unet": "int8", "krea_clip": "fp8", "krea_vae": "bf16",
+                  "qwen_unet": "int8", "qwen_clip": "int8", "qwen_vae": "bf16"}
 
 
 PROFILES = {

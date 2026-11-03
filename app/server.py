@@ -310,16 +310,28 @@ class App:
         files = [f for out in outputs.values() for lst in out.values() if isinstance(lst, list)
                  for f in lst if isinstance(f, dict) and "filename" in f]
         videos = [f for f in files if f["filename"].lower().endswith((".mp4", ".webm", ".mkv", ".mov"))]
-        if not videos:
-            await self.broadcast({"type": "error", "prompt_id": pid, "message": "ComfyUI не вернул видеофайл"})
+        images = [f for f in files if f["filename"].lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
+                  and f.get("type", "output") == "output"]
+        if not videos and not images:
+            await self.broadcast({"type": "error", "prompt_id": pid, "message": "ComfyUI не вернул ни видео, ни картинку"})
             return
-        item = dict(job["meta"], id=uuid.uuid4().hex[:12], prompt_id=pid,
-                    date=datetime.now().isoformat(timespec="seconds"), fav=False, file=videos[-1] if job.get("last_output") else videos[0])
-        meta = videos[0].get("metadata") or {}
-        if meta.get("width") and meta.get("height"):
-            item["res"] = f'{meta["width"]}×{meta["height"]}'
-        self.library.add(item)
-        await self.broadcast({"type": "done", "prompt_id": pid, "item": self.public(item)})
+        if videos:
+            picked = [videos[-1] if job.get("last_output") else videos[0]]
+        else:  # a workflow that makes pictures: every saved picture goes to the library
+            picked = images[:8]
+        items = []
+        for f in picked:
+            item = dict(job["meta"], id=uuid.uuid4().hex[:12], prompt_id=pid,
+                        date=datetime.now().isoformat(timespec="seconds"), fav=False, file=f,
+                        ext=Path(f["filename"]).suffix.lstrip(".").lower() or "mp4")
+            if not videos:
+                item["kind"] = "image"
+            meta = f.get("metadata") or {}
+            if meta.get("width") and meta.get("height"):
+                item["res"] = f'{meta["width"]}×{meta["height"]}'
+            self.library.add(item)
+            items.append(self.public(item))
+        await self.broadcast({"type": "done", "prompt_id": pid, "item": items[0], "items": items})
 
     async def broadcast(self, payload):
         text = json.dumps(payload, ensure_ascii=False)

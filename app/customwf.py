@@ -123,8 +123,8 @@ def analyze(graph, infos):
                 w.pop("options", None)
             widgets.append(w)
     outputs = [n["class_type"] for n in graph.values() if n["class_type"] in OUTPUTS_VIDEO]
-    if not outputs:
-        notes.append("В этом workflow нет узла сохранения видео: результат не попадёт в Библиотеку.")
+    if not outputs and not any(n["class_type"] == "SaveImage" for n in graph.values()):
+        notes.append("В этом workflow нет узла сохранения (видео или картинки): результат не попадёт в Библиотеку.")
     return {"widgets": widgets, "missing_nodes": missing_nodes, "notes": notes}
 
 

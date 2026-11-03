@@ -85,13 +85,14 @@ class JsApi:
     def save_video(self, item_id, filename):
         """The usual Windows "Save as" window, then the video is copied there."""
         import webview
-        res = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename=filename,
-                                              file_types=("Видео MP4 (*.mp4)",))
+        ext = os.path.splitext(filename)[1].lower() or ".mp4"
+        kinds = (f"Картинка {ext[1:].upper()} (*{ext})",) if ext != ".mp4" else ("Видео MP4 (*.mp4)",)
+        res = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename=filename, file_types=kinds)
         if not res:
             return {"ok": False, "cancelled": True}
         dest = res if isinstance(res, str) else res[0]
-        if not dest.lower().endswith(".mp4"):
-            dest += ".mp4"
+        if not dest.lower().endswith(ext):
+            dest += ext
         try:
             self._copy(item_id, dest)
         except Exception as e:

@@ -2260,7 +2260,7 @@ function fmtDate(d) {
   const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / 864e5);
   return days === 0 ? `сегодня, ${hm}` : days === 1 ? `вчера, ${hm}` : d.toLocaleDateString('ru', { day: 'numeric', month: 'short' }) + `, ${hm}`;
 }
-const fileName = it => `h3_${it.mode}_${it.date.toISOString().slice(0, 16).replace(/[-:T]/g, '')}.mp4`;
+const fileName = it => `h3_${it.mode}_${it.date.toISOString().slice(0, 16).replace(/[-:T]/g, '')}.${it.ext || 'mp4'}`;
 
 /* ---------- общая очередь заданий ---------- */
 const QUEUE = [];
@@ -2278,7 +2278,7 @@ function qHandle(m) {
     j.state = 'running'; j.stage = m.stage; j.step = m.step; j.max = m.max; j.t0 = j.t0 || performance.now();
   } else if (m.type === 'done') {
     j.state = 'done'; j.took = j.t0 ? (performance.now() - j.t0) / 1000 : 0;
-    if (!LIB.some(x => x.prompt_id === m.item.prompt_id && x.id === m.item.id)) addToLib(normItem(m.item), new Date(m.item.date));
+    (m.items || [m.item]).forEach(it => { if (!LIB.some(x => x.id === it.id)) addToLib(normItem(it), new Date(it.date)); });
     if (j.detached) toast(`Готово: ${MODE_NAME[j.mode] || 'видео'} — оно в Библиотеке`);
   } else if (m.type === 'error') { j.state = 'error'; j.msg = m.message; if (j.detached) toast('Задание не получилось: ' + m.message); }
   else if (m.type === 'interrupted') j.state = 'stopped';
@@ -2292,7 +2292,7 @@ function qRender() {
   $('#qClear').hidden = !fin.length;
   const row = (j, n) => {
     const run = j.state === 'running', samp = run && String(j.stage).startsWith('sample') && j.max;
-    let st = run ? (QSTAGE[j.stage] || 'идёт') : j.state === 'queued' ? 'ждёт своей очереди' : j.state === 'done' ? `готово за ${fmtTime(j.took)} · видео в Библиотеке`
+    let st = run ? (QSTAGE[j.stage] || 'идёт') : j.state === 'queued' ? 'ждёт своей очереди' : j.state === 'done' ? `готово за ${fmtTime(j.took)} · результат в Библиотеке`
       : j.state === 'stopped' ? 'остановлено' : 'ошибка: ' + (j.msg || '');
     if (samp) st += ` · шаг ${j.step || 0} из ${j.max}`;
     if (run && j.t0) st += ` · прошло ${fmtTime((performance.now() - j.t0) / 1000)}`;
@@ -2329,8 +2329,8 @@ function renderLib() {
     <div class="li${selected.has(it.id) ? ' sel' : ''}" data-id="${it.id}">
       <div class="li-th" data-act="open">
         ${it.missing ? '<div class="li-gone">файл не найден<small>видео удалили с диска</small></div>'
-          : it.url ? `<video src="${it.url}#t=0.5" preload="metadata" muted loop playsinline></video>` : `<img src="${it.thumb}" alt="">`}
-        <div class="li-play"><i>${ICON.play}</i></div>
+          : it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : it.url ? `<video src="${it.url}#t=0.5" preload="metadata" muted loop playsinline></video>` : `<img src="${it.thumb}" alt="">`}
+        ${it.kind === 'image' ? '' : `<div class="li-play"><i>${ICON.play}</i></div>`}
         ${it.fav ? `<span class="li-fav">${ICON.star}</span>` : ''}
         <span class="li-check">${selected.has(it.id) ? '✓' : ''}</span>
         <div class="li-act">
@@ -2408,8 +2408,9 @@ function setFav(it, fav) {
 function openViewer(id) {
   const it = byId(id); if (!it) return; openId = id;
   const vid = $('#viewer video'), img = $('#viewer img');
-  vid.hidden = !it.url; img.hidden = $('#viewer .li-play').hidden = !!it.url;
-  if (it.url) { vid.src = it.url; vid.play().catch(() => {}); } else img.src = it.thumb;
+  const pic = it.kind === 'image';
+  vid.hidden = !it.url || pic; img.hidden = $('#viewer .li-play').hidden = !!it.url && !pic;
+  if (pic) { vid.removeAttribute('src'); img.src = it.url; } else if (it.url) { vid.src = it.url; vid.play().catch(() => {}); } else img.src = it.thumb;
   $('#vwTitle').textContent = `${MODE_NAME[it.mode]} · ${it.sub}`;
   $('#vwKv').innerHTML = [...(it.res ? [['Разрешение', it.res]] : []), ...(it.aspect ? [['Формат', it.aspect]] : []), ...(it.q ? [['Качество', it.q]] : []), ...(it.len ? [['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`]] : []), ['Создано', fmtDate(it.date)], ...(it.seed != null ? [['Seed', String(it.seed)]] : []), ['Файл', fileName(it)]]
     .map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
@@ -3132,7 +3133,7 @@ function cwRender() {
     + (other.length ? `<details><summary style="cursor:pointer;color:var(--muted)">Все остальные настройки (${other.length})</summary><div style="display:grid;gap:12px;margin-top:12px">${other.map(w => row(w, `${w.title}`)).join('')}</div></details>` : '')
     + `</div></div>`;
   html += `<div class="card"><button class="go" id="cwGo"${r.missing_nodes.length ? ' disabled' : ''}>Сгенерировать</button><div class="status" id="cwStatus" style="margin-top:10px"></div>`
-    + `<video id="cwVideo" controls loop playsinline hidden style="width:100%;margin-top:12px;border-radius:12px;background:#000"></video></div>`;
+    + `<video id="cwVideo" controls loop playsinline hidden style="width:100%;margin-top:12px;border-radius:12px;background:#000"></video><img id="cwImage" alt="" hidden style="max-width:100%;margin-top:12px;border-radius:12px"></div>`;
   $('#cwBody').innerHTML = html;
 }
 $('#cwBody').addEventListener('input', e => {
@@ -3162,12 +3163,17 @@ $('#cwBody').addEventListener('click', async e => {
     if (!r.ok) throw new Error(res.error || txt || r.statusText);
     const prompt = (W.find(w => w.role === 'prompt') || {}).key;
     qAdd(res.prompt_id, 'custom', prompt ? String(CW.vals[prompt]) : CW.rep.name);
-    CW.cur = res.prompt_id; $('#cwVideo').hidden = true; status.textContent = 'Задание в очереди — смотрите раздел «Очередь»';
+    CW.cur = res.prompt_id; $('#cwVideo').hidden = true; $('#cwImage').hidden = true; status.textContent = 'Задание в очереди — смотрите раздел «Очередь»';
     onPrompt(res.prompt_id, ev => {
       if (CW.cur !== ev.prompt_id) return;
       const st = $('#cwStatus'); if (!st) return;
       if (ev.type === 'stage') st.textContent = (QSTAGE[ev.stage] || 'идёт') + (ev.max ? ` · шаг ${ev.step || 0} из ${ev.max}` : '');
-      else if (ev.type === 'done') { st.textContent = 'Готово — видео в Библиотеке'; const v = $('#cwVideo'); v.src = ev.item.url; v.hidden = false; v.play().catch(() => {}); offPrompt(ev.prompt_id); }
+      else if (ev.type === 'done') {
+        const pic = ev.item.kind === 'image'; st.textContent = `Готово — ${pic ? 'картинка' : 'видео'} в Библиотеке`;
+        const v = $('#cwVideo'), im = $('#cwImage'); v.hidden = pic; im.hidden = !pic;
+        if (pic) im.src = ev.item.url; else { v.src = ev.item.url; v.play().catch(() => {}); }
+        offPrompt(ev.prompt_id);
+      }
       else if (ev.type === 'error') { st.textContent = 'Ошибка ComfyUI: ' + ev.message; offPrompt(ev.prompt_id); }
       else if (ev.type === 'interrupted') { st.textContent = 'Остановлено'; offPrompt(ev.prompt_id); }
     });

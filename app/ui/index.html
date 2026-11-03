@@ -1028,7 +1028,10 @@ details[open] summary::before{content:'－ '}
       <!-- after setup: status -->
       <div id="mdStatus" hidden>
         <details id="mdCloudBox" style="margin-bottom:16px">
-          <summary style="cursor:pointer;color:var(--muted);padding:6px 2px">Облако RunningHub <small>(необязательно, нажмите, чтобы открыть)</small></summary>
+          <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;font-weight:700">
+            <span>Облако RunningHub <small style="color:var(--muted);font-weight:500">· необязательно, для тех, у кого нет мощной видеокарты</small></span>
+            <span class="btn mini" style="pointer-events:none">Показать ▾</span>
+          </summary>
           <div id="mdCloud" style="margin-top:10px"></div>
         </details>
         <div class="card" style="margin-bottom:16px">

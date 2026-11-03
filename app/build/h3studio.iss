@@ -31,7 +31,8 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "dist\MinimaxH3Workspace\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; the maker's own settings, library and keys live in dist\...\data: never ship or overwrite them
+Source: "dist\MinimaxH3Workspace\*"; DestDir: "{app}"; Excludes: "data,data\*,data_location.txt"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

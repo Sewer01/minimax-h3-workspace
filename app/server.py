@@ -994,10 +994,16 @@ class App:
         ref_size = form.get("ref_size") if form.get("ref_size") in ("match", "max") else "max"
         extra = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora"))) + self.custom_loras()
         width, height = wf.resolution(aspect, quality)
+        pika = None
+        if form.get("accel") == "pika":
+            if "pika_lora" in {m["role"] for m in self.missing}:
+                raise web.HTTPBadRequest(text="Файл Pika (pika_h3_flex_turbo_8step_hd_ref2va) не найден в ComfyUI. "
+                                              "Скачайте его в разделе «Модели» или выберите прежнее ускорение.")
+            pika, steps = self.model_names["pika_lora"], max(6, steps)
         graph, stages = wf.ref_graph(self.model_names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed, images, videos, audios,
-                                     steps, ref_size, extra)
+                                     steps, ref_size, extra, pika)
         sub = f"{len(images)} карт." + (f", {len(videos)} видео" if videos else "") + (f", {len(audios)} аудио" if audios else "") \
-            + f" · {steps} шагов"
+            + f" · {steps} шагов" + (" · Pika" if pika else "")
         return await self.queue(graph, stages, {
             "mode": "refs", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed, "steps": steps, "ref_size": ref_size})

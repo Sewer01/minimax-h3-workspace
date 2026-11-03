@@ -119,7 +119,7 @@ def _lora_chain(g, start, loras, base=60):
 
 
 def ref_graph(m, prompt, width, height, seconds, seed, images, videos, audios, steps=6,
-              ref_size="max", extra_loras=()):
+              ref_size="max", extra_loras=(), pika=None):
     """MinimaxH3_Ref to Video (ULTRA SPEED Singularity 4-step), single pass.
 
     The original samples with T8's Dual Clock node (shift video 12 / audio 4, beta);
@@ -135,13 +135,18 @@ def ref_graph(m, prompt, width, height, seconds, seed, images, videos, audios, s
             "clip": ["4", 0], "vae": ["5", 0], "audio_vae": ["6", 0], "prompt": prompt,
             "width": width, "height": height, "length": frames(seconds), "ref_image_size": ref_size}},
     }
-    model = _lora_chain(g, ["2", 0], list(extra_loras) + [(m["ref2v_turbo_lora"], 0.7)])
+    if pika:  # Pika H3 Flex Turbo (8 steps, HD): its own LoRA instead of the 4-step one; no sigma shift, scheduler "simple"
+        mref = _lora_chain(g, ["2", 0], list(extra_loras) + [(pika, 1.0)])
+        steps, scheduler = max(6, steps), "simple"
+    else:
+        model = _lora_chain(g, ["2", 0], list(extra_loras) + [(m["ref2v_turbo_lora"], 0.7)])
+        g["9"] = {"class_type": "MiniMaxH3SigmaShift", "inputs": {"model": model, "shift_video": 12.0, "shift_audio": 4.0}}
+        mref, scheduler = ["9", 0], "beta"
     g.update({
-        "9": {"class_type": "MiniMaxH3SigmaShift", "inputs": {"model": model, "shift_video": 12.0, "shift_audio": 4.0}},
-        "10": {"class_type": "BasicScheduler", "inputs": {"model": ["9", 0], "scheduler": "beta", "steps": steps, "denoise": 1.0}},
+        "10": {"class_type": "BasicScheduler", "inputs": {"model": mref, "scheduler": scheduler, "steps": steps, "denoise": 1.0}},
         "11": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
         "12": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
-        "13": {"class_type": "BasicGuider", "inputs": {"model": ["9", 0], "conditioning": ["8", 0]}},
+        "13": {"class_type": "BasicGuider", "inputs": {"model": mref, "conditioning": ["8", 0]}},
         "14": {"class_type": "SamplerCustomAdvanced", "inputs": {
             "noise": ["11", 0], "guider": ["13", 0], "sampler": ["12", 0], "sigmas": ["10", 0], "latent_image": ["8", 1]}},
         "15": {"class_type": "VAEDecode", "inputs": {"samples": ["14", 1], "vae": ["5", 0]}},

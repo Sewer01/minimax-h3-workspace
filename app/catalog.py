@@ -123,6 +123,10 @@ VARIANTS = {
     "motion_repair_lora": {
         "v1": _m("JOKER141/MiniMax-H3-General-Motion-Continuity-Repair", "Motion_Repair.safetensors", 0.16, "loras"),
     },
+    # Pika H3 Flex Turbo: 8-step HD LoRA for references; a viewer favourite for the generated sound
+    "pika_lora": {
+        "hd8": _m("Pika-Labs/Pika-H3-Flex-Turbo-LoRA", "pika_h3_flex_turbo_8step_hd_ref2va.safetensors", 3.91, "loras"),
+    },
     # pictures: Krea 2 (by text) and Qwen Image 2.1 (edit a picture, character sheet); both are plain ComfyUI nodes
     "krea_unet": {
         "int8": _m("Comfy-Org/Krea-2", "diffusion_models/krea2_turbo_int8_convrot.safetensors", 13.49,
@@ -166,6 +170,7 @@ ROLE_TITLES = {
     "vocal_model": "Отделение голоса от музыки (MelBand RoFormer)",
     "realism_lora": "LoRA «Реализм людей» (по желанию)",
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
+    "pika_lora": "LoRA Pika H3 Flex Turbo (ускорение для Референсов, хороший звук)",
     "krea_unet": "Основная модель — Картинка по тексту (Krea 2)",
     "krea_clip": "Текстовый энкодер Krea 2 (Qwen3-VL 4B)",
     "krea_vae": "VAE для Krea 2",
@@ -191,7 +196,7 @@ MODE_ROLES = {
 # Small extras downloaded with a mode but not required to run it.
 MODE_OPTIONAL = {
     "lipsync": ["realism_lora", "vocal_model"],
-    "refs": ["realism_lora", "motion_repair_lora"],
+    "refs": ["pika_lora", "realism_lora", "motion_repair_lora"],
     "actor": ["realism_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
 }
@@ -201,7 +206,7 @@ ALL_ROLES = list(VARIANTS)
 DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
                   "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
                   "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
-                  "realism_lora": "v1", "motion_repair_lora": "v1",
+                  "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8",
                   "krea_unet": "int8", "krea_clip": "fp8", "krea_vae": "bf16",
                   "qwen_unet": "int8", "qwen_clip": "int8", "qwen_vae": "bf16"}
 

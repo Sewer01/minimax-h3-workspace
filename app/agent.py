@@ -33,6 +33,7 @@ LLM_VARIANTS = {
 # Keywords that switch on the acting skill in "auto" mode (matched as word starts, any case).
 DEFAULT_SKILL_SETTINGS = {
     "hailuo-h3": {"mode": "always", "keywords": []},
+    "karta-personazha": {"mode": "off", "keywords": []},  # image skill: switched on by the image sections later
     "akterskaya-igra": {"mode": "auto", "keywords": [
         "актер", "актёр", "диалог", "реплик", "эмоци", "игра", "драм", "ссор", "спор", "плач", "слез", "слёз",
         "прощан", "признан", "разговор", "говорит", "говорят", "кричит", "шепчет", "обид", "ревн", "страх",

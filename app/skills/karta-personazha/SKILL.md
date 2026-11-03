@@ -1,0 +1,72 @@
+---
+name: karta-personazha
+description: Превращает вольное описание персонажа в промпт для чистого reference-листа персонажа из 4 панелей (в полный рост спереди и сзади, портрет анфас и в профиль) для Krea 2 и Qwen Image 2.1. Лист фиксирует лицо, одежду и стиль, чтобы персонаж не менялся в следующих картинках и видео. Включай, когда сообщение начинается со слова "персонаж" или просят карту, лист или референс персонажа.
+---
+
+# Карта персонажа
+
+Лист из 4 панелей на одной картинке: 1) в полный рост спереди, 2) в полный рост сзади, 3) портрет анфас, 4) портрет в профиль. Один и тот же человек (или существо), одна одежда, один фон, один свет, один масштаб в парах панелей. Ничего лишнего: без палитры, эмоций и сцен, если пользователь не попросил "полный лист".
+
+Готовый лист потом используют как референс: в Qwen (режим "по картинке") и в разделе Референсы для видео. Поэтому лист должен быть чистым и одинаковым по стилю во всех панелях.
+
+## Шаг 1. Четыре замка (всё на английском, плотно и конкретно)
+
+1. **DNA** - неизменяемая геометрия: возраст, форма лица, скулы, челюсть, нос, брови, глаза (цвет, форма), волосы (цвет, длина, стрижка, чёлка, борода), кожа (тон, веснушки, поры), приметы (шрамы, родинки, татуировки), телосложение, рост, осанка. Не клади сюда одежду, эмоцию, позу, свет.
+2. **STYLE** - один конкретный стиль: "realistic studio photograph", "soft hand-drawn anime illustration", "flat vector cartoon", "3D animated film render". Если пользователь стиль не назвал, выбери подходящий по описанию и скажи об этом одной строкой.
+3. **WARDROBE** - одна фирменная одежда, одинаковая во всех панелях, с материалом и цветом каждой вещи ("black wool blazer", "cream linen shirt", "dusty-blue cotton skirt").
+4. **BACKGROUND** - нейтральный студийный фон одного цвета (по умолчанию светло-серый), ровный мягкий свет.
+
+Цвета волос, глаз, кожи и каждой вещи фиксируй для себя и повторяй одинаково. Выдумывай только то, что нужно для листа и не противоречит словам пользователя.
+
+## Шаг 2. Композиция листа
+
+Четыре панели в один ряд, горизонтальный кадр. Панели 1 и 2 - одинаковый масштаб, вся фигура от головы до ног. Панели 3 и 4 - голова и плечи, одинаковый масштаб и свет.
+
+Правило по умолчанию для панели 1 (в полный рост спереди): голова рисуется как обычно, если пользователь не просил иначе. Если пользователь просит "без головы на первой панели" (для чистой одежды), напиши в панели 1: the figure has no head, the collar is empty and the plain background shows through the neckline.
+
+## Шаг 3. Выдача под модель
+
+Если приложение или пользователь назвал модель - выдай один промпт под неё. Если не названа - выдай два блока с подписями Krea 2 и Qwen 2.1.
+
+### Krea 2 (только текст, без негатива)
+
+- Один связный абзац на английском, до 1500 символов. Носитель первым словом.
+- Негатива нет, фразы "no X / without X" не работают. Вместо них пиши, что есть: "clean plain light-grey studio backdrop with only the four figures on it".
+- Не добавляй "masterpiece, 8k, beautiful".
+
+Шаблон:
+```prompt
+Character reference sheet in a single wide image, four panels side by side, [STYLE]. Panel one: full-body front view of [DNA short], standing in a neutral pose facing the viewer, wearing [WARDROBE]. Panel two: the same character in the same pose and outfit seen from behind, same scale as panel one. Panel three: head-and-shoulders portrait facing the viewer, neutral expression, [face details from DNA]. Panel four: head-and-shoulders portrait in profile, same lighting and scale as panel three. The face, hairstyle, skin tone and outfit are identical in all four panels. Even soft studio light, clean plain [BACKGROUND] backdrop with only the four figures on it.
+```
+
+### Qwen Image 2.1
+
+- Наблюдательный стиль, 150-300 слов, настоящее время, третье лицо; слово "vertical/horizontal/portrait/landscape" про кадр не пиши, размер задаётся в приложении.
+- Возраст словами этапа жизни ("woman in her thirties"), не числом. Цвет кожи и этничность - только если задал пользователь.
+- Негатив выдавай отдельным блоком ```negative, не внутри промпта.
+- Картинку-референс описывать вручную не нужно, если она загружена: используй "preserve the face, hair and outfit from the reference".
+
+Шаблон:
+```prompt
+The image is a [STYLE] character reference sheet split into four equal panels side by side on a plain [BACKGROUND] studio backdrop. In the first panel the [character] stands full-body facing the viewer in a neutral pose, [DNA], wearing [WARDROBE]. In the second panel the same character stands in the same pose seen from behind, same scale, the back of the hair and the outfit clearly visible. The third panel is a head-and-shoulders portrait facing the viewer with a neutral expression, showing [face details]. The fourth panel is a head-and-shoulders portrait in profile, with the same lighting and scale as the third. Soft even studio light falls from the front with gentle shadows. The face, hairstyle, skin tone and clothing are identical in every panel, and the composition is balanced and symmetrical.
+```
+```negative
+different face between panels, different hair between panels, different outfit, inconsistent proportions, merged or overlapping figures, scenic background, dramatic lighting, cropped figure, text, labels, captions, color swatches, watermark, blurry, deformed hands, extra limbs
+```
+
+## Шаг 4. Что дальше (одной строкой в конце)
+
+Скажи пользователю: сохранить лист в Библиотеку, потом загрузить его как референс в Qwen ("по картинке") или в раздел Референсы для видео. Для самой сцены с этим персонажем пиши новый промпт с фразой "preserve the face, hair and outfit from the reference".
+
+## Полный лист (только по явной просьбе: "полный лист", "с палитрой", "с эмоциями", "со сценами")
+
+Добавь к четырём панелям: ряд подписанных образцов цвета (волосы, глаза, кожа, каждая вещь), 4-6 портретов с эмоциями и 2-3 маленькие сцены. Подписи короткие, по-английски, в кавычках. Остальные правила те же.
+
+## Ошибки
+
+- Палитра, эмоции и сцены без просьбы - не добавлять.
+- Разный свет, масштаб или фон между панелями - писать одинаково для всех.
+- Одежда или эмоция в DNA - выносить в WARDROBE или убирать.
+- Негатив внутри промпта Krea или Qwen - Krea негатива не имеет, у Qwen он отдельным блоком.
+- Русский текст внутри промпта - промпт всегда на английском.
+- Реальные люди, бренды, персонажи франшиз - только обобщённый типаж.

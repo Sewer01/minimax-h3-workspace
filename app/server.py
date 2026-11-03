@@ -827,7 +827,8 @@ class App:
         prompt = next((str(values.get(w["key"], w["value"])) for w in report["widgets"] if w["role"] == "prompt"), "")
         seed = next((values.get(w["key"], w["value"]) for w in report["widgets"] if w["role"] == "seed"), None)
         return await self.queue(graph, customwf.stage_map(graph), {
-            "mode": "custom", "sub": wf_file["name"], "prompt": prompt, "aspect": "", "q": "", "len": 0.0, "res": "",
+            "mode": "custom", "sub": wf_file["name"], "wf": form.get("wf"), "cw_values": values,
+            "prompt": prompt, "aspect": "", "q": "", "len": 0.0, "res": "",
             "seed": seed if isinstance(seed, (int, float)) else None}, last_output=True)
 
     async def h_generate_video(self, req):

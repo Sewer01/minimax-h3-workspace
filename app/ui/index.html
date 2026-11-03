@@ -77,10 +77,15 @@
 @media (max-width:1150px){.cw-cols{grid-template-columns:1fr}.cw-right{position:static}}
 .cw-res{display:grid;gap:12px}
 .cw-frame{position:relative;border-radius:14px;overflow:hidden;background:var(--screen);min-height:260px;display:grid;place-items:center;border:1px solid var(--line)}
-.cw-frame img,.cw-frame video{width:100%;max-height:60vh;object-fit:contain;display:block}
+.cw-frame img,.cw-frame video{width:100%;height:100%;object-fit:contain;display:block}
 .cw-wait{color:var(--muted);padding:20px;text-align:center}
 .cw-bar{position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(var(--ov-rgb),.5)}.cw-bar i{display:block;height:100%;width:0;background:var(--grad);transition:width .4s}
 .cw-time{font-size:13.5px}
+.cw-acts{display:flex;gap:8px;flex-wrap:wrap}
+.cw-hh{font-weight:800;font-size:12.5px;margin-top:4px}
+.cw-hist{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px}
+.cw-th{aspect-ratio:1;border-radius:10px;overflow:hidden;border:2px solid var(--line);background:var(--screen);padding:0;display:grid;place-items:center}
+.cw-th.on{border-color:var(--accent)}.cw-th img,.cw-th video{width:100%;height:100%;object-fit:cover}
 .cw-ok{color:var(--ok);font-weight:700;padding:2px 4px}
 .cw-prompts{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
 .cw-pp{border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:14px;padding:12px 14px;background:var(--bg-2)}
@@ -3242,18 +3247,20 @@ memRestore();
 
 $('#optCloudShow').onclick = () => { $('.opt[data-opt="cloud"]').hidden = false; $('#optCloudShow').hidden = true; };
 /* ---------- свои workflow ---------- */
-const CW = { id: null, rep: null, vals: {}, files: {}, run: null };
+const CW = { id: null, rep: null, vals: {}, files: {}, run: null, shown: null };
 async function cwList(select) {
   let items = [];
   try { items = await (await fetch('/api/wf/list')).json(); } catch {}
   const sel = $('#cwSel');
   sel.innerHTML = items.length ? items.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('') : '<option value="">нет сохранённых</option>';
+  let last = ''; try { last = localStorage.getItem('h3-cw-last') || ''; } catch {}
+  if (!select && items.some(x => x.id === last)) select = last;
   if (select && items.some(x => x.id === select)) sel.value = select;
   $('#cwDel').hidden = !items.length;
   if (items.length) cwOpen(sel.value); else { CW.id = null; $('#cwBody').innerHTML = ''; $('#cwHowto').hidden = false; }
 }
 async function cwOpen(id) {
-  CW.id = id; CW.vals = {}; CW.files = {}; $('#cwHowto').hidden = true;
+  CW.id = id; CW.shown = null; try { localStorage.setItem('h3-cw-last', id); } catch {} CW.vals = {}; CW.files = {}; $('#cwHowto').hidden = true;
   $('#cwBody').innerHTML = '<div class="hint">Разбираем workflow…</div>';
   try {
     const r = await fetch('/api/wf/' + id);
@@ -3321,11 +3328,15 @@ function cwRender() {
     <div class="cw-frame" id="cwFrame"><div class="cw-wait" id="cwWait">Здесь появится результат</div>
       <img id="cwLive" alt="" hidden><video id="cwVideo" controls loop playsinline hidden></video><img id="cwImage" alt="" hidden>
       <div class="cw-bar"><i id="cwBar"></i></div></div>
+    <div class="cw-acts" id="cwActs" hidden><button class="btn" data-a="save" type="button">Сохранить</button><button class="btn" data-a="lib" type="button">В Библиотеке</button><button class="btn" data-a="restore" type="button" title="Вернуть в форму настройки этой генерации">Вернуть настройки</button></div>
     <div class="cw-time" id="cwTime"></div><div class="status" id="cwStatus"></div>
     <button class="go" id="cwGo"${r.missing_nodes.length ? ' disabled' : ''}>Сгенерировать</button>
-    <button class="stop" id="cwStop" hidden><i></i>Остановить</button></div>`;
+    <button class="stop" id="cwStop" hidden><i></i>Остановить</button>
+    <div class="cw-hh" id="cwHH" hidden>История</div><div class="cw-hist" id="cwHist"></div></div>`;
   $('#cwBody').innerHTML = `<div class="cw-cols"><div class="cw-left">${html}</div><div class="cw-right">${result}</div></div>`;
   cwTick();
+  if (!CW.run) cwShowLast();
+  cwHist();
 }
 $('#cwBody').addEventListener('input', e => {
   const k = e.target.dataset?.k; if (!k) return;
@@ -3340,6 +3351,30 @@ $('#cwBody').addEventListener('change', e => {
   const box = $('.cw-fp', tile); box.innerHTML = f && f.type.startsWith('image/') ? `<img src="${URL.createObjectURL(f)}" alt="">` : '<i>✓</i>';
   tile.classList.toggle('on', !!f);
 });
+const cwMine = () => LIB.filter(x => x.mode === 'custom' && (x.wf ? x.wf === CW.id : x.sub === CW.rep.name)).sort((a, b) => b.date - a.date);
+function cwFit(w, h) {  // the window takes the shape of the picture, never taller than 68% of the screen
+  const f = $('#cwFrame'); if (!f || !w || !h) return;
+  f.style.aspectRatio = `${w} / ${h}`; f.style.width = `min(100%, ${(68 * w / h).toFixed(1)}vh)`; f.style.minHeight = '0'; f.style.margin = '0 auto';
+}
+function cwShow(it) {
+  const f = $('#cwFrame'); if (!f || !it) return;
+  CW.shown = it.id;
+  const pic = it.kind === 'image', v = $('#cwVideo'), im = $('#cwImage');
+  $('#cwWait').hidden = true; $('#cwLive').hidden = true; v.hidden = pic; im.hidden = !pic;
+  if (pic) { v.removeAttribute('src'); im.onload = () => cwFit(im.naturalWidth, im.naturalHeight); im.src = it.url; }
+  else { v.onloadedmetadata = () => cwFit(v.videoWidth, v.videoHeight); v.src = it.url; v.muted = true; v.play().catch(() => {}); }
+  $('#cwActs').hidden = false; $('#cwActs [data-a="restore"]').hidden = !it.cw_values;
+  if (!CW.run) { $('#cwBar').style.width = '0'; $('#cwTime').innerHTML = `<b>${pic ? 'Картинка' : 'Видео'}</b> · ${fmtDate(it.date)}`; $('#cwStatus').textContent = [it.res, it.sub].filter(Boolean).join(' · '); }
+  $$('#cwHist .cw-th').forEach(t => t.classList.toggle('on', t.dataset.id === it.id));
+}
+function cwShowLast() { const mine = cwMine(); const it = mine.find(x => x.id === CW.shown) || mine[0]; if (it && !it.missing) cwShow(it); }
+function cwHist() {
+  const box = $('#cwHist'); if (!box) return;
+  const mine = cwMine().slice(0, 16);
+  $('#cwHH').hidden = !mine.length;
+  box.innerHTML = mine.map(it => `<button class="cw-th${it.id === CW.shown ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc(fmtDate(it.date))}">${it.missing ? '<i>—</i>'
+    : it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video>`}</button>`).join('');
+}
 function cwTick() {
   const r = CW.run, bar = $('#cwBar'); if (!r || !bar) return;
   const el = (performance.now() - r.t0) / 1000, sampling = r.stage.startsWith('sample') && r.max;
@@ -3361,10 +3396,9 @@ function cwFinish(kind, ev) {
   if (!$('#cwLive')) return;
   $('#cwLive').hidden = true; $('#cwStop').hidden = true; $('#cwGo').disabled = !!CW.rep.missing_nodes.length;
   if (kind === 'done') {
-    const pic = ev.item.kind === 'image', v = $('#cwVideo'), im = $('#cwImage');
-    $('#cwWait').hidden = true; v.hidden = pic; im.hidden = !pic; $('#cwBar').style.width = '100%';
-    if (pic) im.src = ev.item.url; else { v.src = ev.item.url; v.muted = true; v.play().catch(() => {}); }
-    $('#cwTime').innerHTML = `<b style="color:var(--ok)">Готово</b> · за ${took}`; $('#cwStatus').textContent = `${pic ? 'Картинка сохранена' : 'Видео сохранено'} в Библиотеку`;
+    const it = LIB.find(x => x.id === ev.item.id) || normItem(ev.item);
+    cwShow(it); cwHist(); $('#cwBar').style.width = '100%';
+    $('#cwTime').innerHTML = `<b style="color:var(--ok)">Готово</b> · за ${took}`; $('#cwStatus').textContent = `${it.kind === 'image' ? 'Картинка сохранена' : 'Видео сохранено'} в Библиотеку`;
   } else {
     $('#cwBar').style.width = '0'; $('#cwWait').hidden = false; $('#cwWait').textContent = 'Здесь появится результат';
     $('#cwTime').innerHTML = kind === 'error' ? '<b style="color:var(--pink)">Ошибка</b>' : '<b>Остановлено</b>';
@@ -3372,6 +3406,19 @@ function cwFinish(kind, ev) {
   }
 }
 $('#cwBody').addEventListener('click', async e => {
+  const th = e.target.closest('.cw-th'); if (th) { const it = LIB.find(x => x.id === th.dataset.id); if (it) cwShow(it); return; }
+  const act = e.target.closest('#cwActs [data-a]');
+  if (act) {
+    const it = LIB.find(x => x.id === CW.shown); if (!it) return;
+    if (act.dataset.a === 'save') saveItems([it]);
+    else if (act.dataset.a === 'lib') goTo('library');
+    else if (act.dataset.a === 'restore' && it.cw_values) {
+      Object.entries(it.cw_values).forEach(([k, v]) => { if (k in CW.vals) CW.vals[k] = v; });
+      try { localStorage.setItem('h3-cw-' + CW.id, JSON.stringify(CW.vals)); } catch {}
+      cwRender(); toast('Настройки возвращены');
+    }
+    return;
+  }
   if (e.target.closest('#cwStop')) {
     if (CW.run) { $('#cwStatus').textContent = 'Останавливаем…'; fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: CW.run.id }) }); }
     return;

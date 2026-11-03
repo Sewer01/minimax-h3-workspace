@@ -2226,15 +2226,17 @@ async function afterSetup() {
 }
 
 /* status after setup */
+let MD_ENGINE = '';
 function renderModels(s) {
   if (!s.models) return;
+  MD_ENGINE = s.engine;
   const have = s.models.filter(m => m.have).length;
   $('#modelsBadge').textContent = `${have} / ${s.models.length}`; $('#modelsBadge').hidden = false;
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
     const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки' })[x]).join(', ') || 'дополнительно';
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button></div>`;
+    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', qwen: 'Правка картинки' };
@@ -3221,6 +3223,27 @@ $('#mlist').addEventListener('click', async e => {
       await loadStatus(); toast('Файл выбран');
     };
   } catch { toast('ComfyUI не отвечает'); }
+});
+
+// another version of the same model: lighter, newer... only versions that replace this very file are offered
+$('#mlist').addEventListener('click', async e => {
+  const b = e.target.closest('[data-variant]'); if (!b) return;
+  const row = b.closest('.m'), role = b.dataset.variant;
+  const s = await (await fetch('/api/status')).json(), m = (s.models || []).find(x => x.role === role); if (!m) return;
+  $('.pv', row)?.remove(); b.hidden = true;
+  row.insertAdjacentHTML('beforeend', `<div class="pm pv"><select>${m.variants.map(v => `<option value="${v.key}"${v.current ? ' selected' : ''}>${esc(v.label)} · ${GB(v.size)}${v.have ? ' · есть на диске' : ''}</option>`).join('')}</select><button class="btn mini pri" type="button" data-ok>Выбрать</button><button class="btn mini" type="button" data-no>Отмена</button><div class="hint" style="flex-basis:100%">Подходят только версии этой же модели: они заменяют друг друга. Остальные файлы не затрагиваются.</div></div>`);
+  const pv = $('.pv', row);
+  $('[data-no]', pv).onclick = () => { pv.remove(); b.hidden = false; };
+  $('[data-ok]', pv).onclick = async () => {
+    const key = $('select', pv).value, v = m.variants.find(x => x.key === key);
+    if (v.current) { pv.remove(); b.hidden = false; return; }
+    let r;
+    try { r = await postJSON('/api/models/variant', { role, variant: key }); } catch (err) { toast(err.message); return; }
+    await loadStatus();
+    if (r.have) { toast('Версия выбрана'); return; }
+    if (MD_ENGINE !== 'managed') { toast(`Версия выбрана. Положите файл ${r.file} в папку моделей вашего ComfyUI или укажите его кнопкой «Указать файл…»`); return; }
+    toast(`Версия выбрана. Нужно скачать ${r.file} (${GB(r.size)}): нажмите «Докачать недостающие» вверху списка`);
+  };
 });
 /* ---------- запоминаем последние настройки и файлы, чтобы они были на месте после перезапуска ---------- */
 const MEM = { KEY: 'h3-mem', skip: new Set(['first', 'last', 'refs', 'dur0', 'start', 'end', 'faithful']), ready: false, sig: {}, audio: null };

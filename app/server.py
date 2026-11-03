@@ -131,7 +131,7 @@ class App:
         return Path(d) / catalog.COMFY_DIRNAME if d else None
 
     def choice(self):
-        return {**catalog.DEFAULT_CHOICE, **(self.config.get("choice") or {})}
+        return {**catalog.DEFAULT_CHOICE, **(self.config.get("choice") or {}), **(self.config.get("choice_override") or {})}
 
     def modes(self):
         modes = list(self.config.get("modes") or catalog.MODE_ROLES)
@@ -188,6 +188,7 @@ class App:
             except Exception:
                 lst = []
             visible[cat] = lst or []
+        self.visible = {cat: {n.replace("/", "\\").split("\\")[-1] for n in lst} for cat, lst in visible.items()}
         names, found, entries = {}, set(), {}
         for role, variant in self.choice().items():
             entry = entries[role] = catalog.model_entry(role, variant)
@@ -195,7 +196,7 @@ class App:
             def seen(file):
                 return next((n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] == file), None)
             hit = picked if picked in visible[entry["category"]] else seen(entry["file"])
-            if not hit:  # another variant of the same model the user already has (e.g. Singularity v1.3 instead of v2)
+            if not hit and role not in (self.config.get("choice_override") or {}):  # another variant the user already has (v1.3 instead of v2); never for a version picked by hand
                 hit = next(filter(None, (seen(v["file"]) for v in catalog.VARIANTS[role].values())), None)
             names[role] = hit or entry["name"]
             if hit:
@@ -405,7 +406,10 @@ class App:
                    "category": catalog.VARIANTS[role][variant]["category"],
                    "size": catalog.VARIANTS[role][variant]["size"], "have": role not in missing,
                    "needed": role in needed, "picked": role in (self.config.get("model_pick") or {}),
-                   "modes": [m for m, roles in catalog.MODE_ROLES.items() if role in roles]}
+                   "modes": [m for m, roles in catalog.MODE_ROLES.items() if role in roles],
+                   "variants": [{"key": k, "label": catalog.VARIANT_LABELS.get(role, {}).get(k, k), "size": v["size"],
+                                 "current": k == variant, "have": v["file"] in getattr(self, "visible", {}).get(v["category"], ())}
+                                for k, v in catalog.VARIANTS[role].items()] if len(catalog.VARIANTS[role]) > 1 else []}
                   for role, variant in self.choice().items() if role in needed]
         choice = self.choice()
         add_modes = {m: round(catalog.plan_size(choice, self.modes() + [m]) - catalog.plan_size(choice, self.modes()))
@@ -472,6 +476,25 @@ class App:
         self.config.update(model_pick=picks)
         await self.resolve_models()
         return web.json_response({"ok": True})
+
+    async def h_models_variant(self, req):
+        """Use another version of the same model (Singularity v1.3 -> v2, a lighter one...). The file is fetched by "Докачать"."""
+        body = await req.json()
+        role, variant = body.get("role"), body.get("variant") or ""
+        if role not in catalog.VARIANTS or (variant and variant not in catalog.VARIANTS[role]):
+            raise web.HTTPBadRequest(text="Неизвестная версия модели")
+        over = dict(self.config.get("choice_override") or {})
+        if variant:
+            over[role] = variant
+        else:
+            over.pop(role, None)
+        picks = dict(self.config.get("model_pick") or {})
+        picks.pop(role, None)  # a file picked by hand belonged to the old choice
+        self.config.update(choice_override=over, model_pick=picks)
+        await self.resolve_models()
+        entry = catalog.model_entry(role, self.choice()[role])
+        have = role not in {m["role"] for m in self.missing}
+        return web.json_response({"ok": True, "have": have, "size": entry["size"], "file": entry["file"]})
 
     async def h_system(self, _req):
         """CPU / RAM / GPU / disk readings for the sidebar."""
@@ -547,6 +570,7 @@ class App:
         hw = await asyncio.to_thread(engine.detect_hardware, install_dir)
         profile = body.get("profile") or self.config.get("profile")
         choice, _, verdict, profile = catalog.choose_models(hw, profile)
+        choice = {**choice, **(self.config.get("choice_override") or {})}  # a version the user picked by hand stays
         modes = [m for m in (body.get("modes") or self.modes()) if m in catalog.MODE_ROLES] or ["video"]
         if body.get("add_mode"):
             modes = sorted(set(self.modes()) | {body["add_mode"]}, key=list(catalog.MODE_ROLES).index)
@@ -1559,6 +1583,7 @@ def build_app(comfy_override=None):
         web.get("/api/nodes", state.h_nodes),
         web.get("/api/models/files", state.h_models_files),
         web.post("/api/models/pick", state.h_models_pick),
+        web.post("/api/models/variant", state.h_models_variant),
         web.get("/api/wf/list", state.h_wf_list),
         web.post("/api/wf/add", state.h_wf_add),
         web.get("/api/wf/{id}", state.h_wf_get),

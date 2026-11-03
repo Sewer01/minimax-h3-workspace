@@ -152,6 +152,14 @@ VARIANTS = {
     },
 }
 
+# Plain words for the "another version" choice in the Models section (only versions of the same model replace each other)
+VARIANT_LABELS = {
+    "fast_unet": {"int8": "обычная (int8)", "nvfp4": "лёгкая NVFP4 — только для видеокарт RTX 50-й серии"},
+    "lipsync_unet": {"full": "v1.3 полная (самая тяжёлая)", "pruned": "v1.3 облегчённая", "lite": "v1.3 лёгкая (слабее качество)",
+                     "v2": "v2 облегчённая — по отзывам, звук лучше", "v2_full": "v2 полная"},
+    "action_unet": {"int8": "обычная (int8)", "lite": "лёгкая (меньше памяти, чуть слабее)"},
+}
+
 # LoRA from the original action workflow that has no public download; used when the user has it
 ACTION_DMAD_LORA = "minimax_h3_dmad_full_dareties_v4_step600_comfy_fro"
 

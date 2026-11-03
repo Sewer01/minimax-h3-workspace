@@ -466,3 +466,36 @@ def qwen_sheet_graph(m, image, seed, headless=True, background="grey", marks="")
     prompt = sheet_prompt(headless, background, marks)
     g, stages = _qwen_base(m, image, SHEET_SIZE[0] * SHEET_SIZE[1] / 1048576, prompt, seed, size=SHEET_SIZE)
     return g, stages, prompt
+
+
+# ---------- improve quality of a finished video: SeedVR2 on plain ComfyUI nodes, one step, tiled ----------
+
+UPSCALE_SCALES = {"1.5": 1.5, "2": 2.0}
+UPSCALE_SEC_PER_MP_FRAME = 3.24  # measured on an RTX 4060 Ti 16 GB: 5 s of 1056x608 -> 1584x912 took ~10 minutes
+
+
+def upscale_graph(m, video, scale, seed):
+    g = {
+        "1": {"class_type": "LoadVideo", "inputs": {"file": video}},
+        "2": {"class_type": "GetVideoComponents", "inputs": {"video": ["1", 0]}},
+        "3": {"class_type": "ImageScaleBy", "inputs": {"upscale_method": "lanczos", "scale_by": scale, "image": ["2", 0]}},
+        "4": {"class_type": "SeedVR2Preprocess", "inputs": {"resized_images": ["3", 0]}},
+        "5": {"class_type": "VAELoader", "inputs": {"vae_name": m["seedvr_vae"]}},
+        "6": {"class_type": "UNETLoader", "inputs": {"unet_name": m["seedvr_unet"], "weight_dtype": "default"}},
+        "7": {"class_type": "VAEEncodeTiled", "inputs": {
+            "tile_size": 512, "overlap": 128, "temporal_size": 64, "temporal_overlap": 8, "pixels": ["4", 0], "vae": ["5", 0]}},
+        "8": {"class_type": "SeedVR2Conditioning", "inputs": {"model": ["6", 0], "vae_conditioning": ["7", 0]}},
+        "9": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 1, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+            "model": ["6", 0], "positive": ["8", 0], "negative": ["8", 1], "latent_image": ["7", 0]}},
+        "10": {"class_type": "VAEDecodeTiled", "inputs": {
+            "tile_size": 512, "overlap": 128, "temporal_size": 64, "temporal_overlap": 8, "samples": ["9", 0], "vae": ["5", 0]}},
+        "11": {"class_type": "SeedVR2PostProcessing", "inputs": {
+            "color_correction_method": "lab", "images": ["10", 0], "original_resized_images": ["3", 0]}},
+        "12": {"class_type": "CreateVideo", "inputs": {"images": ["11", 0], "audio": ["2", 1], "fps": ["2", 2]}},
+        "13": {"class_type": "SaveVideo", "inputs": {
+            "video": ["12", 0], "filename_prefix": "H3Workspace/upscale", "format": "auto", "format.codec": "auto"}},
+    }
+    stages = {"1": "load", "2": "load", "5": "load", "6": "load", "3": "encode", "4": "encode", "7": "encode", "8": "encode",
+              "9": "sample", "10": "decode", "11": "decode", "12": "save", "13": "save"}
+    return g, stages

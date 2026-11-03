@@ -1053,6 +1053,7 @@ details[open] summary::before{content:'－ '}
               <button class="mcard" data-m="action"><i></i><b>Экшн-сцены</b><span>Бой, погоня, бег, прыжки</span><small></small></button>
               <button class="mcard" data-m="krea"><i></i><b>Картинка по тексту</b><span>Krea 2: красивые картинки по описанию</span><small></small></button>
               <button class="mcard" data-m="qwen"><i></i><b>Правка картинки</b><span>Qwen: изменить свою картинку, лист персонажа</span><small></small></button>
+              <button class="mcard" data-m="upscale"><i></i><b>Улучшение качества видео</b><span>Увеличить готовое видео и добавить чёткости (долго, но по желанию)</span><small></small></button>
             </div>
             <div class="note" id="modeTotal" style="margin-top:4px"></div>
           </div>
@@ -1157,6 +1158,7 @@ details[open] summary::before{content:'－ '}
       <div class="v-btns">
         <button class="btn pri" id="vwSave">Сохранить на компьютер</button>
         <button class="btn" id="vwRepeat">Повторить с этими настройками</button>
+        <button class="btn" id="vwUp" title="Увеличить разрешение и добавить чёткости (SeedVR2). Долго: минуты на каждые несколько секунд видео">Улучшить качество…</button>
         <button class="btn" id="vwSeed" hidden>Зафиксировать seed этого видео</button>
         <button class="btn" id="vwFav">В избранное</button>
         <button class="btn danger" id="vwDel">Удалить</button>
@@ -2046,7 +2048,7 @@ function stop() {
 
 /* ---------- SETUP & MODELS view ---------- */
 const GB = b => b < 1e9 ? Math.round(b / 1e6) + ' МБ' : (b / 1e9).toFixed(1).replace(/\.0$/, '') + ' ГБ';
-const MODE_ORDER = ['video', 'lipsync', 'refs', 'actor', 'action', 'krea', 'qwen'];
+const MODE_ORDER = ['video', 'lipsync', 'refs', 'actor', 'action', 'krea', 'qwen', 'upscale'];
 // start with one mode: a full set is ~100 GB, most people need one task to begin with
 let setupInfo = null, setupOpt = 'new', setupProfile = null, setupModes = ['video'];
 const SETUP_STEPS = [['comfy', 'ComfyUI'], ['nodes', 'Ноды'], ['start', 'Запуск ComfyUI'], ['models', 'Модели']];
@@ -2235,11 +2237,11 @@ function renderModels(s) {
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
-    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки' })[x]).join(', ') || 'дополнительно';
+    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Улучшение качества' })[x]).join(', ') || 'дополнительно';
     return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
-  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', qwen: 'Правка картинки' };
+  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Улучшение качества видео' };
   $('#mdAdd').innerHTML = s.engine === 'managed' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
     `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${gb} ГБ)</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
@@ -2355,7 +2357,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 });
 
 /* ---------- LIBRARY ---------- */
-const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки' };
+const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Улучшение' };
 const LIB = [];
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
 const ICON = {
@@ -2532,6 +2534,7 @@ function openViewer(id) {
   $('#vwPrompt').textContent = it.prompt || 'без промпта';
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
   $('#vwSeed').hidden = it.seed == null;
+  $('#vwUp').hidden = pic || it.mode === 'upscale' || it.mode === 'custom' || !it.url || !!it.missing;
   $('#viewer').hidden = false;
 }
 function closeViewer() { $('#viewer').hidden = true; openId = null; const v = $('#viewer video'); v.pause(); v.removeAttribute('src'); }
@@ -3245,6 +3248,41 @@ $('#mlist').addEventListener('click', async e => {
     toast(`Версия выбрана. Нужно скачать ${r.file} (${GB(r.size)}): нажмите «Докачать недостающие» вверху списка`);
   };
 });
+
+/* ---------- improve quality of a finished video (SeedVR2) ---------- */
+$('#vwUp').onclick = async () => {
+  const it = byId(openId); if (!it) return;
+  const st = await (await fetch('/api/status')).json();
+  const have = (st.modes || []).includes('upscale') && !(st.models || []).some(m => m.role.startsWith('seedvr') && !m.have);
+  let m = $('#upMenu');
+  if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'upMenu'; document.body.append(m); }
+  m.hidden = false;
+  const [w, h] = (it.res || '').split('×').map(Number), secs = it.len || 5;
+  const est = sc => (w && h ? (w * sc) * (h * sc) / 1048576 : 1.4) * Math.round(secs * 24) * 3.24;  // seconds, measured on an RTX 4060 Ti 16 GB
+  const opt = (k, name) => { const out = w ? `${Math.round(w * k / 2) * 2}×${Math.round(h * k / 2) * 2}` : '';
+    return `<button class="btn up-s" data-k="${k}" type="button">${name}${out ? ` · ${out}` : ''}<small style="display:block;opacity:.7">примерно ${fmtTime(est(k))} на видеокарте уровня RTX 4060 Ti, у слабой — дольше</small></button>`; };
+  m.innerHTML = `<div class="box" style="padding:20px;max-width:460px"><div class="card-h"><h3>Улучшить качество видео</h3><button class="btn" data-x type="button">Закрыть</button></div>`
+    + `<div class="note"><span>Видео станет крупнее и чётче, звук останется прежним. Это долго: от нескольких минут до часа на видео. Задание пойдёт в очередь, вы можете заниматься другим, а готовое видео появится в Библиотеке отдельным файлом. Если ждать не хочется — просто закройте это окно.</span></div>`
+    + (have ? `<div style="display:grid;gap:10px;margin-top:14px">${opt(1.5, 'Увеличить в 1,5 раза')}${opt(2, 'Увеличить в 2 раза')}</div>`
+      : `<div class="hint" style="margin:14px 0">Для этого нужна модель SeedVR2 (около 4 ГБ). ${st.engine === 'managed' ? 'Нажмите, чтобы скачать, и вернитесь сюда.' : 'Если файлов seedvr2_3b_int8_convrot и seedvr2_ema_vae_fp16 нет в вашем ComfyUI, положите их в его папки моделей.'}</div>`
+        + (st.engine === 'managed' ? '<button class="btn pri" data-dl type="button">Скачать модель</button>' : '')) + '</div>';
+  m.onclick = async e => {
+    if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; }
+    if (e.target.closest('[data-dl]')) {
+      m.hidden = true; closeViewer();
+      if (!setupInfo) setupInfo = await (await fetch('/api/setup/info')).json();
+      const c = setupInfo.config;
+      try { await postJSON('/api/setup/install', { install_dir: c.install_dir, models_dir: c.models_dir || '', add_mode: 'upscale' }); goTo('models'); showSetupPane('progress'); setStep(2); resetProgress(); } catch (err) { toast(err.message); }
+      return;
+    }
+    const b = e.target.closest('.up-s'); if (!b) return;
+    try {
+      const r = await postJSON('/api/upscale', { id: it.id, scale: b.dataset.k });
+      qAdd(r.prompt_id, 'upscale', it.prompt || 'Улучшение качества');
+      m.hidden = true; closeViewer(); toast('Задание в очереди: готовое видео появится в Библиотеке'); goTo('queue');
+    } catch (err) { toast(err.message); }
+  };
+};
 /* ---------- запоминаем последние настройки и файлы, чтобы они были на месте после перезапуска ---------- */
 const MEM = { KEY: 'h3-mem', skip: new Set(['first', 'last', 'refs', 'dur0', 'start', 'end', 'faithful']), ready: false, sig: {}, audio: null };
 const memIdb = new Promise(res => {

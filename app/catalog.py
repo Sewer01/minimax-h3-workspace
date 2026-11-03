@@ -127,6 +127,14 @@ VARIANTS = {
     "pika_lora": {
         "hd8": _m("Pika-Labs/Pika-H3-Flex-Turbo-LoRA", "pika_h3_flex_turbo_8step_hd_ref2va.safetensors", 3.91, "loras"),
     },
+    # improve quality of a finished video (SeedVR2, plain ComfyUI nodes)
+    "seedvr_unet": {
+        "int8": _m("Comfy-Org/SeedVR2", "diffusion_models/seedvr2_3b_int8_convrot.safetensors", 3.46,
+                   "diffusion_models", sub=IMG_SUB),
+    },
+    "seedvr_vae": {
+        "fp16": _m("Comfy-Org/SeedVR2", "vae/seedvr2_ema_vae_fp16.safetensors", 0.5, "vae", sub=IMG_SUB),
+    },
     # pictures: Krea 2 (by text) and Qwen Image 2.1 (edit a picture, character sheet); both are plain ComfyUI nodes
     "krea_unet": {
         "int8": _m("Comfy-Org/Krea-2", "diffusion_models/krea2_turbo_int8_convrot.safetensors", 13.49,
@@ -179,6 +187,8 @@ ROLE_TITLES = {
     "realism_lora": "LoRA «Реализм людей» (по желанию)",
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
     "pika_lora": "LoRA Pika H3 Flex Turbo (ускорение для Референсов, хороший звук)",
+    "seedvr_unet": "Улучшение качества видео — модель SeedVR2 (3B)",
+    "seedvr_vae": "Улучшение качества видео — VAE SeedVR2",
     "krea_unet": "Основная модель — Картинка по тексту (Krea 2)",
     "krea_clip": "Текстовый энкодер Krea 2 (Qwen3-VL 4B)",
     "krea_vae": "VAE для Krea 2",
@@ -188,7 +198,7 @@ ROLE_TITLES = {
 }
 
 MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены",
-               "krea": "Картинка по тексту", "qwen": "Правка картинки"}
+               "krea": "Картинка по тексту", "qwen": "Правка картинки", "upscale": "Улучшение качества видео"}
 
 # Which roles each mode needs.
 MODE_ROLES = {
@@ -200,6 +210,7 @@ MODE_ROLES = {
     "action": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
     "krea": ["krea_unet", "krea_clip", "krea_vae"],
     "qwen": ["qwen_unet", "qwen_clip", "qwen_vae"],
+    "upscale": ["seedvr_unet", "seedvr_vae"],
 }
 # Small extras downloaded with a mode but not required to run it.
 MODE_OPTIONAL = {
@@ -216,7 +227,8 @@ DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "
                   "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
                   "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8",
                   "krea_unet": "int8", "krea_clip": "fp8", "krea_vae": "bf16",
-                  "qwen_unet": "int8", "qwen_clip": "int8", "qwen_vae": "bf16"}
+                  "qwen_unet": "int8", "qwen_clip": "int8", "qwen_vae": "bf16",
+                  "seedvr_unet": "int8", "seedvr_vae": "fp16"}
 
 
 PROFILES = {

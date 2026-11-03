@@ -202,7 +202,7 @@ class App:
             if hit:
                 found.add(role)
         # modes added after a set-up was made: with your own ComfyUI they switch on by themselves when the files are there
-        self.auto_modes = {m for m in ("krea", "qwen") if self.config.get("engine") == "external"
+        self.auto_modes = {m for m in ("krea", "qwen", "upscale") if self.config.get("engine") == "external"
                            and all(r in found for r in catalog.MODE_ROLES[m])}
         needed = catalog.roles_for(self.modes())
         missing = [entries[r] for r in needed if r in entries and r not in found]
@@ -342,7 +342,7 @@ class App:
                 if label:
                     item["label"] = label
             meta = f.get("metadata") or {}
-            if meta.get("width") and meta.get("height"):
+            if meta.get("width") and meta.get("height") and not (item.get("mode") == "upscale" and item.get("res")):
                 item["res"] = f'{meta["width"]}×{meta["height"]}'
             self.library.add(item)
             items.append(self.public(item))
@@ -886,6 +886,38 @@ class App:
                 form[field.name] = await field.text()
         seed = int(form["seed"]) if form.get("seed", "").isdigit() else random.randrange(2 ** 50)
         return form, image, seed
+
+    async def h_upscale(self, req):
+        """Improve the quality of a finished video from the library (SeedVR2), the sound stays."""
+        await self.need_models("upscale")
+        if self.rh():
+            raise web.HTTPBadRequest(text="Улучшение качества работает только на своём ComfyUI (не в облаке RunningHub).")
+        body = await req.json()
+        item = self.library.get(body.get("id", ""))
+        path = self.file_path(item) if item else None
+        if not item or not path or not path.exists() or item.get("kind") == "image":
+            raise web.HTTPBadRequest(text="Видео не найдено на диске")
+        scale = wf.UPSCALE_SCALES.get(str(body.get("scale")), 1.5)
+        data = aiohttp.FormData()
+        name = f"h3s_{uuid.uuid4().hex[:8]}{path.suffix or '.mp4'}"
+        data.add_field("image", path.read_bytes(), filename=name, content_type="video/mp4")
+        data.add_field("subfolder", "h3studio")
+        data.add_field("type", "input")
+        status, res = await self.comfy_json("POST", "/upload/image", data=data)
+        if status != 200:
+            raise web.HTTPBadGateway(text="Не удалось передать видео в ComfyUI")
+        video = f'{res["subfolder"]}/{res["name"]}' if res.get("subfolder") else res["name"]
+        seed = random.randrange(2 ** 40)
+        try:
+            w, h = (int(x) for x in str(item.get("res", "")).split("×"))
+            res = f"{round(w * scale / 2) * 2}×{round(h * scale / 2) * 2}"
+        except ValueError:
+            res = ""
+        graph, stages = wf.upscale_graph(self.model_names, video, scale, seed)
+        return await self.queue(graph, stages, {
+            "mode": "upscale", "sub": f"Улучшение ×{body.get('scale', '1.5')}", "prompt": item.get("prompt", "") or "Улучшение качества",
+            "aspect": item.get("aspect", ""), "q": item.get("q", ""), "len": item.get("len", 0.0), "res": res, "seed": seed,
+            "src": item["id"]})
 
     async def h_generate_krea(self, req):
         await self.need_models("krea")
@@ -1578,6 +1610,7 @@ def build_app(comfy_override=None):
         web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
+        web.post("/api/upscale", state.h_upscale),
         web.post("/api/generate/qwen", state.h_generate_qwen),
         web.post("/api/generate/lipsync", state.h_generate_lipsync),
         web.get("/api/nodes", state.h_nodes),

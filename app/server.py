@@ -402,6 +402,8 @@ class App:
             "vram_total": dev.get("vram_total"), "vram_free": dev.get("vram_free"),
             "comfy_version": stats["system"].get("comfyui_version"),
             "output_dir": str(self.output_dir) if self.output_dir else None,
+            "paths": {"install": self.config.get("install_dir"), "models": self.config.get("models_dir"),
+                      "assistant": str(self.llm.root), "data": str(DATA_DIR)},
             "models": models,
         })
 
@@ -1170,14 +1172,31 @@ class App:
             "speech_ready": self.speech_status()["ready"], "speech_size": speech.MODEL_SIZE + speech.WHISPER_ZIP_SIZE,
             "speech": self.speech_status(),
             "installed": self.llm.installed(variant), "running": self.llm.alive(),
-            "installing": bool(self.agent_installer), "dir": str(self.llm.root),
+            "installing": bool(self.agent_installer), "dir": str(self.llm.root), "managed": self.config.get("engine") == "managed",
+            "dir_chosen": bool(self.config.get("llm_dir")) or self.config.get("engine") == "managed",
             "skills": [self.skill_public(s) for s in self.skills.list()],
         })
 
-    async def h_agent_install(self, _req):
+    async def h_agent_install(self, req):
         if self.agent_installer:
             return web.json_response({"error": "Уже скачивается"}, status=409)
         variant = await self.llm_variant()
+        try:
+            wanted = ((await req.json()).get("dir") or "").strip()
+        except ValueError:
+            wanted = ""
+        if self.config.get("engine") != "managed" and not self.llm.installed(variant):
+            # with the user's own ComfyUI nothing goes anywhere the user did not name
+            if not wanted and not self.config.get("llm_dir"):
+                return web.json_response({"error": "Сначала укажите папку, куда скачать помощника"}, status=400)
+            if wanted:
+                target = Path(wanted) / "MinimaxH3_assistant"
+                try:
+                    target.mkdir(parents=True, exist_ok=True)
+                except OSError:
+                    return web.json_response({"error": "Не получается создать папку. Проверьте путь и диск"}, status=400)
+                self.config.update(llm_dir=str(target))
+                await self.llm_variant()
 
         async def emit(ev):
             await self.broadcast(dict(ev, type="agent_setup"))

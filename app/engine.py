@@ -247,7 +247,7 @@ class Installer:
                 proc = await asyncio.create_subprocess_exec(
                     str(py), "-s", "-m", "pip", "install", "-r", str(req),
                     stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
-                    creationflags=CREATE_NO_WINDOW)
+                    creationflags=CREATE_NO_WINDOW, env=local_env(comfy_root))
                 await proc.wait()
         await self.step("nodes", "done", label="Ноды установлены")
 
@@ -289,6 +289,18 @@ class Installer:
 
 # ---------- managed ComfyUI process ----------
 
+def local_env(root):
+    """Environment that keeps caches and temp files inside the install folder instead of the Windows profile."""
+    cache = Path(root) / "cache"
+    dirs = {"PIP_CACHE_DIR": "pip", "TRITON_CACHE_DIR": "triton", "TORCHINDUCTOR_CACHE_DIR": "inductor",
+            "HF_HOME": "huggingface", "TORCH_HOME": "torch", "XDG_CACHE_HOME": "xdg", "TEMP": "temp", "TMP": "temp"}
+    env = dict(os.environ)
+    for var, sub in dirs.items():
+        (cache / sub).mkdir(parents=True, exist_ok=True)
+        env[var] = str(cache / sub)
+    return env
+
+
 class ComfyProcess:
     def __init__(self, comfy_root, log_path):
         self.root = Path(comfy_root)
@@ -310,7 +322,7 @@ class ComfyProcess:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         log = open(self.log_path, "w", encoding="utf-8", errors="replace")
         self.proc = subprocess.Popen(args, cwd=self.root, stdout=log, stderr=subprocess.STDOUT,
-                                     creationflags=CREATE_NO_WINDOW)
+                                     creationflags=CREATE_NO_WINDOW, env=local_env(self.root))
 
     def alive(self):
         return self.proc is not None and self.proc.poll() is None

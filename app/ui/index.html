@@ -802,6 +802,10 @@ details[open] summary::before{content:'－ '}
               <div class="pb big"><i id="agBar"></i></div>
               <div class="pnow-s"><span id="agDlTxt"></span><button class="btn" id="agDlStop">Стоп</button></div>
             </div>
+            <div id="agDirWrap" hidden style="margin-top:12px">
+              <div class="hint" style="margin-bottom:6px">Куда скачать помощника. Всё останется только в этой папке, больше нигде.</div>
+              <div class="path on"><input id="agDir" spellcheck="false" placeholder="D:\H3Assistant"><button class="btn" data-pick="agDir">Обзор…</button></div>
+            </div>
             <button class="btn pri" id="agInstall" hidden style="margin-top:12px;width:100%"></button>
             <details id="agOwn" style="margin-top:12px">
               <summary>У меня уже есть модель — указать папку</summary>
@@ -2141,6 +2145,10 @@ function renderModels(s) {
   $('#mdEngine').innerHTML = s.engine === 'managed'
     ? `<span>Режим</span><b>встроенный ComfyUI ${s.comfy_version || ''}</b><span>Папка</span><b>${esc(setupInfo?.config?.install_dir || '')}</b><span>Видео</span><b>${esc(s.output_dir || '')}</b>`
     : `<span>Режим</span><b>ваш ComfyUI ${s.comfy_version || ''}</b><span>Видео</span><b>${esc(s.output_dir || 'папка output вашего ComfyUI')}</b>`;
+  const P = s.paths || {};
+  $('#mdEngine').insertAdjacentHTML('beforeend', (P.models ? `<span>Модели</span><b>${esc(P.models)}</b>` : '')
+    + (P.assistant ? `<span>Помощник (агент)</span><b>${esc(P.assistant)}</b>` : '')
+    + `<span>Настройки и список Библиотеки</span><b>${esc(P.data || '')} (мало места)</b>`);
 }
 $('#mdFix').onclick = async () => {
   if (!setupInfo) setupInfo = await (await fetch('/api/setup/info')).json();
@@ -2954,6 +2962,8 @@ async function agStatus() {
     ? '<br><span class="ok-t">✓ Распознавание речи готово: можно приложить аудио и говорить в микрофон.</span>'
     : '<br><span class="warn-t">Распознавание речи не скачано: без него нельзя приложить аудио и говорить голосом.</span>');
   $('#agOwnReset').hidden = !s.custom;
+  $('#agDirWrap').hidden = s.managed || s.installed || s.installing || s.dir_chosen;
+  $('#agModel').insertAdjacentHTML('beforeend', s.dir_chosen || s.installed ? `<br><span style="font-size:11px;word-break:break-all">Папка помощника: ${esc(s.dir)}</span>` : '');
   const cands = s.candidates || [];
   $('#agOwnPickWrap').hidden = cands.length < 2;
   $('#agOwnPick').innerHTML = cands.map(c =>
@@ -2979,7 +2989,11 @@ $('#agOwnPick').onchange = async e => {
   catch (err) { toast(err.message); }
 };
 $('#agOwnReset').onclick = async () => { await postJSON('/api/agent/model', { reset: true }); $('#agOwnDir').value = ''; toast('Снова встроенная Gemma'); agStatus(); };
-$('#agInstall').onclick = async () => { try { await postJSON('/api/agent/install'); agStatus(); } catch (e) { toast(e.message); } };
+$('#agInstall').onclick = async () => {
+  const dir = $('#agDir').value.trim(), s = AG.status || {};
+  if (!s.managed && !s.installed && !s.dir_chosen && !dir) { toast('Сначала укажите папку, куда скачать'); $('#agDir').focus(); return; }
+  try { await postJSON('/api/agent/install', { dir }); agStatus(); } catch (e) { toast(e.message); }
+};
 $('#agDlStop').onclick = () => postJSON('/api/agent/install/cancel');
 const agProg = { t: 0, b: 0 };
 function onAgentSetup(ev) {

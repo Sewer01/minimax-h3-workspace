@@ -248,6 +248,7 @@ details[open] summary::before{content:'－ '}
 .mode-cards.ext .mcard small{display:none}
 .btn.mini{padding:5px 10px;font-size:12px}
 .m .pm{grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.m .pm-q{flex:1 1 100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;outline:none}
 .m .pm select{flex:1;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 8px;color:var(--text);font-family:var(--mono);font-size:12px}
 /* audio editor tools: the part to cut out is hatched */
 .cutsel{position:absolute;top:0;bottom:0;border-left:2px solid var(--pink);border-right:2px solid var(--pink);background:repeating-linear-gradient(135deg,rgba(255,159,178,.28) 0 6px,rgba(255,159,178,.1) 6px 12px)}
@@ -1026,7 +1027,10 @@ details[open] summary::before{content:'－ '}
 
       <!-- after setup: status -->
       <div id="mdStatus" hidden>
-        <div id="mdCloud" style="margin-bottom:16px"></div>
+        <details id="mdCloudBox" style="margin-bottom:16px">
+          <summary style="cursor:pointer;color:var(--muted);padding:6px 2px">Облако RunningHub <small>(необязательно, нажмите, чтобы открыть)</small></summary>
+          <div id="mdCloud" style="margin-top:10px"></div>
+        </details>
         <div class="card" style="margin-bottom:16px">
           <div class="card-h"><h3>Движок</h3><button class="btn" id="mdReset">Изменить настройки</button></div>
           <div class="kv" id="mdEngine"></div>
@@ -1526,6 +1530,7 @@ function mountLoras(box, st, keys) {
   });
   box.onclick = e => { const el = e.target.closest('.lora'); if (!el || !e.target.closest('.lora-t')) return; const s = st.loras[el.dataset.k]; s.on = !s.on; paint(); };
   box.oninput = e => { const el = e.target.closest('.lora'); if (!el) return; st.loras[el.dataset.k].v = +e.target.value; paint(); };
+  st._paintLoras = paint;
   paint();
 }
 function loraForm(st, fd) { Object.entries(st.loras || {}).forEach(([k, s]) => fd.append('lora_' + k, s.on ? s.v : 'off')); }
@@ -1726,6 +1731,7 @@ aDrop.addEventListener('drop', e => { e.preventDefault(); aDrop.classList.remove
 
 async function loadAudio(f) {
   if (!f) return;
+  MEM.audio = f;
   stop();
   actx = actx || new AudioContext();
   try { abuf = await actx.decodeAudioData(await f.arrayBuffer()); }
@@ -2246,7 +2252,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
   if (!API) return;
   const s = await (await fetch('/api/status')).json();
   if (!s.configured) openSetup();
-  else { showSetupPane('status'); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false); loadNodes(); }
+  else { showSetupPane('status'); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false).then(() => { $('#mdCloudBox').open = !!CLOUD.enabled; }); loadNodes(); }
 });
 
 /* ---------- LIBRARY ---------- */
@@ -3090,13 +3096,100 @@ $('#mlist').addEventListener('click', async e => {
     const r = await (await fetch('/api/models/files?role=' + role)).json();
     if (!r.files?.length) { toast(`ComfyUI не видит файлов в папке ${r.folder}`); return; }
     b.hidden = true;
-    row.insertAdjacentHTML('beforeend', `<div class="pm"><select><option value="">как по умолчанию</option>${r.files.map(f => `<option>${esc(f)}</option>`).join('')}</select><button class="btn mini pri" type="button">Выбрать</button></div>`);
+    row.insertAdjacentHTML('beforeend', `<div class="pm"><input type="search" class="pm-q" placeholder="Поиск по имени…" spellcheck="false"><select><option value="">как по умолчанию</option>${r.files.map(f => `<option>${esc(f)}</option>`).join('')}</select><button class="btn mini pri" type="button">Выбрать</button></div>`);
+    $('.pm-q', row).oninput = e => {  // only the files whose name contains the typed words
+      const words = e.target.value.toLowerCase().split(/\s+/).filter(Boolean);
+      $$('.pm select option', row).forEach(o => { o.hidden = !!o.value && !words.every(w => o.textContent.toLowerCase().includes(w)); });
+      const first = $$('.pm select option', row).find(o => !o.hidden && o.value); if (words.length && first) first.selected = true;
+    };
     $('.pm .pri', row).onclick = async () => {
       await postJSON('/api/models/pick', { role, name: $('.pm select', row).value });
       await loadStatus(); toast('Файл выбран');
     };
   } catch { toast('ComfyUI не отвечает'); }
 });
+/* ---------- запоминаем последние настройки и файлы, чтобы они были на месте после перезапуска ---------- */
+const MEM = { KEY: 'h3-mem', skip: new Set(['first', 'last', 'refs', 'dur0', 'start', 'end', 'faithful']), ready: false, sig: {}, audio: null };
+const memIdb = new Promise(res => {
+  try {
+    const r = indexedDB.open('h3mem', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('files');
+    r.onsuccess = () => res(r.result); r.onerror = () => res(null);
+  } catch { res(null); }
+});
+async function memFile(op, key, value) {
+  const db = await memIdb; if (!db) return null;
+  return new Promise(res => {
+    try {
+      const tx = db.transaction('files', op === 'get' ? 'readonly' : 'readwrite'), st = tx.objectStore('files');
+      const rq = op === 'get' ? st.get(key) : op === 'put' ? st.put(value, key) : st.delete(key);
+      tx.oncomplete = () => res(rq.result); tx.onerror = tx.onabort = () => res(null);
+    } catch { res(null); }
+  });
+}
+const memStates = () => ({ video: [V, $('#vPrompt'), vUpd], lipsync: [L, $('#lPrompt'), lUpd],
+  ...Object.fromEntries(Object.entries(RM).map(([m, r]) => [m, [r.S, r.prompt(), r.upd]])) });
+function memSlots() {
+  const out = [['video/first', $('#dFirst')], ['video/last', $('#dLast')]];
+  $$('.ref', refsEl).forEach((r, i) => out.push([`lipsync/ref${i}`, r]));
+  Object.entries(RM).forEach(([m, r]) => {
+    $$('.ref', r.root).forEach((x, i) => out.push([`${m}/img${i}`, x]));
+    $$('.rm-vids .slot', r.root).forEach((x, i) => out.push([`${m}/vid${i}`, x]));
+    $$('.rm-auds .slot', r.root).forEach((x, i) => out.push([`${m}/aud${i}`, x]));
+  });
+  return out;
+}
+function memSave() {
+  if (!MEM.ready) return;
+  try {
+    const data = {};
+    Object.entries(memStates()).forEach(([k, [st, prompt]]) => {
+      const o = {}; Object.keys(st).forEach(p => { if (!MEM.skip.has(p) && typeof st[p] !== 'function') o[p] = st[p]; });
+      data[k] = { s: JSON.parse(JSON.stringify(o)), prompt: prompt.value };
+    });
+    data.lipsync.s.start = L.start; data.lipsync.s.end = L.end;
+    localStorage.setItem(MEM.KEY, JSON.stringify(data));
+  } catch {}
+  const slots = memSlots();
+  slots.forEach(([key, el]) => {
+    const f = el._file, sig = f ? `${f.name}|${f.size}|${f.lastModified}` : '';
+    if (MEM.sig[key] === sig) return;
+    MEM.sig[key] = sig;
+    if (f) memFile('put', key, f); else memFile('delete', key);
+  });
+  const a = MEM.audio, asig = a ? `${a.name}|${a.size}|${a.lastModified}` : '';
+  if (MEM.sig['lipsync/audio'] !== asig) { MEM.sig['lipsync/audio'] = asig; if (a) memFile('put', 'lipsync/audio', a); else memFile('delete', 'lipsync/audio'); }
+}
+async function memRestore() {
+  let data = null; try { data = JSON.parse(localStorage.getItem(MEM.KEY) || 'null'); } catch {}
+  const apply = () => {
+    if (!data) return;
+    Object.entries(memStates()).forEach(([k, [st, prompt, upd]]) => {
+      const d = data[k]; if (!d) return;
+      Object.entries(d.s || {}).forEach(([p, v]) => { if (!MEM.skip.has(p) && typeof st[p] !== 'function') st[p] = v; });
+      if (typeof d.prompt === 'string') { prompt.value = d.prompt; prompt.dispatchEvent(new Event('input')); }
+      st._paintLoras?.(); upd();
+    });
+  };
+  apply();
+  for (const [key, el] of memSlots()) {
+    const f = await memFile('get', key); if (!(f instanceof File)) continue;
+    const input = $('input', el); if (!input) continue;
+    const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files; input.dispatchEvent(new Event('change'));
+    MEM.sig[key] = `${f.name}|${f.size}|${f.lastModified}`;
+  }
+  const au = await memFile('get', 'lipsync/audio');
+  if (au instanceof File) {
+    await loadAudio(au); MEM.audio = au; MEM.sig['lipsync/audio'] = `${au.name}|${au.size}|${au.lastModified}`;
+    const ls = data?.lipsync?.s;
+    if (ls && ls.end > ls.start && ls.end <= L.dur0 + 0.01) { L.start = ls.start; L.end = ls.end; syncSel(); lUpd(); }
+  }
+  setTimeout(() => { apply(); MEM.ready = true; }, 800);  // adding a picture re-fits the format: put the saved choice back after that
+}
+setInterval(memSave, 2000);
+addEventListener('beforeunload', memSave);
+memRestore();
+
 /* ---------- свои workflow ---------- */
 const CW = { id: null, rep: null, vals: {}, files: {}, cur: null };
 async function cwList(select) {

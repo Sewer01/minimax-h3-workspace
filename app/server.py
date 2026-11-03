@@ -192,8 +192,11 @@ class App:
         for role, variant in self.choice().items():
             entry = entries[role] = catalog.model_entry(role, variant)
             picked = (self.config.get("model_pick") or {}).get(role)  # a file the user chose by hand
-            hit = picked if picked in visible[entry["category"]] else next(
-                (n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] == entry["file"]), None)
+            def seen(file):
+                return next((n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] == file), None)
+            hit = picked if picked in visible[entry["category"]] else seen(entry["file"])
+            if not hit:  # another variant of the same model the user already has (e.g. Singularity v1.3 instead of v2)
+                hit = next(filter(None, (seen(v["file"]) for v in catalog.VARIANTS[role].values())), None)
             names[role] = hit or entry["name"]
             if hit:
                 found.add(role)

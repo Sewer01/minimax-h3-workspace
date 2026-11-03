@@ -69,6 +69,11 @@ VARIANTS = {
                      "Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors", 20.97, "diffusion_models"),
         "lite": _m("WarmBloodAban/Minimax-h3_Singularity",
                    "Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors", 11.77, "diffusion_models"),
+        # v2: viewers reported that v1.3 generates sound badly
+        "v2": _m("WarmBloodAban/Minimax-h3_Singularity",
+                 "Minimax-h3_Singularity_ref2va_v2_pruned_int8.safetensors", 20.97, "diffusion_models"),
+        "v2_full": _m("WarmBloodAban/Minimax-h3_Singularity",
+                      "Minimax-h3_Singularity_ref2va_v2_int8.safetensors", 34.0, "diffusion_models"),
     },
     "text_encoder": {
         "nvfp4": _m("Comfy-Org/MiniMax-H3", "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",

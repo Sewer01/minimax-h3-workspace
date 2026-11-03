@@ -22,7 +22,7 @@ description: Превращает вольное описание персона
 
 Четыре панели в один ряд, горизонтальный кадр. Панели 1 и 2 - одинаковый масштаб, вся фигура от головы до ног. Панели 3 и 4 - голова и плечи, одинаковый масштаб и свет.
 
-Правило по умолчанию для панели 1 (в полный рост спереди): голова рисуется как обычно, если пользователь не просил иначе. Если пользователь просит "без головы на первой панели" (для чистой одежды), напиши в панели 1: the figure has no head, the collar is empty and the plain background shows through the neckline.
+Правило по умолчанию для панели 1 (в полный рост спереди), если персонаж - человек или гуманоид: головы на этой панели НЕТ. Это не манекен и не обрубок шеи: вырез горловины просто пустой, сквозь него виден фон. Так одежда видна целиком и ничто не отвлекает. Панель 2 (сзади) всегда с головой, панели 3 и 4 (портреты) тоже. Исключение: пользователь явно просит голову на панели 1 ("с головой", "покажи лицо и спереди") - тогда панель 1 рисуется с головой. Для животных и существ голову на панели 1 оставляй.
 
 ## Шаг 3. Выдача под модель
 
@@ -53,6 +53,20 @@ The image is a [STYLE] character reference sheet split into four equal panels si
 ```negative
 different face between panels, different hair between panels, different outfit, inconsistent proportions, merged or overlapping figures, scenic background, dramatic lighting, cropped figure, text, labels, captions, color swatches, watermark, blurry, deformed hands, extra limbs
 ```
+
+### Qwen по загруженной картинке (персонаж уже есть) - проверенный шаблон
+
+Когда у пользователя уже есть картинка персонажа и она загружена в приложение, не описывай внешность словами: ссылайся на `<image1>`. Этот промпт проверен на реальном персонаже, результат: четыре одинаковые по стилю панели, лицо и аксессуары совпали с исходником, панель 1 без головы. Размер холста 1920x1088.
+```prompt
+A character reference sheet of the character from <image1>, split into four equal panels side by side in one row, all at the same scale, in the same art style as <image1>.
+Panel one: full-body front view, the figure has no head at all, not a mannequin and not a neck stump, the collar is simply empty and the plain background shows through the neckline, standing in a relaxed neutral pose, showing the whole outfit from the neckline to the shoes.
+Panel two: full-body back view of the same character in the same pose and outfit, seen from behind, head fully visible.
+Panel three: close-up head-and-shoulders portrait facing the viewer with a neutral expression.
+Panel four: close-up head-and-shoulders portrait in profile, with the same lighting and scale as panel three.
+Keep the same face, hairstyle, [accessories], clothing, colors, proportions and art style as in <image1> in every panel.
+Plain solid light grey background, soft even lighting, no text, no labels.
+```
+Подставляй в `[accessories]` только то, что видно на картинке (очки, серьги, шрам). Если нужна голова на первой панели, замени описание панели 1 на: "full-body front view facing the viewer, standing in a relaxed neutral pose". Всегда пиши число панелей словом: без числа модель иногда рисует лишнюю фигуру. Фон меняется одной фразой (white, light grey, black).
 
 ## Шаг 4. Что дальше (одной строкой в конце)
 

@@ -27,6 +27,7 @@ from aiohttp import web
 import agent as ag
 import catalog
 import cloud
+import customwf
 import engine
 import monitor
 import speech
@@ -38,6 +39,7 @@ HOME = Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT
 UI_DIR = ROOT / "ui"
 DATA_DIR = Path(os.environ.get("H3STUDIO_DATA", HOME / "data"))
 LIBRARY_FILE = DATA_DIR / "library.json"
+WORKFLOWS_DIR = DATA_DIR / "workflows"
 MAX_SECONDS = 25.0  # H3 itself is made for up to 15 s; longer clips are allowed, quality is the user's call
 
 CLIENT_ID = "h3studio-" + uuid.uuid4().hex[:8]
@@ -312,7 +314,7 @@ class App:
             await self.broadcast({"type": "error", "prompt_id": pid, "message": "ComfyUI не вернул видеофайл"})
             return
         item = dict(job["meta"], id=uuid.uuid4().hex[:12], prompt_id=pid,
-                    date=datetime.now().isoformat(timespec="seconds"), fav=False, file=videos[0])
+                    date=datetime.now().isoformat(timespec="seconds"), fav=False, file=videos[-1] if job.get("last_output") else videos[0])
         meta = videos[0].get("metadata") or {}
         if meta.get("width") and meta.get("height"):
             item["res"] = f'{meta["width"]}×{meta["height"]}'
@@ -706,7 +708,7 @@ class App:
         seed = int(form["seed"]) if form.get("seed", "").isdigit() else random.randrange(2 ** 50)
         return form, files, prompt, aspect, quality, seed
 
-    async def queue(self, graph, stages, meta):
+    async def queue(self, graph, stages, meta, last_output=False):
         rh = self.rh()
         if rh:
             return await self.queue_cloud(rh, graph, stages, meta)
@@ -717,7 +719,7 @@ class App:
         if status != 200:
             return web.json_response({"error": comfy_error_text(res)}, status=400)
         pid = res["prompt_id"]
-        self.jobs[pid] = {"prompt_id": pid, "state": "queued", "stages": stages, "stage": None, "meta": meta}
+        self.jobs[pid] = {"prompt_id": pid, "state": "queued", "stages": stages, "stage": None, "meta": meta, "last_output": last_output}
         return web.json_response({"prompt_id": pid, "seed": meta["seed"], "queue_number": res.get("number")})
 
     async def need_models(self, mode):
@@ -733,6 +735,86 @@ class App:
         if lost:
             raise web.HTTPBadRequest(text="ComfyUI не видит модели: " + ", ".join(lost)
                                      + ". Откройте раздел «Модели».")
+
+    # ---------- the user's own workflows (API format), for those with their own ComfyUI ----------
+
+    def wf_path(self, wid):
+        if not wid.isalnum():
+            raise web.HTTPNotFound()
+        return WORKFLOWS_DIR / f"{wid}.json"
+
+    def wf_load(self, wid):
+        p = self.wf_path(wid)
+        if not p.exists():
+            raise web.HTTPNotFound(text="Workflow не найден")
+        return json.loads(p.read_text(encoding="utf-8"))
+
+    async def h_wf_list(self, _req):
+        items = []
+        for p in sorted(WORKFLOWS_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True) if WORKFLOWS_DIR.exists() else []:
+            try:
+                items.append({"id": p.stem, "name": json.loads(p.read_text(encoding="utf-8")).get("name", p.stem)})
+            except (OSError, ValueError):
+                pass
+        return web.json_response(items)
+
+    async def h_wf_add(self, req):
+        body = await req.json()
+        graph = body.get("graph")
+        try:
+            customwf.validate_api(graph)
+        except ValueError as e:
+            raise web.HTTPBadRequest(text=str(e))
+        WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
+        wid = uuid.uuid4().hex[:10]
+        name = (body.get("name") or "Мой workflow").strip()[:80]
+        self.wf_path(wid).write_text(json.dumps({"name": name, "graph": graph}, ensure_ascii=False), encoding="utf-8")
+        return web.json_response({"id": wid, "name": name})
+
+    async def h_wf_delete(self, req):
+        p = self.wf_path(req.match_info["id"])
+        p.unlink(missing_ok=True)
+        return web.json_response({"ok": True})
+
+    async def wf_infos(self, graph):
+        """/object_info of every node class the workflow uses (a class ComfyUI does not know is left out)."""
+        async def one(cls):
+            try:
+                status, data = await self.comfy_json("GET", f"/object_info/{cls}", timeout=aiohttp.ClientTimeout(total=15))
+            except Exception:
+                raise web.HTTPServiceUnavailable(text="ComfyUI не отвечает")
+            return cls, (data[cls] if status == 200 and isinstance(data, dict) and cls in data else None)
+        pairs = await asyncio.gather(*(one(c) for c in {n["class_type"] for n in graph.values()}))
+        return {c: i for c, i in pairs if i is not None}
+
+    async def h_wf_get(self, req):
+        wf_file = self.wf_load(req.match_info["id"])
+        report = customwf.analyze(wf_file["graph"], await self.wf_infos(wf_file["graph"]))
+        return web.json_response({"id": req.match_info["id"], "name": wf_file["name"], **report})
+
+    async def h_generate_custom(self, req):
+        form, uploads = {}, {}
+        async for field in await req.multipart():
+            if field.name.startswith("f:") and field.filename:
+                uploads[field.name[2:]] = await self.upload_input(field)
+            else:
+                form[field.name] = await field.text()
+        wf_file = self.wf_load(form.get("wf", ""))
+        graph = wf_file["graph"]
+        report = customwf.analyze(graph, await self.wf_infos(graph))
+        if report["missing_nodes"]:
+            raise web.HTTPBadRequest(text="В вашем ComfyUI нет нод: " + ", ".join(sorted({m["cls"] for m in report["missing_nodes"]})))
+        try:
+            values = json.loads(form.get("values") or "{}")
+        except ValueError:
+            values = {}
+        graph = customwf.apply_values(graph, values, uploads)
+        await self.stop_llm()
+        prompt = next((str(values.get(w["key"], w["value"])) for w in report["widgets"] if w["role"] == "prompt"), "")
+        seed = next((values.get(w["key"], w["value"]) for w in report["widgets"] if w["role"] == "seed"), None)
+        return await self.queue(graph, customwf.stage_map(graph), {
+            "mode": "custom", "sub": wf_file["name"], "prompt": prompt, "aspect": "", "q": "", "len": 0.0, "res": "",
+            "seed": seed if isinstance(seed, (int, float)) else None}, last_output=True)
 
     async def h_generate_video(self, req):
         await self.need_models("video")
@@ -1368,6 +1450,11 @@ def build_app(comfy_override=None):
         web.get("/api/nodes", state.h_nodes),
         web.get("/api/models/files", state.h_models_files),
         web.post("/api/models/pick", state.h_models_pick),
+        web.get("/api/wf/list", state.h_wf_list),
+        web.post("/api/wf/add", state.h_wf_add),
+        web.get("/api/wf/{id}", state.h_wf_get),
+        web.delete("/api/wf/{id}", state.h_wf_delete),
+        web.post("/api/generate/custom", state.h_generate_custom),
         web.get("/api/loras/custom", state.h_loras_custom),
         web.post("/api/loras/custom", state.h_loras_custom_set),
         web.post("/api/generate/refs", state.h_generate_refs),

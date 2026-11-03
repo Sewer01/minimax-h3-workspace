@@ -570,6 +570,11 @@ details[open] summary::before{content:'－ '}
       Экшн-сцены
     </button>
 
+    <button class="nav" data-view="custom" id="navCustom" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></svg>
+      Свои workflow
+    </button>
+
     <div class="nav-label">Студия</div>
     <button class="nav" data-view="queue">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h12M4 12h12M4 18h8"/><circle cx="19" cy="16" r="3"/><path d="M19 14.7V16l1 .6"/></svg>
@@ -838,6 +843,24 @@ details[open] summary::before{content:'－ '}
       </div>
     </section>
 
+    <!-- ============ OWN WORKFLOWS ============ -->
+    <section class="view" id="view-custom">
+      <div class="head">
+        <div>
+          <h1>Свои workflow</h1>
+          <p>Для тех, кто работает в ComfyUI. Загрузите свой workflow, и приложение покажет только нужные поля. Экспериментально, без гарантий</p>
+        </div>
+        <span style="display:flex;gap:8px;flex-wrap:wrap">
+          <select id="cwSel" style="min-width:200px"></select>
+          <label class="btn pri" style="cursor:pointer">Добавить файл…<input type="file" id="cwFile" accept=".json,application/json" hidden></label>
+          <button class="btn danger" id="cwDel" type="button" hidden>Удалить</button>
+        </span>
+      </div>
+      <div class="note" id="cwHowto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg>
+        <span>В ComfyUI откройте свой workflow и выберите <b>Workflow → Export (API)</b>. Полученный файл .json загрузите сюда. Обычный сохранённый workflow не подойдёт.</span></div>
+      <div id="cwBody" style="display:grid;gap:16px;margin-top:16px"></div>
+    </section>
+
     <!-- ============ QUEUE ============ -->
     <section class="view" id="view-queue">
       <div class="head">
@@ -866,6 +889,7 @@ details[open] summary::before{content:'－ '}
           <button class="chip" data-f="refs">Референсы</button>
           <button class="chip" data-f="actor">Актёрская игра</button>
           <button class="chip" data-f="action">Экшн</button>
+          <button class="chip" data-f="custom">Свои</button>
           <button class="chip" data-f="fav">★ Избранное</button>
         </div>
         <span class="sp"></span>
@@ -1093,6 +1117,7 @@ function setEngine(on) {
 async function loadStatus() {
   try {
     const s = await (await fetch('/api/status')).json();
+    $('#navCustom').hidden = s.engine !== 'external';
     setEngine(s.online);
     if (!s.online) return;
     renderModels(s);
@@ -2217,7 +2242,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 });
 
 /* ---------- LIBRARY ---------- */
-const MODE_NAME = { video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' };
+const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн' };
 const LIB = [];
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
 const ICON = {
@@ -2314,9 +2339,9 @@ function renderLib() {
           <button data-act="del" title="Удалить">${ICON.del}</button>
         </div>
         <span class="li-mode">${MODE_NAME[it.mode]}</span>
-        <span class="li-len">${it.len.toFixed(1).replace('.0', '')} с</span>
+        ${it.len ? `<span class="li-len">${it.len.toFixed(1).replace('.0', '')} с</span>` : ''}
       </div>
-      <div class="li-b"><p>${esc(it.prompt) || '<span style="color:var(--dim)">без промпта</span>'}</p><small>${it.res} · ${it.aspect} · ${fmtDate(it.date)}</small></div>
+      <div class="li-b"><p>${esc(it.prompt) || '<span style="color:var(--dim)">без промпта</span>'}</p><small>${[it.res, it.aspect, fmtDate(it.date)].filter(Boolean).join(' · ')}</small></div>
     </div>`).join('')
     : `<div class="empty" style="grid-column:1/-1">${LIB.length ? 'В этом разделе пока пусто' : 'Здесь появятся ваши видео после первой генерации'}</div>`;
   $('#selCount').hidden = $('#bulkSave').hidden = $('#bulkDel').hidden = !selecting;
@@ -2386,7 +2411,7 @@ function openViewer(id) {
   vid.hidden = !it.url; img.hidden = $('#viewer .li-play').hidden = !!it.url;
   if (it.url) { vid.src = it.url; vid.play().catch(() => {}); } else img.src = it.thumb;
   $('#vwTitle').textContent = `${MODE_NAME[it.mode]} · ${it.sub}`;
-  $('#vwKv').innerHTML = [['Разрешение', it.res], ['Формат', it.aspect], ['Качество', it.q], ['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`], ['Создано', fmtDate(it.date)], ...(it.seed != null ? [['Seed', String(it.seed)]] : []), ['Файл', fileName(it)]]
+  $('#vwKv').innerHTML = [...(it.res ? [['Разрешение', it.res]] : []), ...(it.aspect ? [['Формат', it.aspect]] : []), ...(it.q ? [['Качество', it.q]] : []), ...(it.len ? [['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`]] : []), ['Создано', fmtDate(it.date)], ...(it.seed != null ? [['Seed', String(it.seed)]] : []), ['Файл', fileName(it)]]
     .map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
   $('#vwPrompt').textContent = it.prompt || 'без промпта';
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
@@ -2426,6 +2451,7 @@ $('#vwSeed').onclick = () => {
 $('#vwFav').onclick = () => { const it = byId(openId); setFav(it, !it.fav); $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное'; renderLib(); };
 $('#vwRepeat').onclick = () => {
   const it = byId(openId); closeViewer();
+  if (it.mode === 'custom') { toast('Для своих workflow настройки переносятся вручную: откройте раздел «Свои workflow»'); goTo('custom'); return; }
   if (it.mode === 'video') { Object.assign(V, { aspect: it.aspect, q: it.q, dur: Math.round(it.len) }); $('#vPrompt').value = it.prompt; $('#vPrompt').oninput({ target: $('#vPrompt') }); vUpd(); goTo('video'); }
   else if (RM[it.mode]) {
     const r = RM[it.mode]; Object.assign(r.S, { aspect: it.aspect, q: it.q, dur: Math.round(it.len) }, it.steps ? { steps: it.steps } : {});
@@ -3056,6 +3082,114 @@ $('#mlist').addEventListener('click', async e => {
     };
   } catch { toast('ComfyUI не отвечает'); }
 });
+/* ---------- свои workflow ---------- */
+const CW = { id: null, rep: null, vals: {}, files: {}, cur: null };
+async function cwList(select) {
+  let items = [];
+  try { items = await (await fetch('/api/wf/list')).json(); } catch {}
+  const sel = $('#cwSel');
+  sel.innerHTML = items.length ? items.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('') : '<option value="">нет сохранённых</option>';
+  if (select && items.some(x => x.id === select)) sel.value = select;
+  $('#cwDel').hidden = !items.length;
+  if (items.length) cwOpen(sel.value); else { CW.id = null; $('#cwBody').innerHTML = ''; $('#cwHowto').hidden = false; }
+}
+async function cwOpen(id) {
+  CW.id = id; CW.vals = {}; CW.files = {}; $('#cwHowto').hidden = true;
+  $('#cwBody').innerHTML = '<div class="hint">Разбираем workflow…</div>';
+  try {
+    const r = await fetch('/api/wf/' + id);
+    if (!r.ok) throw new Error(await r.text());
+    CW.rep = await r.json();
+  } catch (e) { $('#cwBody').innerHTML = `<div class="note warn"><span>${esc(e.message || 'ComfyUI не отвечает. Запустите его и откройте раздел снова')}</span></div>`; return; }
+  CW.rep.widgets.forEach(w => { CW.vals[w.key] = w.missing ? w.suggest : w.value; });
+  cwRender();
+}
+function cwField(w) {
+  const k = esc(w.key), v = CW.vals[w.key];
+  if (w.kind === 'combo') return `<select data-k="${k}">${w.missing && !v ? '<option value="">— выберите файл —</option>' : ''}${(w.options || []).map(o => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  if (w.kind === 'bool') return `<input type="checkbox" data-k="${k}"${v ? ' checked' : ''}>`;
+  if (w.kind === 'int' || w.kind === 'float') return `<input type="number" data-k="${k}" value="${esc(String(v))}"${w.min != null ? ` min="${w.min}"` : ''}${w.max != null ? ` max="${w.max}"` : ''} step="${w.kind === 'int' ? 1 : (w.step || 'any')}" style="width:140px">`;
+  if (w.multiline || String(v).length > 60) return `<textarea data-k="${k}" rows="4">${esc(String(v))}</textarea>`;
+  return `<input type="text" data-k="${k}" value="${esc(String(v))}">`;
+}
+function cwRender() {
+  const r = CW.rep, W = r.widgets, by = role => W.filter(w => w.role === role);
+  const row = (w, label) => `<div class="fld"><label>${esc(label || w.title)} <small style="color:var(--dim)">${esc(w.name)}</small></label>${cwField(w)}</div>`;
+  let html = '', problems = '';
+  if (r.missing_nodes.length) problems += `<div class="note warn"><span><b>В вашем ComfyUI нет нод:</b> ${[...new Set(r.missing_nodes.map(m => esc(m.cls)))].join(', ')}. Установите их (например, через ComfyUI Manager), перезапустите ComfyUI и откройте раздел снова. Пока они не установлены, запустить нельзя.</span></div>`;
+  const miss = W.filter(w => w.missing);
+  if (miss.length) problems += `<div class="note warn"><span><b>Не найдены файлы:</b> выберите замену из того, что есть в вашем ComfyUI.</span></div>` + miss.map(w =>
+    `<div class="fld"><label>${esc(w.title)}: <span style="color:var(--pink)">${esc(w.value)}</span></label>${cwField(w)}</div>`).join('');
+  r.notes.forEach(n => problems += `<div class="note"><span>${esc(n)}</span></div>`);
+  if (!problems) problems = '<div class="note"><span>✓ Все ноды и файлы на месте.</span></div>';
+  html += `<div class="card"><div class="card-h"><h3>Что нашлось в «${esc(r.name)}»</h3></div><div style="display:grid;gap:10px">${problems}</div></div>`;
+  const prompts = [...by('prompt'), ...by('negative')], media = by('media'), main = ['seed', 'size', 'length', 'steps', 'cfg'].flatMap(by);
+  const other = W.filter(w => w.role === 'other' && !w.missing);
+  html += `<div class="card"><div class="card-h"><h3>Настройки</h3></div><div style="display:grid;gap:14px">`
+    + prompts.map(w => row(w, w.role === 'negative' ? 'Негативный промпт' : w.title)).join('')
+    + media.map(w => `<div class="fld"><label>${esc(w.title)} <small style="color:var(--dim)">${{ image: 'картинка', audio: 'аудио', video: 'видео' }[w.mkind]}${w.has_default ? ' · можно не менять' : ''}</small></label><input type="file" data-f="${esc(w.key)}" accept="${w.mkind}/*"></div>`).join('')
+    + main.map(w => w.role === 'seed' ? `<div class="fld"><label>${esc(w.title)} <small style="color:var(--dim)">${esc(w.name)}</small></label><span style="display:flex;gap:12px;align-items:center">${cwField(w)}<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-rnd="${esc(w.key)}" checked> каждый раз новый</label></span></div>` : row(w)).join('')
+    + (other.length ? `<details><summary style="cursor:pointer;color:var(--muted)">Все остальные настройки (${other.length})</summary><div style="display:grid;gap:12px;margin-top:12px">${other.map(w => row(w, `${w.title}`)).join('')}</div></details>` : '')
+    + `</div></div>`;
+  html += `<div class="card"><button class="go" id="cwGo"${r.missing_nodes.length ? ' disabled' : ''}>Сгенерировать</button><div class="status" id="cwStatus" style="margin-top:10px"></div>`
+    + `<video id="cwVideo" controls loop playsinline hidden style="width:100%;margin-top:12px;border-radius:12px;background:#000"></video></div>`;
+  $('#cwBody').innerHTML = html;
+}
+$('#cwBody').addEventListener('input', e => {
+  const k = e.target.dataset?.k; if (!k) return;
+  const w = CW.rep.widgets.find(x => x.key === k); if (!w) return;
+  CW.vals[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+});
+$('#cwBody').addEventListener('change', e => {
+  const k = e.target.dataset?.f; if (k) CW.files[k] = e.target.files[0] || null;
+});
+$('#cwBody').addEventListener('click', async e => {
+  if (!e.target.closest('#cwGo')) return;
+  const status = $('#cwStatus'), W = CW.rep.widgets;
+  const bad = W.find(w => w.missing && !CW.vals[w.key]); if (bad) { status.textContent = `Выберите файл: ${bad.title}`; return; }
+  const noFile = W.find(w => w.role === 'media' && !w.has_default && !CW.files[w.key]); if (noFile) { status.textContent = `Загрузите файл: ${noFile.title}`; return; }
+  $$('[data-rnd]', $('#cwBody')).forEach(c => {
+    if (!c.checked) return;
+    const v = Math.floor(Math.random() * 2 ** 50); CW.vals[c.dataset.rnd] = v;
+    const inp = $(`[data-k="${c.dataset.rnd}"]`, $('#cwBody')); if (inp) inp.value = v;
+  });
+  const fd = new FormData(); fd.append('wf', CW.id); fd.append('values', JSON.stringify(CW.vals));
+  Object.entries(CW.files).forEach(([k, f]) => f && fd.append('f:' + k, f));
+  e.target.closest('#cwGo').disabled = true; status.textContent = 'Отправляем задание в ComfyUI…';
+  try {
+    const r = await fetch('/api/generate/custom', { method: 'POST', body: fd }), txt = await r.text();
+    let res; try { res = JSON.parse(txt); } catch { res = { error: txt }; }
+    if (!r.ok) throw new Error(res.error || txt || r.statusText);
+    const prompt = (W.find(w => w.role === 'prompt') || {}).key;
+    qAdd(res.prompt_id, 'custom', prompt ? String(CW.vals[prompt]) : CW.rep.name);
+    CW.cur = res.prompt_id; $('#cwVideo').hidden = true; status.textContent = 'Задание в очереди — смотрите раздел «Очередь»';
+    onPrompt(res.prompt_id, ev => {
+      if (CW.cur !== ev.prompt_id) return;
+      const st = $('#cwStatus'); if (!st) return;
+      if (ev.type === 'stage') st.textContent = (QSTAGE[ev.stage] || 'идёт') + (ev.max ? ` · шаг ${ev.step || 0} из ${ev.max}` : '');
+      else if (ev.type === 'done') { st.textContent = 'Готово — видео в Библиотеке'; const v = $('#cwVideo'); v.src = ev.item.url; v.hidden = false; v.play().catch(() => {}); offPrompt(ev.prompt_id); }
+      else if (ev.type === 'error') { st.textContent = 'Ошибка ComfyUI: ' + ev.message; offPrompt(ev.prompt_id); }
+      else if (ev.type === 'interrupted') { st.textContent = 'Остановлено'; offPrompt(ev.prompt_id); }
+    });
+  } catch (err) { status.textContent = 'Ошибка: ' + err.message; }
+  const go = $('#cwGo'); if (go) go.disabled = !!CW.rep.missing_nodes.length;
+});
+$('#cwSel').onchange = e => e.target.value && cwOpen(e.target.value);
+$('#cwDel').onclick = async () => {
+  if (!CW.id || !confirm('Удалить этот workflow из списка? Файлы на диске не трогаем.')) return;
+  await fetch('/api/wf/' + CW.id, { method: 'DELETE' }); cwList();
+};
+$('#cwFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const graph = JSON.parse(await f.text());
+    const r = await fetch('/api/wf/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: f.name.replace(/\.json$/i, ''), graph }) });
+    if (!r.ok) throw new Error(await r.text());
+    cwList((await r.json()).id);
+  } catch (err) { toast(err instanceof SyntaxError ? 'Это не файл workflow (.json)' : err.message); }
+};
+$('.nav[data-view="custom"]').addEventListener('click', () => cwList(CW.id));
+
 /* the user's own LoRAs */
 const CL = { files: [], items: [] };
 async function loadCL() {

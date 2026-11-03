@@ -61,6 +61,16 @@
   --accent-rgb:212,162,76;--accent2-rgb:230,191,112;--bg2-rgb:29,37,33;--surface-rgb:35,45,40;--ov-rgb:12,16,14;
   --screen:#0e1311;--pink:#ff9fb2;--glow:.06;
 }
+.q-row{display:grid;grid-template-columns:34px 1fr auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.q-row.run{border-color:var(--accent)}
+.q-n{width:34px;height:34px;border-radius:50%;background:var(--surface-2);display:grid;place-items:center;font-weight:800;color:var(--muted)}
+.q-row.run .q-n{background:var(--grad);color:#fff}
+.q-t{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q-s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.q-bar{height:5px;border-radius:9px;background:var(--surface-2);overflow:hidden;margin-top:7px}
+.q-bar i{display:block;height:100%;background:var(--grad);transition:width .4s}
+.q-row.ok .q-s{color:var(--ok)}.q-row.err .q-s{color:var(--pink)}
+.q-empty{color:var(--muted);padding:30px 6px}
 .themes{display:flex;gap:8px;padding:0 10px 4px}
 .themes button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line-2);transition:.15s;padding:0}
 .themes button:hover{transform:scale(1.15)}
@@ -561,6 +571,10 @@ details[open] summary::before{content:'－ '}
     </button>
 
     <div class="nav-label">Студия</div>
+    <button class="nav" data-view="queue">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h12M4 12h12M4 18h8"/><circle cx="19" cy="16" r="3"/><path d="M19 14.7V16l1 .6"/></svg>
+      Очередь <span class="badge" id="qBadge" hidden></span>
+    </button>
     <button class="nav" data-view="library">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/><path d="m10 13 4 2.5-4 2.5z" fill="currentColor"/></svg>
       Библиотека <span class="badge" id="libBadge">0</span>
@@ -824,6 +838,18 @@ details[open] summary::before{content:'－ '}
       </div>
     </section>
 
+    <!-- ============ QUEUE ============ -->
+    <section class="view" id="view-queue">
+      <div class="head">
+        <div>
+          <h1>Очередь</h1>
+          <p>Нажимайте «Сгенерировать» в любом разделе: задания встанут по порядку и сами сохранятся в Библиотеку. Не закрывайте приложение, пока идёт очередь</p>
+        </div>
+        <button class="btn" id="qClear" hidden>Очистить завершённые</button>
+      </div>
+      <div class="q-list" id="qList" style="display:grid;gap:10px;align-content:start"></div>
+    </section>
+
     <!-- ============ LIBRARY ============ -->
     <section class="view" id="view-library">
       <div class="head">
@@ -1032,7 +1058,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 /* ---------- local server (real ComfyUI) or offline demo ---------- */
 const API = location.protocol.startsWith('http');
 const promptHandlers = new Map(), earlyEvents = new Map();
-let currentPreview = null;
+const previewHandlers = new Map();
 function onPrompt(id, fn) {
   promptHandlers.set(id, fn);
   (earlyEvents.get(id) || []).forEach(fn); earlyEvents.delete(id);
@@ -1042,11 +1068,12 @@ function connectEvents() {
   const ws = new WebSocket(`ws://${location.host}/api/events`);
   ws.binaryType = 'blob';
   ws.onmessage = e => {
-    if (typeof e.data !== 'string') { currentPreview?.(e.data); return; }
+    if (typeof e.data !== 'string') { previewHandlers.forEach(f => f(e.data)); return; }
     const m = JSON.parse(e.data);
     if (m.type === 'engine') { setEngine(m.online); if (m.online) loadStatus(); return; }
     if (m.type === 'setup') { onSetupEvent(m); return; }
     if (m.type === 'agent_setup') { onAgentSetup(m); return; }
+    qHandle(m);
     const fn = promptHandlers.get(m.prompt_id);
     if (fn) fn(m);
     else if (m.prompt_id) earlyEvents.set(m.prompt_id, [...(earlyEvents.get(m.prompt_id) || []), m].slice(-50));
@@ -1291,30 +1318,38 @@ function previewPanel(el, st, opts) {
     decode: ['Собираем видео и звук…', 0.92, 'сборка видео'],
     save: ['Сохраняем файл…', 0.98, 'сохранение'],
   };
+  const setGo = busy => { go.lastChild.textContent = busy ? 'Поставить в очередь ещё одно' : 'Сгенерировать'; };
   async function realStart() {
-    go.disabled = true; status.textContent = 'Отправляем задание в ComfyUI…';
+    const meta = opts.meta();
+    go.disabled = true; if (!run) status.textContent = 'Отправляем задание в ComfyUI…';
     let res;
     try {
       const r = await fetch(opts.real.url, { method: 'POST', body: opts.real.form() });
       const txt = await r.text();
       try { res = JSON.parse(txt); } catch { res = { error: txt }; }
       if (!r.ok) throw new Error(res.error || r.statusText);
-    } catch (e) { go.disabled = false; status.textContent = 'Ошибка: ' + e.message; return; }
+    } catch (e) { go.disabled = false; if (run) toast('Ошибка: ' + e.message); else status.textContent = 'Ошибка: ' + e.message; return; }
     go.disabled = false;
+    if (run) {  // the previous job keeps going in the queue; this panel now follows the new one
+      clearInterval(run.tick); offPrompt(run.id);
+      const old = QUEUE.find(j => j.id === run.id); if (old) old.detached = true;
+      run = null;
+    }
+    qAdd(res.prompt_id, meta.mode, meta.prompt);
     resetFrame();
     run = { real: true, id: res.prompt_id, t0: performance.now(), stage: 'queued' };
     const tgt = opts.target();
     if (tgt) { liveImg.src = tgt.src; liveImg.classList.add('dim'); liveImg.hidden = false; }
-    go.hidden = true; stopB.hidden = false; hud.hidden = false; wait.hidden = false; $('.res', frame).hidden = true;
+    go.hidden = false; setGo(true); stopB.hidden = false; hud.hidden = false; wait.hidden = false; $('.res', frame).hidden = true;
     $('.hud-t', el).textContent = 'Предпросмотр';
     showStage();
     run.tick = setInterval(showStage, 1000);
-    currentPreview = blob => {
-      if (!run) return;
+    previewHandlers.set(el, blob => {
+      if (!run || run.stage === 'queued') return;
       URL.revokeObjectURL(liveImg.dataset.url || '');
       liveImg.dataset.url = liveImg.src = URL.createObjectURL(blob);
       liveImg.classList.remove('dim'); liveImg.hidden = false; wait.hidden = true;
-    };
+    });
     onPrompt(run.id, ev => {
       if (!run || run.id !== ev.prompt_id) return;
       if (ev.type === 'stage') {
@@ -1350,15 +1385,14 @@ function previewPanel(el, st, opts) {
     status.textContent = `${line} · прошло ${fmtTime((performance.now() - run.t0) / 1000)}`;
   }
   function realFinish(kind, data) {
-    clearInterval(run.tick); offPrompt(run.id); currentPreview = null;
-    go.hidden = false; stopB.hidden = true; bar.style.width = 0;
+    clearInterval(run.tick); offPrompt(run.id); previewHandlers.delete(el);
+    go.hidden = false; setGo(false); stopB.hidden = true; bar.style.width = 0;
     const took = fmtTime((performance.now() - run.t0) / 1000);
     run = null;
     if (kind === 'done') {
       [liveImg, wait].forEach(x => x.hidden = true);
       result.src = data.url; result.hidden = false; result.muted = true; result.play().catch(() => {});
       frame.classList.add('done'); $('.hud-t', el).textContent = 'Готово'; $('.hud-s', el).textContent = took;
-      addToLib(normItem(data), new Date(data.date));
       status.innerHTML = `Готово за ${took} — видео в библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(data.seed ?? '—'))}</b> `
         + (data.seed != null ? '<button class="btn" id="keepSeed" type="button" style="padding:4px 10px;font-size:12px">Зафиксировать</button>' : '');
       $('#keepSeed', el)?.addEventListener('click', () => useSeed(st, data.seed));
@@ -2197,6 +2231,59 @@ function fmtDate(d) {
   return days === 0 ? `сегодня, ${hm}` : days === 1 ? `вчера, ${hm}` : d.toLocaleDateString('ru', { day: 'numeric', month: 'short' }) + `, ${hm}`;
 }
 const fileName = it => `h3_${it.mode}_${it.date.toISOString().slice(0, 16).replace(/[-:T]/g, '')}.mp4`;
+
+/* ---------- общая очередь заданий ---------- */
+const QUEUE = [];
+const QSTAGE = { queued: 'ждёт своей очереди', load: 'загрузка моделей', encode: 'кодирование', sample: 'генерация', sample2: 'проход 2', upscale: 'апскейл',
+  decode: 'сборка видео', save: 'сохранение', cloud_queued: 'в очереди RunningHub', cloud_run: 'считается в облаке' };
+function qAdd(id, mode, prompt) {
+  const j = { id, mode, prompt: prompt || '', state: 'queued', stage: 'queued', t0: null, detached: false };
+  QUEUE.push(j);
+  (earlyEvents.get(id) || []).forEach(qHandle);
+  qRender();
+}
+function qHandle(m) {
+  const j = QUEUE.find(x => x.id === m.prompt_id); if (!j) return;
+  if (m.type === 'stage') {
+    j.state = 'running'; j.stage = m.stage; j.step = m.step; j.max = m.max; j.t0 = j.t0 || performance.now();
+  } else if (m.type === 'done') {
+    j.state = 'done'; j.took = j.t0 ? (performance.now() - j.t0) / 1000 : 0;
+    if (!LIB.some(x => x.prompt_id === m.item.prompt_id && x.id === m.item.id)) addToLib(normItem(m.item), new Date(m.item.date));
+    if (j.detached) toast(`Готово: ${MODE_NAME[j.mode] || 'видео'} — оно в Библиотеке`);
+  } else if (m.type === 'error') { j.state = 'error'; j.msg = m.message; if (j.detached) toast('Задание не получилось: ' + m.message); }
+  else if (m.type === 'interrupted') j.state = 'stopped';
+  qRender();
+}
+function qRender() {
+  const act = QUEUE.filter(j => j.state === 'queued' || j.state === 'running');
+  const badge = $('#qBadge'); badge.hidden = !act.length; badge.textContent = act.length;
+  const box = $('#qList'); if (!box) return;
+  const fin = QUEUE.filter(j => !act.includes(j)).slice(-30).reverse();
+  $('#qClear').hidden = !fin.length;
+  const row = (j, n) => {
+    const run = j.state === 'running', samp = run && String(j.stage).startsWith('sample') && j.max;
+    let st = run ? (QSTAGE[j.stage] || 'идёт') : j.state === 'queued' ? 'ждёт своей очереди' : j.state === 'done' ? `готово за ${fmtTime(j.took)} · видео в Библиотеке`
+      : j.state === 'stopped' ? 'остановлено' : 'ошибка: ' + (j.msg || '');
+    if (samp) st += ` · шаг ${j.step || 0} из ${j.max}`;
+    if (run && j.t0) st += ` · прошло ${fmtTime((performance.now() - j.t0) / 1000)}`;
+    const cls = j.state === 'done' ? ' ok' : j.state === 'error' ? ' err' : run ? ' run' : '';
+    const btn = act.includes(j) ? `<button class="btn" data-q="stop" data-id="${j.id}">${run ? 'Остановить' : 'Убрать'}</button>`
+      : j.state === 'done' ? '<button class="btn" data-q="lib">В Библиотеку</button>' : '';
+    return `<div class="q-row${cls}"><div class="q-n">${n || (j.state === 'done' ? '✓' : '·')}</div><div><div class="q-t">${esc(MODE_NAME[j.mode] || 'Видео')}: ${esc(j.prompt.slice(0, 120) || 'без промпта')}</div>`
+      + `<div class="q-s">${esc(st)}</div>${samp ? `<div class="q-bar"><i style="width:${Math.round((j.step || 0) / j.max * 100)}%"></i></div>` : ''}</div>${btn}</div>`;
+  };
+  box.innerHTML = QUEUE.length ? act.map((j, i) => row(j, i + 1)).join('') + fin.map(j => row(j, 0)).join('')
+    : '<div class="q-empty">Очередь пуста. Нажмите «Сгенерировать» в любом разделе — задание появится здесь.</div>';
+}
+$('#qList').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.q === 'lib') return goTo('library');
+  b.disabled = true;
+  fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: b.dataset.id }) });
+});
+$('#qClear').onclick = () => { for (let i = QUEUE.length - 1; i >= 0; i--) if (!['queued', 'running'].includes(QUEUE[i].state)) QUEUE.splice(i, 1); qRender(); };
+setInterval(() => { if ($('#view-queue').classList.contains('active') && QUEUE.some(j => j.state === 'running')) qRender(); }, 1000);
+qRender();
 
 function addToLib(item, date = new Date()) {
   LIB.push({ id: Math.random().toString(36).slice(2), date, fav: false, ...item });

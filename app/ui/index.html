@@ -71,6 +71,30 @@
 .q-bar i{display:block;height:100%;background:var(--grad);transition:width .4s}
 .q-row.ok .q-s{color:var(--ok)}.q-row.err .q-s{color:var(--pink)}
 .q-empty{color:var(--muted);padding:30px 6px}
+.cw-ok{color:var(--ok);font-weight:700;padding:2px 4px}
+.cw-bt{font-weight:800;font-size:12.5px;letter-spacing:.02em;margin-bottom:7px}
+.cw-wide textarea{min-height:110px}
+.cw-media{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.cw-file{display:grid;gap:4px;justify-items:center;text-align:center;padding:12px;border:1.5px dashed var(--line-2);border-radius:14px;background:var(--bg-2);cursor:pointer;transition:.15s}
+.cw-file:hover,.cw-file.on{border-color:var(--accent)}
+.cw-file small{color:var(--muted);font-size:11.5px;word-break:break-all}
+.cw-fp{width:100%;aspect-ratio:4/3;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;overflow:hidden;font-size:30px}
+.cw-fp img{width:100%;height:100%;object-fit:cover}.cw-fp i{font-style:normal}
+.cw-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.cw-t{display:grid;gap:7px;align-content:start;padding:12px 14px;background:var(--bg-2);border:1px solid var(--line);border-radius:14px}
+.cw-t>span,.cw-f>span{font-size:11.5px;color:var(--muted);font-weight:600}
+.cw-pair{display:flex;align-items:flex-end;gap:8px}.cw-pair label{display:grid;gap:3px;font-size:11px;color:var(--dim);flex:1;min-width:0}.cw-pair b{padding-bottom:9px;color:var(--dim)}
+.cw-pair input,.cw-f input,.cw-f select,.cw-t input,.cw-t select{color:var(--text)}
+.cw-chk{display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--muted)}
+.cw-t input[type=number],.cw-t input[type=text],.cw-f input[type=number],.cw-f input[type=text],.cw-f select,.cw-t select,.cw-pair input,.cw-bg select{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:8px 10px;outline:none;min-width:0}
+.cw-t input:focus,.cw-f input:focus,.cw-f select:focus,.cw-pair input:focus{border-color:var(--accent)}
+.cw-det>summary{cursor:pointer;font-weight:800;list-style:none;display:flex;gap:10px;align-items:baseline}.cw-det>summary small{color:var(--muted);font-weight:500}
+.cw-det>summary::before{content:'▸';color:var(--muted)}.cw-det[open]>summary::before{content:'▾'}
+.cw-boxes{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:14px}
+.cw-box{background:var(--bg-2);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.cw-bg3{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
+.cw-bg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cw-f{display:grid;gap:4px;align-content:start}.cw-f.wide{grid-column:1/-1}
 .themes{display:flex;gap:8px;padding:0 10px 4px}
 .themes button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line-2);transition:.15s;padding:0}
 .themes button:hover{transform:scale(1.15)}
@@ -3217,35 +3241,58 @@ async function cwOpen(id) {
     CW.rep = await r.json();
   } catch (e) { $('#cwBody').innerHTML = `<div class="note warn"><span>${esc(e.message || 'ComfyUI не отвечает. Запустите его и откройте раздел снова')}</span></div>`; return; }
   CW.rep.widgets.forEach(w => { CW.vals[w.key] = w.missing ? w.suggest : w.value; });
+  try {  // what was set last time in this workflow
+    const saved = JSON.parse(localStorage.getItem('h3-cw-' + id) || '{}');
+    CW.rep.widgets.forEach(w => { if (w.key in saved && w.role !== 'media' && !(w.missing && !saved[w.key])) CW.vals[w.key] = saved[w.key]; });
+  } catch {}
   cwRender();
 }
+const CW_MODEL = w => w.kind === 'combo' && w.role === 'other' && /(_name$|^ckpt|checkpoint|^model$|lora|^unet|^vae|^clip)/i.test(w.name);
+const cwGroupBy = list => { const m = new Map(); list.forEach(w => { if (!m.has(w.node)) m.set(w.node, []); m.get(w.node).push(w); }); return [...m.values()]; };
 function cwField(w) {
   const k = esc(w.key), v = CW.vals[w.key];
   if (w.kind === 'combo') return `<select data-k="${k}">${w.missing && !v ? '<option value="">— выберите файл —</option>' : ''}${(w.options || []).map(o => `<option${o === v ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
-  if (w.kind === 'bool') return `<input type="checkbox" data-k="${k}"${v ? ' checked' : ''}>`;
-  if (w.kind === 'int' || w.kind === 'float') return `<input type="number" data-k="${k}" value="${esc(String(v))}"${w.min != null ? ` min="${w.min}"` : ''}${w.max != null ? ` max="${w.max}"` : ''} step="${w.kind === 'int' ? 1 : (w.step || 'any')}" style="width:140px">`;
+  if (w.kind === 'bool') return `<label class="cw-chk"><input type="checkbox" data-k="${k}"${v ? ' checked' : ''}> включено</label>`;
+  if (w.kind === 'int' || w.kind === 'float') return `<input type="number" data-k="${k}" value="${esc(String(v))}"${w.min != null ? ` min="${w.min}"` : ''}${w.max != null ? ` max="${w.max}"` : ''} step="${w.kind === 'int' ? 1 : (w.step || 'any')}">`;
   if (w.multiline || String(v).length > 60) return `<textarea data-k="${k}" rows="4">${esc(String(v))}</textarea>`;
   return `<input type="text" data-k="${k}" value="${esc(String(v))}">`;
 }
+// a node's fields as one small window: title on top, fields in a tidy grid
+const cwBox = (title, ws) => `<div class="cw-box"><div class="cw-bt">${esc(title)}</div><div class="cw-bg">${ws.map(w =>
+  `<label class="cw-f${w.kind === 'combo' || w.multiline ? ' wide' : ''}"><span>${esc(w.name)}</span>${cwField(w)}</label>`).join('')}</div></div>`;
 function cwRender() {
-  const r = CW.rep, W = r.widgets, by = role => W.filter(w => w.role === role);
-  const row = (w, label) => `<div class="fld"><label>${esc(label || w.title)} <small style="color:var(--dim)">${esc(w.name)}</small></label>${cwField(w)}</div>`;
-  let html = '', problems = '';
-  if (r.missing_nodes.length) problems += `<div class="note warn"><span><b>В вашем ComfyUI нет нод:</b> ${[...new Set(r.missing_nodes.map(m => esc(m.cls)))].join(', ')}. Установите их (например, через ComfyUI Manager), перезапустите ComfyUI и откройте раздел снова. Пока они не установлены, запустить нельзя.</span></div>`;
-  const miss = W.filter(w => w.missing);
-  if (miss.length) problems += `<div class="note warn"><span><b>Не найдены файлы:</b> выберите замену из того, что есть в вашем ComfyUI.</span></div>` + miss.map(w =>
-    `<div class="fld"><label>${esc(w.title)}: <span style="color:var(--pink)">${esc(w.value)}</span></label>${cwField(w)}</div>`).join('');
-  r.notes.forEach(n => problems += `<div class="note"><span>${esc(n)}</span></div>`);
-  if (!problems) problems = '<div class="note"><span>✓ Все ноды и файлы на месте.</span></div>';
-  html += `<div class="card"><div class="card-h"><h3>Что нашлось в «${esc(r.name)}»</h3></div><div style="display:grid;gap:10px">${problems}</div></div>`;
-  const prompts = [...by('prompt'), ...by('negative')], media = by('media'), main = ['seed', 'size', 'length', 'steps', 'cfg'].flatMap(by);
-  const other = W.filter(w => w.role === 'other' && !w.missing);
-  html += `<div class="card"><div class="card-h"><h3>Настройки</h3></div><div style="display:grid;gap:14px">`
-    + prompts.map(w => row(w, w.role === 'negative' ? 'Негативный промпт' : w.title)).join('')
-    + media.map(w => `<div class="fld"><label>${esc(w.title)} <small style="color:var(--dim)">${{ image: 'картинка', audio: 'аудио', video: 'видео' }[w.mkind]}${w.has_default ? ' · можно не менять' : ''}</small></label><input type="file" data-f="${esc(w.key)}" accept="${w.mkind}/*"></div>`).join('')
-    + main.map(w => w.role === 'seed' ? `<div class="fld"><label>${esc(w.title)} <small style="color:var(--dim)">${esc(w.name)}</small></label><span style="display:flex;gap:12px;align-items:center">${cwField(w)}<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-rnd="${esc(w.key)}" checked> каждый раз новый</label></span></div>` : row(w)).join('')
-    + (other.length ? `<details><summary style="cursor:pointer;color:var(--muted)">Все остальные настройки (${other.length})</summary><div style="display:grid;gap:12px;margin-top:12px">${other.map(w => row(w, `${w.title}`)).join('')}</div></details>` : '')
-    + `</div></div>`;
+  const r = CW.rep, W = r.widgets;
+  const missing = W.filter(w => w.missing), prompts = W.filter(w => w.role === 'prompt' || w.role === 'negative'), media = W.filter(w => w.role === 'media');
+  const seeds = W.filter(w => w.role === 'seed'), sizes = W.filter(w => w.role === 'size');
+  const tiles = W.filter(w => ['length', 'steps', 'cfg'].includes(w.role));
+  const models = W.filter(w => CW_MODEL(w) && !w.missing);
+  const other = W.filter(w => w.role === 'other' && !w.missing && !CW_MODEL(w));
+  let status = '';
+  if (r.missing_nodes.length) status += `<div class="note warn"><span><b>В вашем ComfyUI нет нод:</b> ${[...new Set(r.missing_nodes.map(m => esc(m.cls)))].join(', ')}. Установите их (например, через ComfyUI Manager), перезапустите ComfyUI и откройте раздел снова. Пока их нет, запустить нельзя.</span></div>`;
+  if (missing.length) status += `<div class="note warn"><span><b>Не найдены файлы.</b> Выберите замену из того, что есть в вашем ComfyUI.</span></div><div class="cw-bg3">${missing.map(w =>
+    `<label class="cw-f"><span>${esc(w.title)} · не найден: <b style="color:var(--pink)">${esc(w.value)}</b></span>${cwField(w)}</label>`).join('')}</div>`;
+  r.notes.forEach(n => status += `<div class="note"><span>${esc(n)}</span></div>`);
+  let html = '';
+  if (status) html += `<div class="card cw-status"><div class="card-h"><h3>Что нашлось в «${esc(r.name)}»</h3></div>${status}</div>`;
+  else html += `<div class="cw-ok">✓ «${esc(r.name)}»: все ноды и файлы на месте</div>`;
+
+  let main = '';
+  main += prompts.map(w => `<div class="cw-wide"><div class="cw-bt">${w.role === 'negative' ? 'Негативный промпт' : 'Промпт'} <small style="color:var(--dim);font-weight:500">${esc(w.title)}</small></div>${cwField(w)}</div>`).join('');
+  if (media.length) main += `<div class="cw-media">${media.map(w => `<label class="cw-file"><input type="file" data-f="${esc(w.key)}" accept="${w.mkind}/*" hidden>
+      <div class="cw-fp"><i>${{ image: '🖼', audio: '🎵', video: '🎬' }[w.mkind]}</i></div>
+      <b>${{ image: 'Картинка', audio: 'Аудио', video: 'Видео' }[w.mkind]}</b><small class="cw-fn">${esc(w.title)} · ${w.has_default ? 'можно не менять' : 'нужно выбрать'}</small></label>`).join('')}</div>`;
+  let tl = '';
+  const bySizeNode = cwGroupBy(sizes);
+  bySizeNode.forEach(ws => { tl += `<div class="cw-t"><span>Размер · ${esc(ws[0].title)}</span><div class="cw-pair">${ws.map(w => `<label>${esc(w.name)}${cwField(w)}</label>`).join('<b>×</b>')}</div></div>`; });
+  tl += tiles.map(w => `<div class="cw-t"><span>${{ length: 'Длина', steps: 'Шаги', cfg: 'CFG' }[w.role]} · ${esc(w.title)}</span>${cwField(w)}</div>`).join('');
+  tl += seeds.map(w => `<div class="cw-t"><span>Seed · ${esc(w.title)}</span>${cwField(w)}<label class="cw-chk"><input type="checkbox" data-rnd="${esc(w.key)}" checked> каждый раз новый</label></div>`).join('');
+  if (tl) main += `<div class="cw-tiles">${tl}</div>`;
+  html += `<div class="card"><div class="card-h"><h3>Основное</h3></div><div style="display:grid;gap:14px">${main || '<div class="hint">Основных полей не нашлось. Всё остальное внизу.</div>'}</div></div>`;
+
+  const det = (title, n, body) => `<details class="card cw-det"><summary>${title} <small>${n}</small></summary><div class="cw-boxes">${body}</div></details>`;
+  if (models.length) html += det('Модели и файлы', `${models.length} · обычно менять не нужно`, cwGroupBy(models).map(ws => cwBox(ws[0].title, ws)).join(''));
+  if (other.length) html += det('Дополнительные настройки', `${other.length} · обычно менять не нужно`, cwGroupBy(other).map(ws => cwBox(ws[0].title, ws)).join(''));
+
   html += `<div class="card"><button class="go" id="cwGo"${r.missing_nodes.length ? ' disabled' : ''}>Сгенерировать</button><div class="status" id="cwStatus" style="margin-top:10px"></div>`
     + `<video id="cwVideo" controls loop playsinline hidden style="width:100%;margin-top:12px;border-radius:12px;background:#000"></video><img id="cwImage" alt="" hidden style="max-width:100%;margin-top:12px;border-radius:12px"></div>`;
   $('#cwBody').innerHTML = html;
@@ -3254,9 +3301,14 @@ $('#cwBody').addEventListener('input', e => {
   const k = e.target.dataset?.k; if (!k) return;
   const w = CW.rep.widgets.find(x => x.key === k); if (!w) return;
   CW.vals[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+  try { localStorage.setItem('h3-cw-' + CW.id, JSON.stringify(CW.vals)); } catch {}
 });
 $('#cwBody').addEventListener('change', e => {
-  const k = e.target.dataset?.f; if (k) CW.files[k] = e.target.files[0] || null;
+  const k = e.target.dataset?.f; if (!k) return;
+  const f = CW.files[k] = e.target.files[0] || null, tile = e.target.closest('.cw-file');
+  $('.cw-fn', tile).textContent = f ? f.name : 'Выберите файл';
+  const box = $('.cw-fp', tile); box.innerHTML = f && f.type.startsWith('image/') ? `<img src="${URL.createObjectURL(f)}" alt="">` : '<i>✓</i>';
+  tile.classList.toggle('on', !!f);
 });
 $('#cwBody').addEventListener('click', async e => {
   if (!e.target.closest('#cwGo')) return;

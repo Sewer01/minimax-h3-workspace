@@ -181,7 +181,7 @@ button{cursor:pointer;border:0;background:none}
 .meter{display:grid;gap:5px}
 .side-foot .stat b{font-variant-numeric:tabular-nums}
 .side-foot .stat small{color:var(--dim);font-size:11px}
-.rep-btn{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;padding:9px 10px;border-radius:11px;border:1px dashed var(--line-2);color:var(--muted);font-weight:600;font-size:12.5px;width:100%;transition:.15s;flex:none}
+.rep-btn{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 12px;padding:9px 10px;border-radius:11px;border:1px solid rgba(var(--accent-rgb),.45);background:var(--accent-soft);color:var(--text);font-weight:700;font-size:12.5px;width:100%;transition:.15s;flex:none}
 .rep-btn svg{width:16px;height:16px}
 .rep-btn:hover{color:var(--text);border-color:var(--accent)}
 .rep-btn[disabled]{opacity:.6;cursor:default}
@@ -228,6 +228,8 @@ h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
 .ip-frame{position:relative;width:100%;aspect-ratio:16/9;background:var(--screen);border-radius:12px;overflow:hidden;display:grid;place-items:center}
 .ip-frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .ip-empty{color:var(--muted);font-size:13px}
+.ip-res{cursor:zoom-in}
+.ip-hist{margin-top:8px}
 .ip .bar{height:4px;border-radius:2px;background:var(--line-2);margin:12px 0 6px;overflow:hidden}.ip .bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
 .ip-acts{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
 .ip .go,.ip .stop{margin-top:12px}
@@ -614,6 +616,10 @@ details[open] summary::before{content:'－ '}
       <div><div class="brand-name">Minimax H3</div><div class="brand-sub">Workspace · локальная генерация</div></div>
     </div>
 
+    <button class="rep-btn" id="repBtn" title="Если что-то не работает, нажмите: приложение соберёт файл с данными о компьютере и ошибках. Отправьте этот файл автору.">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+      Отчёт для разработчика
+    </button>
     <div class="themes" id="themes" title="Тема оформления">
       <button data-t="" style="background:#e8264f" title="Бордо"></button>
       <button data-t="light" style="background:#f3f4f6" title="Светлая"></button>
@@ -687,10 +693,6 @@ details[open] summary::before{content:'－ '}
       <div class="stat" id="powerRow" hidden><span>Питание GPU</span><b id="gpuPower">—</b></div>
       <div class="stat"><span>Диск <small id="diskName"></small></span><b id="diskTxt">—</b></div>
     </div>
-    <button class="rep-btn" id="repBtn" title="Если что-то не работает: приложение соберёт файл с данными о компьютере и ошибках. Отправьте его автору.">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
-      Отчёт для разработчика
-    </button>
   </aside>
 
   <main class="main">
@@ -871,9 +873,12 @@ details[open] summary::before{content:'－ '}
             <textarea id="agAudioText" rows="2" placeholder="Распознаём слова…"></textarea>
           </div>
           <div class="ag-comp">
-            <label class="btn ag-clip" title="Приложить картинки"><input type="file" accept="image/*" multiple hidden id="agFile">
+            <label class="btn ag-clip" title="Приложить картинки с компьютера"><input type="file" accept="image/*" multiple hidden id="agFile">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg>
             </label>
+            <button class="btn ag-clip" type="button" id="agLib" title="Взять картинку или звук из Библиотеки (то, что вы уже сделали)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/></svg>
+            </button>
             <label class="btn ag-clip" title="Приложить аудио (песню или голос) — слова будут распознаны"><input type="file" accept="audio/*,video/mp4" hidden id="agAudioFile">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
             </label>
@@ -2369,6 +2374,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 /* ---------- LIBRARY ---------- */
 const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Улучшение' };
 const LIB = [];
+const IMG_PANELS = [];  // refresh functions of the picture result windows
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
 const ICON = {
   use: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
@@ -2500,6 +2506,7 @@ function renderLib() {
   $('#bulkSave').disabled = $('#bulkDel').disabled = !selected.size;
   $('#selToggle').textContent = selecting ? 'Готово' : 'Выбрать';
   $('#selToggle').classList.toggle('on', selecting);
+  IMG_PANELS.forEach(f => f());  // thumbnails under the pictures of the picture sections
 }
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const byId = id => LIB.find(x => x.id === id);
@@ -2925,6 +2932,38 @@ $('#agAudioFile').onchange = async e => {
     await setChatAudio(wavSlice(buf, 0, Math.min(buf.duration, 120)), f.name, Math.min(buf.duration, 120));
   } catch { toast('Не удалось прочитать аудиофайл'); }
 };
+// attach something from the Library to the chat: a picture (or the last frame of a video), or the sound of a video
+const agAttachFile = async f => { AG.att.push({ file: f, url: await fileToDataURL(f) }); renderAtt(); agCtx(); };
+$('#agLib').onclick = () => {
+  let m = $('#agLibM'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'agLibM'; document.body.append(m); }
+  m.hidden = false; let tab = 'img';
+  const paint = () => {
+    const items = LIB.filter(it => !it.missing && it.url && (tab === 'img' ? it.kind === 'image' : it.kind !== 'image')).sort((a, b) => b.date - a.date);
+    m.innerHTML = '<div class="box" style="padding:20px"><div class="card-h"><h3>Из Библиотеки</h3><button class="btn" data-x type="button">Закрыть</button></div>'
+      + `<div class="seg" style="grid-template-columns:1fr 1fr;margin-bottom:12px"><button data-tab="img" class="${tab === 'img' ? 'on' : ''}">Картинки</button><button data-tab="snd" class="${tab === 'snd' ? 'on' : ''}">Звук из видео<small>голос или песня</small></button></div>`
+      + (items.length ? `<div class="cw-pickgrid">${items.map(it => `<button class="cw-th" data-id="${it.id}" type="button" title="${esc((it.label ? it.label + ' · ' : '') + (it.prompt || '').slice(0, 80))}">${it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video>`}</button>`).join('')}</div>`
+        : `<div class="hint" style="padding:20px 4px">${tab === 'img' ? 'Картинок в Библиотеке пока нет.' : 'Видео в Библиотеке пока нет.'}</div>`)
+      + (tab === 'snd' ? '<div class="hint" style="margin-top:10px">Слова из звука будут распознаны, как при загрузке аудио.</div>' : '') + '</div>';
+  };
+  paint();
+  m.onclick = async ev => {
+    if (ev.target === m || ev.target.closest('[data-x]')) { m.hidden = true; return; }
+    const t = ev.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; paint(); return; }
+    const th = ev.target.closest('.cw-th'); if (!th) return;
+    const it = LIB.find(x => x.id === th.dataset.id); if (!it) return;
+    try {
+      if (tab === 'img') { await agAttachFile(await libToFile(it)); toast('Картинка добавлена в чат'); }
+      else {
+        toast('Берём звук из видео…');
+        const buf = await new AudioContext().decodeAudioData(await (await fetch(it.url)).arrayBuffer());
+        if (buf.duration > 120) toast('Длинное аудио: берём первые 2 минуты.');
+        const d = Math.min(buf.duration, 120);
+        await setChatAudio(wavSlice(buf, 0, d), (it.label || it.sub || 'видео из Библиотеки'), d);
+      }
+      m.hidden = true;
+    } catch { toast(tab === 'img' ? 'Не удалось взять файл' : 'В этом видео нет звука или его не удалось прочитать'); }
+  };
+};
 $('#agFromLip').onclick = () => {
   if (!L.dur0) return;
   setChatAudio(wavSlice(abuf, L.start, L.end), 'фрагмент из Lipsync', L.len());
@@ -3219,9 +3258,9 @@ $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx
 (() => {
   const root = document.documentElement;
   // [grid, css variable, storage key, half the gap, space the rest must keep]
-  [['.grid', '--pw', 'h3.pw', 11, 440], ['.ag-grid', '--aw', 'h3.aw', 8, 700]].forEach(([sel, VAR, KEY, half, keep]) => {
-    try { const v = +localStorage.getItem(KEY); if (v >= 260) root.style.setProperty(VAR, v + 'px'); } catch {}
-    $$(sel).forEach(g => {
+  const attach = (g, VAR, KEY, half, keep) => {
+    {
+      if ($(':scope > .gresize', g)) return;
       const h = document.createElement('div');
       h.className = 'gresize'; h.title = 'Потяните, чтобы изменить ширину. Двойной клик — вернуть как было';
       g.append(h);
@@ -3236,8 +3275,13 @@ $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx
         try { localStorage.setItem(KEY, parseInt(root.style.getPropertyValue(VAR))); } catch {}
       });
       h.addEventListener('dblclick', () => { root.style.removeProperty(VAR); try { localStorage.removeItem(KEY); } catch {} });
-    });
+    }
+  };
+  [['.grid', '--pw', 'h3.pw', 11, 440], ['.ag-grid', '--aw', 'h3.aw', 8, 700]].forEach(([sel, VAR, KEY, half, keep]) => {
+    try { const v = +localStorage.getItem(KEY); if (v >= 260) root.style.setProperty(VAR, v + 'px'); } catch {}
+    $$(sel).forEach(g => attach(g, VAR, KEY, half, keep));
   });
+  window.gridResize = g => attach(g, '--pw', 'h3.pw', 11, 440);  // for sections built later (the picture sections)
 })();
 
 
@@ -3605,7 +3649,7 @@ async function libToFile(it) {
 }
 
 /* ---------- Library -> workflow: "Use in…" button and the side tray to drag from ---------- */
-const USE_TARGETS = [['video', 'Image-to-Video'], ['lipsync', 'Lipsync / клип'], ['refs', 'Референсы'], ['actor', 'Актёрская игра'], ['action', 'Экшн-сцены'], ['qwen', 'Правка картинки']];
+const USE_TARGETS = [['video', 'Image-to-Video'], ['lipsync', 'Lipsync / клип'], ['refs', 'Референсы'], ['actor', 'Актёрская игра'], ['action', 'Экшн-сцены'], ['qwen', 'Правка картинки'], ['agent', 'Агент (в чат)']];
 function freeSlot(view) {
   const root = $('#view-' + view); if (!root) return null;
   const s = $$('label.drop:not(.disabled):not(.filled), label.ref:not(.filled)', root)[0];
@@ -3613,6 +3657,10 @@ function freeSlot(view) {
   return f && $('input[type=file]', f);
 }
 async function useInWorkflow(it, view) {
+  if (view === 'agent') {  // not a slot: the picture goes into the chat
+    try { await agAttachFile(await libToFile(it)); goTo('agent'); toast('Картинка добавлена в чат агента'); return true; }
+    catch { toast('Не удалось взять файл'); return false; }
+  }
   const input = freeSlot(view);
   if (!input) { toast('В этом разделе нет свободного места для картинки'); return false; }
   try { const f = await libToFile(it); goTo(view); await setDropFile(input, f); toast('Картинка отправлена в «' + USE_TARGETS.find(t => t[0] === view)[1] + '»'); return true; }
@@ -3673,7 +3721,8 @@ const IMG = {};
 function imgPanel(el, o) {
   el.innerHTML = `
     <div class="card ip">
-      <div class="ip-frame"><img class="ip-live" hidden alt=""><img class="ip-res" hidden alt=""><div class="ip-empty">Здесь появится картинка</div></div>
+      <div class="ip-frame"><img class="ip-live" hidden alt=""><img class="ip-res" hidden alt="" title="Нажмите, чтобы увеличить"><div class="ip-empty">Здесь появится картинка</div>
+        <button class="cw-zb ip-zb" type="button" title="Увеличить на весь экран" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6M8 11h6"/></svg></button></div>
       <div class="bar"><i class="ip-bar" style="width:0"></i></div>
       <div class="status ip-status"></div>
       <div class="ip-acts" hidden>
@@ -3681,6 +3730,8 @@ function imgPanel(el, o) {
         <button class="btn" data-a="use" type="button">Использовать в…</button>
         <button class="btn" data-a="lib" type="button">В Библиотеке</button>
       </div>
+      <div class="cw-hh ip-hh" hidden>Прошлые картинки — нажмите, чтобы открыть</div>
+      <div class="cw-hist ip-hist"></div>
       <button class="go ip-go" type="button"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg><span>Сгенерировать</span></button>
       <button class="stop ip-stop" type="button" hidden><i></i>Остановить генерацию</button>
     </div>`;
@@ -3688,6 +3739,20 @@ function imgPanel(el, o) {
   const live = $q('.ip-live'), res = $q('.ip-res'), empty = $q('.ip-empty'), bar = $q('.ip-bar'), status = $q('.ip-status');
   const go = $q('.ip-go'), stopB = $q('.ip-stop'), acts = $q('.ip-acts'), frame = $q('.ip-frame');
   let run = null, last = null;
+  const zb = $q('.ip-zb'), hist = $q('.ip-hist'), hh = $q('.ip-hh');
+  res.onload = () => { if (res.naturalWidth) frame.style.aspectRatio = `${res.naturalWidth} / ${res.naturalHeight}`; };
+  const refresh = () => {  // thumbnails of this section's earlier pictures
+    const mine = LIB.filter(x => x.mode === o.mode && x.kind === 'image' && !x.missing && x.url).sort((a, b) => b.date - a.date).slice(0, 12);
+    hh.hidden = !mine.length;
+    hist.innerHTML = mine.map(it => `<button class="cw-th${last && last.id === it.id ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc(fmtDate(it.date) + ((it.prompt || '') ? ' · ' + it.prompt.slice(0, 70) : ''))}"><img src="${it.url}" alt="" loading="lazy"></button>`).join('');
+  };
+  IMG_PANELS.push(refresh);
+  const showItem = it => {
+    last = it; live.hidden = true; empty.hidden = true; res.src = it.url; res.hidden = false; acts.hidden = false; zb.hidden = false;
+    status.innerHTML = `${esc(fmtDate(it.date))} · Seed: <b style="font-family:var(--mono)">${esc(String(it.seed ?? '—'))}</b>`; refresh();
+  };
+  hist.onclick = e => { const b = e.target.closest('.cw-th'); const it = b && LIB.find(x => x.id === b.dataset.id); if (it && !run) showItem(it); };
+  res.onclick = zb.onclick = () => { if (res.src) zoomOpen(res.src); };
   const show = () => {
     if (!run) return;
     const [txt, base] = IMG_STAGE[run.stage] || IMG_STAGE.queued;
@@ -3714,7 +3779,7 @@ function imgPanel(el, o) {
     go.disabled = false;
     if (run) { clearInterval(run.tick); offPrompt(run.id); const old = QUEUE.find(j => j.id === run.id); if (old) old.detached = true; run = null; }
     qAdd(r.prompt_id, o.mode, o.promptText());
-    live.hidden = true; res.hidden = true; empty.hidden = true; acts.hidden = true;
+    live.hidden = true; res.hidden = true; empty.hidden = true; acts.hidden = true; zb.hidden = true;
     run = { id: r.prompt_id, t0: performance.now(), stage: 'queued' };
     stopB.hidden = false;
     run.tick = setInterval(show, 1000); show();
@@ -3730,12 +3795,12 @@ function imgPanel(el, o) {
         show();
       } else if (ev.type === 'done') {
         const took = fmtTime((performance.now() - run.t0) / 1000); end();
-        last = ev.item; live.hidden = true; res.src = ev.item.url; res.hidden = false; acts.hidden = false;
+        last = ev.item; live.hidden = true; res.src = ev.item.url; res.hidden = false; acts.hidden = false; zb.hidden = false; refresh();
         status.innerHTML = `Готово за ${took} — картинка в Библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(ev.item.seed ?? '—'))}</b>`;
       } else if (ev.type === 'error') {
-        end(); empty.hidden = !!last; res.hidden = !last; status.textContent = 'Ошибка ComfyUI: ' + ev.message;
+        end(); empty.hidden = !!last; res.hidden = !last; zb.hidden = !last; status.textContent = 'Ошибка ComfyUI: ' + ev.message;
       } else if (ev.type === 'interrupted') {
-        end(); empty.hidden = !!last; res.hidden = !last; status.textContent = 'Генерация остановлена.';
+        end(); empty.hidden = !!last; res.hidden = !last; zb.hidden = !last; status.textContent = 'Генерация остановлена.';
       }
     });
   };
@@ -3745,7 +3810,7 @@ function imgPanel(el, o) {
     const it = byId(last.id) || last;
     if (a === 'save') saveItems([it]); else if (a === 'use') useMenu(it); else goTo('library');
   };
-  frame.style.aspectRatio = '16 / 9';
+  frame.style.aspectRatio = '16 / 9'; refresh();
   return { frame, ratio: (w, h) => { if (!run && !last) frame.style.aspectRatio = `${w} / ${h}`; } };
 }
 
@@ -3778,6 +3843,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         <div class="row"><div class="row-l">Формат <span class="resv"></span></div><div class="chips kr-asp"></div></div>
         ${imgSeedBox()}</div>
     </div><div class="preview kr-prev"></div></div>`;
+  gridResize($('.grid', root));
   $('.kr-asp', root).innerHTML = IMG_ASPECTS.map(([id, name, w, h]) => { const k = 18 / Math.max(w, h);
     return `<button class="chip" data-a="${id}"><i class="ar" style="width:${w * k}px;height:${h * k}px"></i>${name}${name !== id ? ` <small>${id}</small>` : ''}</button>`; }).join('');
   const P = imgPanel($('.kr-prev', root), {
@@ -3817,6 +3883,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         ${imgSeedBox()}
         <div class="hint" style="margin-top:10px">Модель Qwen Image 2.1 — только для некоммерческого использования (лицензия Qwen Research).</div></div>
     </div><div class="preview qw-prev"></div></div>`;
+  gridResize($('.grid', root));
   const drop = $('#qwDrop');
   wireDrop(drop, () => {});
   const P = imgPanel($('.qw-prev', root), {

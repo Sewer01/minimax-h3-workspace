@@ -3724,7 +3724,7 @@ function useMenu(it) {
   st.textContent = '#libTray{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:30;display:flex;align-items:center}#libTray[hidden]{display:none}'
     + '.lt-tab{writing-mode:vertical-rl;padding:12px 6px;border-radius:10px 0 0 10px;background:var(--card,#222);border:1px solid var(--line-2);border-right:0;color:var(--text);font-size:12px;font-weight:700;cursor:pointer}'
     + '.lt-body{width:130px;max-height:70vh;overflow:auto;padding:8px;display:grid;gap:8px;background:var(--bg-2);border:1px solid var(--line-2);border-radius:12px 0 0 12px}'
-    + '.lt-body img,.lt-body video{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:grab;display:block}';
+    + '.lt-body img,.lt-body video{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;display:block}';
   document.head.append(st);
   const body = $('.lt-body', tray);
   const fill = () => {
@@ -3732,6 +3732,7 @@ function useMenu(it) {
     body.innerHTML = items.length ? items.map(it => it.kind === 'image' ? `<img src="${it.url}" draggable="true" data-id="${it.id}" alt="">` : `<video src="${it.url}#t=0.5" preload="metadata" muted draggable="true" data-id="${it.id}"></video>`).join('') : '<div class="hint">Пока пусто</div>';
   };
   $('.lt-tab', tray).onclick = () => { body.hidden = !body.hidden; if (!body.hidden) fill(); };
+  body.addEventListener('click', e => { const t = e.target.closest('[data-id]'); if (t) openViewer(t.dataset.id); });  // a click opens the picture, a drag takes it into a slot
   body.addEventListener('dragstart', e => { const t = e.target.closest('[data-id]'); if (t) { e.dataTransfer.setData('text/h3lib', t.dataset.id); e.dataTransfer.effectAllowed = 'copy'; } });
   const sync = () => { tray.hidden = !!$('#view-library.active, #view-models.active, #view-agent.active, #view-queue.active'); };
   new MutationObserver(sync).observe($('main, body'), { subtree: true, attributes: true, attributeFilter: ['class'] }); sync();

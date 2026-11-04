@@ -31,6 +31,7 @@ import cloud
 import customwf
 import engine
 import monitor
+import report
 import speech
 import updater
 import workflows as wf
@@ -97,6 +98,7 @@ class App:
         self.hw = None
         self.rh_models = None  # model paths found in the user's RunningHub workflow
         self.monitor = monitor.Monitor()
+        self.recent_errors = []  # last problems, for the report to the author
 
     def llm_root(self):
         if self.config.get("llm_dir"):
@@ -300,6 +302,7 @@ class App:
             await self.finish_job(job)
         elif t == "execution_error":
             job["state"] = "error"
+            self.note_error(f'Ошибка генерации, узел {d.get("node_type", "")}: {d.get("exception_message", "").strip()}')
             await self.broadcast({"type": "error", "prompt_id": pid,
                                   "message": f'{d.get("node_type", "")}: {d.get("exception_message", "").strip()}'})
             self.jobs.pop(pid, None)
@@ -325,6 +328,7 @@ class App:
         images = [f for f in files if f["filename"].lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
                   and f.get("type", "output") == "output"]
         if not videos and not images:
+            self.note_error("ComfyUI закончил работу, но не вернул ни видео, ни картинку")
             await self.broadcast({"type": "error", "prompt_id": pid, "message": "ComfyUI не вернул ни видео, ни картинку"})
             return
         if videos:
@@ -526,6 +530,8 @@ class App:
     # ---------- first-run setup ----------
 
     async def setup_emit(self, ev):
+        if ev.get("state") == "error":
+            self.note_error(f'Установка, шаг {ev.get("step")}: {ev.get("label")}')
         if ev.get("state") != "progress" or ev.get("step") != getattr(self, "_last_step", None):
             self.setup_log = (self.setup_log + [ev])[-40:]
         self._last_step = ev.get("step")
@@ -637,6 +643,48 @@ class App:
             await self.setup_emit({"type": "setup", "step": "finish", "state": "error", "label": str(e)})
         finally:
             self.installer = None
+
+    def note_error(self, text):
+        self.recent_errors = (self.recent_errors + [f"{datetime.now():%H:%M:%S} {text}"])[-15:]
+
+    async def h_report(self, req):
+        """Collect everything the author needs into one text file and show it in Explorer."""
+        try:
+            page = await req.json()
+        except Exception:
+            page = {}
+        comfy = {"адрес": self.comfy, "режим": self.config.get("engine"), "онлайн": self.comfy_online,
+                 "настройка завершена": bool(self.config.get("setup_done"))}
+        try:
+            st = await self.system_stats()
+            sysinfo = st.get("system", {})
+            comfy.update({"версия ComfyUI": sysinfo.get("comfyui_version"), "версия PyTorch": sysinfo.get("pytorch_version"),
+                          "запуск": " ".join(map(str, sysinfo.get("argv", []))),
+                          "устройства": "; ".join(f'{d.get("name")} (всего {round(d.get("vram_total", 0) / 1024 ** 3, 1)} ГБ, '
+                                                  f'свободно {round(d.get("vram_free", 0) / 1024 ** 3, 1)} ГБ)' for d in st.get("devices", []))})
+            await self.resolve_models()
+            needed = catalog.roles_for(self.modes())
+            missing = {m["role"] for m in self.missing}
+            models = [{"title": catalog.ROLE_TITLES[r], "name": self.model_names.get(r), "have": r not in missing}
+                      for r in self.choice() if r in needed]
+        except Exception as e:
+            comfy["ошибка связи"] = f"{type(e).__name__}: {e}"
+            models = []
+        hw = await asyncio.to_thread(engine.detect_hardware, self.config.get("install_dir"))
+        text = await asyncio.to_thread(report.build, {
+            "home": HOME, "data_dir": DATA_DIR, "hw": hw, "page": page.get("page"), "comfy": comfy, "models": models,
+            "config": self.config.data, "errors": self.recent_errors, "toasts": page.get("toasts"),
+            "comfy_log": self.process.log_tail(60) if self.process else "",
+            "llm_log": self.llm.log_tail(12)})
+        folder = DATA_DIR / "reports"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"Отчёт для разработчика {datetime.now():%Y-%m-%d %H-%M-%S}.txt"
+        path.write_text(text, encoding="utf-8")
+        try:
+            subprocess.Popen(["explorer", "/select,", str(path)])
+        except Exception:
+            pass
+        return web.json_response({"ok": True, "path": str(path), "name": path.name})
 
     async def h_open_driver(self, _req):
         webbrowser.open("https://www.nvidia.com/Download/index.aspx?lang=ru")
@@ -1629,6 +1677,7 @@ def build_app(comfy_override=None):
         web.post("/api/setup/install", state.h_setup_install),
         web.post("/api/setup/cancel", state.h_setup_cancel),
         web.post("/api/open-driver-page", state.h_open_driver),
+        web.post("/api/report", state.h_report),
         web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),

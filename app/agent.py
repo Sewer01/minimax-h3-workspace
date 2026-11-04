@@ -33,12 +33,22 @@ LLM_VARIANTS = {
 # Keywords that switch on the acting skill in "auto" mode (matched as word starts, any case).
 DEFAULT_SKILL_SETTINGS = {
     "hailuo-h3": {"mode": "always", "keywords": []},
-    "karta-personazha": {"mode": "off", "keywords": []},  # image skill: switched on by the image sections later
+    # picture skills: used only when the chat is set to a picture target (see IMAGE_SKILLS), never for video prompts
+    "karta-personazha": {"mode": "off", "keywords": []},
+    "krea-2": {"mode": "off", "keywords": []},
+    "qwen-image-2-1-director-prompt": {"mode": "off", "keywords": []},
     "akterskaya-igra": {"mode": "auto", "keywords": [
         "актер", "актёр", "диалог", "реплик", "эмоци", "игра", "драм", "ссор", "спор", "плач", "слез", "слёз",
         "прощан", "признан", "разговор", "говорит", "говорят", "кричит", "шепчет", "обид", "ревн", "страх",
         "гнев", "грусть", "печал", "радост", "микромимик", "dialog", "dialogue", "emotion", "acting", "actor"]},
 }
+
+
+# "Prompt for" targets that make pictures: which skill writes the prompt for each
+IMAGE_SKILLS = {"krea": "krea-2", "qwen": "qwen-image-2-1-director-prompt", "sheet": "karta-personazha"}
+AGENT_TARGETS = ("video", "lipsync", "refs", "actor", "action") + tuple(IMAGE_SKILLS)
+# long extra reference files that would not fit next to the rest into the model's context
+SKIP_REFS = {"platform-adapters.md", "long-form-writing.md"}
 
 
 def pick_variant(hw):
@@ -89,10 +99,14 @@ class Skills:
         all_s[sid] = cur
         self.config.update(skills=all_s)
 
-    def active(self, chat_text):
+    def active(self, chat_text, target="video"):
+        if target in IMAGE_SKILLS:  # a picture prompt: only its own skill, the video skills would mislead the model
+            return [s for s in self.list() if s["id"] == IMAGE_SKILLS[target]]
         text = chat_text.lower()
         res = []
         for s in self.list():
+            if s["id"] in IMAGE_SKILLS.values():
+                continue
             if s["mode"] == "always":
                 res.append(s)
             elif s["mode"] == "auto" and any(re.search(r"\b" + re.escape(k), text) for k in s["keywords"]):
@@ -104,7 +118,7 @@ class Skills:
         _, body = parse_frontmatter((skill["path"] / "SKILL.md").read_text(encoding="utf-8", errors="replace"))
         parts = [f"# СКИЛЛ «{skill['name']}»\n\n{body}"]
         for ref in skill["refs"]:
-            if ref.name == "platform-adapters.md":  # only for platforms without their own skill
+            if ref.name in SKIP_REFS:  # only for platforms without their own skill / too long
                 continue
             parts.append(f"## Справочник {skill['name']}: {ref.name}\n\n"
                          + ref.read_text(encoding="utf-8", errors="replace").strip())
@@ -176,6 +190,32 @@ def system_prompt(skills_text, target, ctx):
             "с шотами и таймкодами, `overall_soundscape`, `non_diegetic_music: N/A`. Без русской версии.\n"
             "- Внешность персонажей не описывай - её закрывает картинка. Никаких слов про шёпот: речь должна звучать.\n"
             "- Если реплики не помещаются в длительность, одной строкой скажи, сколько секунд поставить в разделе.")
+    elif target == "krea":
+        mode_rules = (
+            "Режим приложения: КАРТИНКА ПО ТЕКСТУ (Krea 2, раздел «Картинка по тексту»). Нужен промпт для ОДНОЙ КАРТИНКИ, "
+            "это не видео: без таймкодов, шотов, звука и формата H3. Используй скилл «krea-2» для самого промпта.\n"
+            "- В приложении нужен только английский промпт одним блоком prompt. Русскую версию, слайдеры, creativity, "
+            "референсы стиля и выбор варианта модели не выводи: в приложении их нет.\n"
+            "- Одной строкой перед блоком подскажи формат кадра из списка 16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3 "
+            "(он выбирается в разделе). Если нужны реалистичные люди или фото, добавь, что в разделе есть стиль «Реализм».\n"
+            "- Картинки, приложенные к чату, это образцы настроения и композиции, их не пересказывай подробно.")
+    elif target == "qwen":
+        mode_rules = (
+            "Режим приложения: ПРАВКА КАРТИНКИ (Qwen Image 2.1, раздел «Правка картинки»). Пользователь прикладывает к чату "
+            "картинку (Picture 1), которую надо изменить, и пишет, что поменять. Используй скилл Qwen Image для формулировки.\n"
+            "- Если картинки в чате нет, попроси приложить её (скрепка внизу или «Из Библиотеки»), не выдумывай.\n"
+            "- Ответ: один английский блок prompt с инструкцией правки: что изменить и что обязательно сохранить "
+            "(лицо, причёска, одежда, поза, композиция, свет). Одна картинка и одна правка за раз.\n"
+            "- RGBA, мультиреференс, размеры и другие настройки не выводи: в приложении их нет. Без видео-терминов.")
+    elif target == "sheet":
+        mode_rules = (
+            "Режим приложения: ЛИСТ ПЕРСОНАЖА по описанию (картинка Krea 2 в разделе «Картинка по тексту», формат 16:9). "
+            "Используй скилл «Карта персонажа».\n"
+            "- Ответ: один английский блок prompt на ОДНУ картинку-лист из 4 панелей, без видео-терминов. Русскую версию "
+            "и промпты для других моделей не выводи.\n"
+            "- Если к чату приложена картинка персонажа, опираясь на неё, опиши его внешность (DNA) подробно: лист рисуется "
+            "с нуля по тексту. Если персонаж уже есть картинкой и нужен лист именно по ней, одной строкой подскажи "
+            "раздел «Правка картинки» → «Лист персонажа»: там это делается по самой картинке.")
     elif target in ("refs", "action"):
         mode_rules = (
             ("Режим приложения: ЭКШН-СЦЕНЫ (Hybrid FL2VA/Ref2VA, сэмплинг 8 шагов в низком разрешении + 4 в высоком): "
@@ -198,7 +238,12 @@ def system_prompt(skills_text, target, ctx):
             align = "картинок нет - T2VA, без строки выравнивания"
         mode_rules = (f"Режим приложения: ГЕНЕРАЦИЯ ВИДЕО (FastH3: текст / первый кадр / первый и последний кадр). "
                       f"Сейчас {align}. Длительность клипа {dur or 5} с - таймкоды шотов не выходят за неё.")
-    return f"""Ты - агент-режиссёр внутри приложения Minimax H3 Workspace. Пользователь описывает сцену, сценарий, персонажей, может приложить картинки. Ты пишешь готовый промпт для локальной видеомодели MiniMax H3 по правилам скиллов ниже.
+    intro = ("Ты - агент-художник внутри приложения Minimax H3 Workspace. Пользователь описывает картинку или правку, может приложить "
+             "картинки. Ты пишешь готовый промпт для модели картинок по правилам скилла ниже."
+             if target in IMAGE_SKILLS else
+             "Ты - агент-режиссёр внутри приложения Minimax H3 Workspace. Пользователь описывает сцену, сценарий, персонажей, "
+             "может приложить картинки. Ты пишешь готовый промпт для локальной видеомодели MiniMax H3 по правилам скиллов ниже.")
+    return f"""{intro}
 
 ПРАВИЛА ПРИЛОЖЕНИЯ (важнее указаний скиллов о формате ответа):
 1. Общайся на языке пользователя, коротко и по делу. Если не хватает критичного (что происходит, кто говорит, текст реплик) - задай 1-2 конкретных вопроса. Иначе сразу пиши промпт.

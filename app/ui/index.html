@@ -925,12 +925,19 @@ details[open] summary::before{content:'－ '}
           </div>
           <div class="card">
             <div class="card-h"><h3>Промпт для</h3></div>
+            <div class="hint" style="margin-bottom:6px">Видео</div>
             <div class="seg" id="agTarget" style="grid-template-columns:1fr 1fr;grid-auto-rows:auto">
               <button data-t="video" class="on">Image-to-Video<small>текст / кадры</small></button>
               <button data-t="lipsync">Lipsync<small>референсы + аудио</small></button>
               <button data-t="refs">Референсы<small>картинки, видео, аудио</small></button>
               <button data-t="actor">Актёрская игра<small>диалог, голос, эмоции</small></button>
               <button data-t="action">Экшн-сцены<small>бой, погоня, бег</small></button>
+            </div>
+            <div class="hint" style="margin:12px 0 6px">Картинки</div>
+            <div class="seg" id="agTarget2" style="grid-template-columns:1fr 1fr;grid-auto-rows:auto">
+              <button data-t="krea">Картинка по тексту<small>Krea 2</small></button>
+              <button data-t="qwen">Правка картинки<small>Qwen, нужна картинка</small></button>
+              <button data-t="sheet">Лист персонажа<small>4 панели, Krea 2</small></button>
             </div>
             <small class="hint" id="agCtx" style="display:block;margin-top:8px"></small>
           </div>
@@ -2859,13 +2866,20 @@ $('#agFile').onchange = async e => {
 };
 $('#agEmpty').onclick = e => { const s = e.target.closest('span'); if (s) { $('#agIn').value = s.textContent.replace(/[«»]/g, '').replace(/ \+ фото героинь$/, ''); $('#agIn').focus(); } };
 $('#agIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#agSend').click(); } });
-$('#agTarget').onclick = e => {
+const AG_NAMES = { video: 'Генерацию видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрскую игру', action: 'Экшн-сцены', krea: 'Картинку по тексту', qwen: 'Правку картинки', sheet: 'Картинку по тексту' };
+const AG_IMG = ['krea', 'qwen', 'sheet'];
+const agTargetClick = e => {
   const b = e.target.closest('button[data-t]'); if (!b) return;
-  AG.target = b.dataset.t; $$('#agTarget button').forEach(x => x.classList.toggle('on', x === b)); agCtx();
+  AG.target = b.dataset.t; $$('#agTarget button, #agTarget2 button').forEach(x => x.classList.toggle('on', x === b)); agCtx();
 };
+$('#agTarget').onclick = agTargetClick; $('#agTarget2').onclick = agTargetClick;
 function agCtx() {
   const n = agImgCount() + AG.att.length;
-  $('#agCtx').textContent = AG.target === 'video'
+  $('#agCtx').textContent = AG_IMG.includes(AG.target)
+    ? ({ krea: 'Опишите картинку словами: агент напишет промпт для Krea 2. Картинки в чате — только образцы настроения.',
+         qwen: `Приложите картинку, которую нужно изменить (скрепка или «Из Библиотеки»), и напишите, что поменять. Картинок в чате: ${n}.`,
+         sheet: `Опишите персонажа: агент напишет промпт листа из 4 панелей. Картинок в чате: ${n}.` })[AG.target]
+    : AG.target === 'video'
     ? `Длительность ${V.dur} с (как в «Генерации видео»). Картинки в чате: ${n} — 1-я станет первым кадром, 2-я последним.`
     : AG.target === 'lipsync'
       ? `Длина видео = длине аудио${L.dur0 ? ` (${L.len().toFixed(1)} с)` : ''}. Картинки в чате: ${n} — станут референсами Picture 1, 2…`
@@ -2881,8 +2895,8 @@ function renderAssistant(el, m) {
     if (i % 2 === 0) { if (p.trim()) html += mdLite(p.trim()); return; }
     const closed = i < parts.length - 1;
     html += `<div class="pblock"><pre>${esc(p.replace(/\n$/, ''))}</pre>${closed ? `<div class="pb-act">
-      <button class="btn pri" data-send="${AG.target}">${{ video: 'В Генерацию видео', lipsync: 'В Lipsync', refs: 'В Референсы', actor: 'В Актёрскую игру', action: 'В Экшн-сцены' }[AG.target]}</button>
-      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Image-to-Video</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="action">Экшн-сцены</option></select>
+      <button class="btn pri" data-send="${AG.target}">В ${AG_NAMES[AG.target]}</button>
+      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Image-to-Video</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="action">Экшн-сцены</option><option value="krea">Картинка по тексту</option><option value="qwen">Правка картинки</option></select>
       <button class="btn" data-copy>Копировать</button><small>${p.length} симв.</small></div>` : ''}</div>`;
   });
   if (m.status && !m.content) html += `<div class="st">${esc(m.status)}</div>`;
@@ -3019,7 +3033,7 @@ async function agSend() {
   AG.msgs.push(reply); renderMsgs();
   const el = $('#agMsgs .msg:last-child');
   AG.busy = true; $('#agSend').textContent = 'Стоп'; AG.ctrl = new AbortController();
-  const ctx = { duration: AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
+  const ctx = { duration: AG_IMG.includes(AG.target) ? null : AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
   if (AG.target === 'actor') ctx.voice = RM.actor.voice() ? 1 : 0;
   try {
     const r = await fetch('/api/agent/chat', {
@@ -3074,7 +3088,7 @@ async function openChat(id) {
   if (AG.busy) AG.ctrl?.abort();
   const c = await (await fetch(`/api/agent/chats/${id}`)).json();
   AG.id = id; AG.msgs = c.messages || []; AG.att = []; renderAtt();
-  const b = $(`#agTarget button[data-t="${c.target}"]`); if (b) b.click();
+  const b = $(`#agTarget button[data-t="${c.target}"], #agTarget2 button[data-t="${c.target}"]`); if (b) b.click();
   renderMsgs(); agCtx(); loadChats();
 }
 function confirmBox(title, text, ok, fn) {
@@ -3107,7 +3121,12 @@ async function sendPrompt(blk, to) {
   // pictures of a reopened chat exist only as data URLs; turn them back into files
   const toFile = (u, i) => { const [h, b] = u.split(','); const bin = atob(b); const a = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) a[k] = bin.charCodeAt(k); return new File([a], `picture${i + 1}.jpg`, { type: h.slice(5, h.indexOf(';')) }); };
   const files = AG.msgs.flatMap(m => m.files || (m.images || []).map(toFile));
-  if (to === 'video') {
+  if (to === 'krea' || to === 'sheet') {
+    IMG.krea.fill({ prompt, aspect: AG.target === 'sheet' || to === 'sheet' ? '16:9' : undefined }); to = 'krea';
+  } else if (to === 'qwen') {
+    IMG.qwen.fill({ prompt });
+    if (files[0]) { $('#qwDrop .x')?.click(); await setDropFile($('#qwDrop input'), files[0]); }
+  } else if (to === 'video') {
     $('#vPrompt').value = prompt; $('#vPrompt').oninput({ target: $('#vPrompt') });
     if (files[0]) { $('#dFirst .x')?.click(); await setDropFile($('#dFirst input'), files[0]); }
     if (files[1]) await setDropFile($('#dLast input'), files[1]);
@@ -3124,8 +3143,8 @@ async function sendPrompt(blk, to) {
   const au = [...AG.msgs].reverse().find(m => m.audioFile)?.audioFile;
   if (to === 'lipsync' && au) await setDropFile($('#aFile'), au);
   goTo(to);
-  const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', actor: '«Актёрскую игру»', action: '«Экшн-сцены»' }[to];
-  toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' ? ' вместе с картинками' : '') + (to === 'lipsync' ? (au ? ' и аудио — выделите нужный фрагмент' : ' — добавьте аудио') : ''));
+  const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', actor: '«Актёрскую игру»', action: '«Экшн-сцены»', krea: '«Картинку по тексту»', qwen: '«Правку картинки»' }[to];
+  toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' && to !== 'krea' ? ' вместе с картинками' : '') + (to === 'lipsync' ? (au ? ' и аудио — выделите нужный фрагмент' : ' — добавьте аудио') : ''));
 }
 $('#agMsgs').addEventListener('click', async e => {
   const blk = e.target.closest('.pblock'); if (!blk) return;
@@ -3210,13 +3229,14 @@ function onAgentSetup(ev) {
 
 // skills
 const SK_MODES = { always: 'Всегда', auto: 'Авто', off: 'Выкл' };
+const AG_SK_IMG = { 'krea-2': 'Картинка по тексту', 'qwen-image-2-1-director-prompt': 'Правка картинки', 'karta-personazha': 'Лист персонажа' };
 function renderSkills(list) {
   $('#skList').innerHTML = list.map(s => `<div class="sk" data-id="${esc(s.id)}">
     <div class="sk-top"><b title="${esc(s.name)}">${esc(s.name)}</b>
-      <select>${Object.entries(SK_MODES).map(([k, v]) => `<option value="${k}" ${k === s.mode ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      ${AG_SK_IMG[s.id] ? `<span class="hint" title="Подключается сама, когда выбрана кнопка «${AG_SK_IMG[s.id]}» в «Промпт для»">${AG_SK_IMG[s.id]}</span>` : `<select>${Object.entries(SK_MODES).map(([k, v]) => `<option value="${k}" ${k === s.mode ? 'selected' : ''}>${v}</option>`).join('')}</select>`}
       ${s.builtin ? '' : '<button class="x" title="Удалить скилл">✕</button>'}</div>
     <p title="${esc(s.description)}">${esc(s.description)}</p>
-    ${s.mode === 'auto' ? `<input value="${esc(s.keywords.join(', '))}" placeholder="слова через запятую">` : ''}
+    ${s.mode === 'auto' && !AG_SK_IMG[s.id] ? `<input value="${esc(s.keywords.join(', '))}" placeholder="слова через запятую">` : ''}
     <small class="hint">${s.refs.length ? `+ справочники: ${s.refs.length}` : ''}</small></div>`).join('');
 }
 $('#skList').addEventListener('change', async e => {

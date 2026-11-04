@@ -1496,7 +1496,7 @@ class App:
     async def h_agent_chat(self, req):
         body = await req.json()
         messages = body.get("messages") or []
-        target = body.get("target") if body.get("target") in catalog.MODE_ROLES else "video"
+        target = body.get("target") if body.get("target") in ag.AGENT_TARGETS else "video"
         ctx = body.get("ctx") or {}
         resp = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"})
         await resp.prepare(req)
@@ -1525,7 +1525,7 @@ class App:
                 messages = [dict(m, images=None) for m in messages]
                 await send({"type": "status", "text": "У этой модели нет файла «зрения» (mmproj) — картинки она не увидит"})
             ctx["images"] = sum(len(m.get("images") or []) for m in messages if m["role"] == "user")
-            active = self.skills.active(ag.chat_text(messages))
+            active = self.skills.active(ag.chat_text(messages), target)
             if target == "actor" and not any(s["id"] == "akterskaya-igra" for s in active):
                 # this mode is acting-first: its skill is always on here
                 active += [s for s in self.skills.list() if s["id"] == "akterskaya-igra" and s["mode"] != "off"]

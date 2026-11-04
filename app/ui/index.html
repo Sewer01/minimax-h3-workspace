@@ -1173,7 +1173,7 @@ details[open] summary::before{content:'－ '}
 <div class="modal" id="viewer" hidden>
   <div class="box viewer">
     <button class="close" data-close aria-label="Закрыть">✕</button>
-    <div class="v-media"><video controls loop playsinline hidden></video><img alt=""><div class="li-play"><i><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></i></div></div>
+    <div class="v-media"><video controls loop playsinline hidden></video><img alt="" id="vwImg"><button class="cw-zb" id="vwZoom" type="button" title="Открыть на весь экран" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6M8 11h6"/></svg></button><div class="li-play"><i><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg></i></div></div>
     <div class="v-info">
       <h3 id="vwTitle"></h3>
       <div class="kv" id="vwKv"></div>
@@ -2578,9 +2578,13 @@ function openViewer(id) {
   const vid = $('#viewer video'), img = $('#viewer img');
   const pic = it.kind === 'image';
   vid.hidden = !it.url || pic; img.hidden = $('#viewer .li-play').hidden = !!it.url && !pic;
+  $('#vwZoom').hidden = !pic || !it.url;
+  img.style.cursor = pic && it.url ? 'zoom-in' : '';
+  img.onload = () => { if (pic && !it.res && img.naturalWidth) $('#vwKv').insertAdjacentHTML('afterbegin', `<span>Разрешение</span><b>${dimTxt(img.naturalWidth, img.naturalHeight)}</b>`); };
+  vid.onloadedmetadata = () => { if (!pic && !it.res && vid.videoWidth) $('#vwKv').insertAdjacentHTML('afterbegin', `<span>Разрешение</span><b>${dimTxt(vid.videoWidth, vid.videoHeight)}</b>`); };
   if (pic) { vid.removeAttribute('src'); img.src = it.url; } else if (it.url) { vid.src = it.url; vid.play().catch(() => {}); } else img.src = it.thumb;
   $('#vwTitle').textContent = `${MODE_NAME[it.mode]} · ${it.sub}`;
-  $('#vwKv').innerHTML = [...(it.res ? [['Разрешение', it.res]] : []), ...(it.aspect ? [['Формат', it.aspect]] : []), ...(it.q ? [['Качество', it.q]] : []), ...(it.len ? [['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`]] : []), ['Создано', fmtDate(it.date)], ...(it.seed != null ? [['Seed', String(it.seed)]] : []), ['Файл', fileName(it)]]
+  $('#vwKv').innerHTML = [...(it.res ? [['Разрешение', /^\d+×\d+$/.test(it.res) ? dimTxt(...it.res.split('×')) : it.res]] : []), ...(it.aspect ? [['Формат', it.aspect]] : []), ...(it.q ? [['Качество', it.q]] : []), ...(it.len ? [['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`]] : []), ['Создано', fmtDate(it.date)], ...(it.seed != null ? [['Seed', String(it.seed)]] : []), ['Файл', fileName(it)]]
     .map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
   $('#vwPrompt').textContent = it.prompt || 'без промпта';
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
@@ -2589,6 +2593,7 @@ function openViewer(id) {
   $('#vwUp').textContent = pic ? 'Увеличить картинку…' : 'Увеличить видео…';
   $('#viewer').hidden = false;
 }
+const dimTxt = (w, h) => `${w}×${h} · ${(w * h / 1e6).toFixed(1).replace('.', ',')} МП`;
 function closeViewer() { $('#viewer').hidden = true; openId = null; const v = $('#viewer video'); v.pause(); v.removeAttribute('src'); }
 function goTo(view) { $(`.nav[data-view="${view}"]`).click(); }
 
@@ -2614,6 +2619,8 @@ $('#bulkDel').onclick = () => askDelete([...selected]);
 $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.id === 'viewer' ? closeViewer() : (m.hidden = true); }));
 addEventListener('keydown', e => { if (e.key === 'Escape') { $('#confirm').hidden = true; closeViewer(); } });
 $('#vwSave').onclick = () => saveItems([byId(openId)]);
+$('#vwZoom').onclick = () => { const it = byId(openId); if (it && it.url) zoomOpen(it.url); };
+$('#vwImg').onclick = () => { const it = byId(openId); if (it && it.kind === 'image' && it.url) zoomOpen(it.url); };
 $('#vwDel').onclick = () => askDelete([openId]);
 $('#vwSeed').onclick = () => {
   const it = byId(openId); if (!it || it.seed == null) return;
@@ -3752,6 +3759,7 @@ function imgPanel(el, o) {
         <button class="cw-zb ip-zb" type="button" title="Увеличить на весь экран" hidden><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v6M8 11h6"/></svg></button></div>
       <div class="bar"><i class="ip-bar" style="width:0"></i></div>
       <div class="status ip-status"></div>
+      <div class="hint ip-dim" style="text-align:center;min-height:16px"></div>
       <div class="ip-acts" hidden>
         <button class="btn" data-a="save" type="button">Сохранить</button>
         <button class="btn" data-a="use" type="button">Использовать в…</button>
@@ -3768,7 +3776,8 @@ function imgPanel(el, o) {
   const go = $q('.ip-go'), stopB = $q('.ip-stop'), acts = $q('.ip-acts'), frame = $q('.ip-frame');
   let run = null, last = null;
   const zb = $q('.ip-zb'), hist = $q('.ip-hist'), hh = $q('.ip-hh');
-  res.onload = () => { if (res.naturalWidth) frame.style.aspectRatio = `${res.naturalWidth} / ${res.naturalHeight}`; };
+  const dim = $q('.ip-dim');
+  res.onload = () => { if (res.naturalWidth) { frame.style.aspectRatio = `${res.naturalWidth} / ${res.naturalHeight}`; dim.textContent = 'Размер: ' + dimTxt(res.naturalWidth, res.naturalHeight); } };
   const refresh = () => {  // thumbnails of this section's earlier pictures
     const mine = LIB.filter(x => x.mode === o.mode && x.kind === 'image' && !x.missing && x.url).sort((a, b) => b.date - a.date).slice(0, 12);
     hh.hidden = !mine.length;
@@ -3808,7 +3817,7 @@ function imgPanel(el, o) {
     go.disabled = false;
     if (run) { clearInterval(run.tick); offPrompt(run.id); const old = QUEUE.find(j => j.id === run.id); if (old) old.detached = true; run = null; }
     qAdd(r.prompt_id, o.mode, o.promptText());
-    live.hidden = true; res.hidden = true; empty.hidden = true; acts.hidden = true; zb.hidden = true;
+    live.hidden = true; res.hidden = true; empty.hidden = true; acts.hidden = true; zb.hidden = true; dim.textContent = '';
     run = { id: r.prompt_id, t0: performance.now(), stage: 'queued' };
     stopB.hidden = false;
     run.tick = setInterval(show, 1000); show();

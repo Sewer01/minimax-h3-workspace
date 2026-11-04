@@ -302,6 +302,10 @@ def local_env(root):
     for var, sub in dirs.items():
         (cache / sub).mkdir(parents=True, exist_ok=True)
         env[var] = str(cache / sub)
+    # On Russian Windows (cp1251) ComfyUI's log cannot print emoji (the upscaler node prints a check mark):
+    # the error handler itself then crashes, the worker thread dies and Lipsync hangs forever.
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     return env
 
 

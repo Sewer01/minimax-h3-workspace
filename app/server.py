@@ -958,24 +958,25 @@ class App:
         return form, image, seed
 
     async def h_upscale(self, req):
-        """Improve the quality of a finished video from the library (SeedVR2), the sound stays."""
+        """Improve the quality of a finished video or picture from the library (SeedVR2), the sound stays."""
         await self.need_models("upscale")
         if self.rh():
             raise web.HTTPBadRequest(text="Улучшение качества работает только на своём ComfyUI (не в облаке RunningHub).")
         body = await req.json()
         item = self.library.get(body.get("id", ""))
         path = self.file_path(item) if item else None
-        if not item or not path or not path.exists() or item.get("kind") == "image":
-            raise web.HTTPBadRequest(text="Видео не найдено на диске")
+        if not item or not path or not path.exists():
+            raise web.HTTPBadRequest(text="Файл не найден на диске")
+        pic = item.get("kind") == "image"
         scale = wf.UPSCALE_SCALES.get(str(body.get("scale")), 1.5)
         data = aiohttp.FormData()
-        name = f"h3s_{uuid.uuid4().hex[:8]}{path.suffix or '.mp4'}"
-        data.add_field("image", path.read_bytes(), filename=name, content_type="video/mp4")
+        name = f"h3s_{uuid.uuid4().hex[:8]}{path.suffix or ('.png' if pic else '.mp4')}"
+        data.add_field("image", path.read_bytes(), filename=name, content_type="image/png" if pic else "video/mp4")
         data.add_field("subfolder", "h3studio")
         data.add_field("type", "input")
         status, res = await self.comfy_json("POST", "/upload/image", data=data)
         if status != 200:
-            raise web.HTTPBadGateway(text="Не удалось передать видео в ComfyUI")
+            raise web.HTTPBadGateway(text="Не удалось передать файл в ComfyUI")
         video = f'{res["subfolder"]}/{res["name"]}' if res.get("subfolder") else res["name"]
         seed = random.randrange(2 ** 40)
         try:
@@ -983,7 +984,7 @@ class App:
             res = f"{round(w * scale / 2) * 2}×{round(h * scale / 2) * 2}"
         except ValueError:
             res = ""
-        graph, stages = wf.upscale_graph(self.model_names, video, scale, seed)
+        graph, stages = (wf.upscale_image_graph if pic else wf.upscale_graph)(self.model_names, video, scale, seed)
         return await self.queue(graph, stages, {
             "mode": "upscale", "sub": f"Улучшение ×{body.get('scale', '1.5')}", "prompt": item.get("prompt", "") or "Улучшение качества",
             "aspect": item.get("aspect", ""), "q": item.get("q", ""), "len": item.get("len", 0.0), "res": res, "seed": seed,

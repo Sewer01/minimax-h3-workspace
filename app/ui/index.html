@@ -2585,7 +2585,8 @@ function openViewer(id) {
   $('#vwPrompt').textContent = it.prompt || 'без промпта';
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
   $('#vwSeed').hidden = it.seed == null;
-  $('#vwUp').hidden = pic || it.mode === 'upscale' || it.mode === 'custom' || !it.url || !!it.missing;
+  $('#vwUp').hidden = it.mode === 'upscale' || it.mode === 'custom' || !it.url || !!it.missing;
+  $('#vwUp').textContent = pic ? 'Улучшить картинку…' : 'Улучшить качество…';
   $('#viewer').hidden = false;
 }
 function closeViewer() { $('#viewer').hidden = true; openId = null; const v = $('#viewer video'); v.pause(); v.removeAttribute('src'); }
@@ -3360,11 +3361,13 @@ async function openUpscale(it) {
   if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'upMenu'; document.body.append(m); }
   m.hidden = false;
   const [w, h] = (it.res || '').split('×').map(Number), secs = it.len || 5;
-  const est = sc => (w && h ? (w * sc) * (h * sc) / 1048576 : 1.4) * Math.round(secs * 24) * 3.24;  // seconds, measured on an RTX 4060 Ti 16 GB
+  const est = sc => (w && h ? (w * sc) * (h * sc) / 1048576 : 1.4) * (it.kind === 'image' ? 1 : Math.round(secs * 24)) * 3.24;  // seconds, measured on an RTX 4060 Ti 16 GB
   const opt = (k, name) => { const out = w ? `${Math.round(w * k / 2) * 2}×${Math.round(h * k / 2) * 2}` : '';
     return `<button class="btn up-s" data-k="${k}" type="button">${name}${out ? ` · ${out}` : ''}<small style="display:block;opacity:.7">примерно ${fmtTime(est(k))} на видеокарте уровня RTX 4060 Ti, у слабой — дольше</small></button>`; };
-  m.innerHTML = `<div class="box" style="padding:20px;max-width:460px"><div class="card-h"><h3>Улучшить качество видео</h3><button class="btn" data-x type="button">Закрыть</button></div>`
-    + `<div class="note"><span>Видео станет крупнее и чётче, звук останется прежним. Это долго: от нескольких минут до часа на видео. Задание пойдёт в очередь, вы можете заниматься другим, а готовое видео появится в Библиотеке отдельным файлом. Если ждать не хочется — просто закройте это окно.</span></div>`
+  m.innerHTML = `<div class="box" style="padding:20px;max-width:460px"><div class="card-h"><h3>${it.kind === 'image' ? 'Улучшить картинку' : 'Улучшить качество видео'}</h3><button class="btn" data-x type="button">Закрыть</button></div>`
+    + (it.kind === 'image'
+      ? `<div class="note"><span>Картинка станет крупнее и чётче (с деталями). Это занимает от десятков секунд до нескольких минут. Задание пойдёт в очередь, а готовая картинка появится в Библиотеке отдельным файлом, исходная останется.</span></div>`
+      : `<div class="note"><span>Видео станет крупнее и чётче, звук останется прежним. Это долго: от нескольких минут до часа на видео. Задание пойдёт в очередь, вы можете заниматься другим, а готовое видео появится в Библиотеке отдельным файлом. Если ждать не хочется — просто закройте это окно.</span></div>`)
     + (have ? `<div style="display:grid;gap:10px;margin-top:14px">${opt(1.5, 'Увеличить в 1,5 раза')}${opt(2, 'Увеличить в 2 раза')}</div>`
       : `<div class="hint" style="margin:14px 0">Для этого нужна модель SeedVR2 (около 4 ГБ). ${st.engine === 'managed' ? 'Нажмите, чтобы скачать, и вернитесь сюда.' : 'Если файлов seedvr2_3b_int8_convrot и seedvr2_ema_vae_fp16 нет в вашем ComfyUI, положите их в его папки моделей.'}</div>`
         + (st.engine === 'managed' ? '<button class="btn pri" data-dl type="button">Скачать модель</button>' : '')) + '</div>';
@@ -3381,7 +3384,7 @@ async function openUpscale(it) {
     try {
       const r = await postJSON('/api/upscale', { id: it.id, scale: b.dataset.k });
       qAdd(r.prompt_id, 'upscale', it.prompt || 'Улучшение качества');
-      m.hidden = true; closeViewer(); toast('Задание в очереди: готовое видео появится в Библиотеке'); goTo('queue');
+      m.hidden = true; closeViewer(); toast(`Задание в очереди: готовая ${it.kind === 'image' ? 'картинка' : 'видео'} появится в Библиотеке`); goTo('queue');
     } catch (err) { toast(err.message); }
   };
 }
@@ -3752,6 +3755,7 @@ function imgPanel(el, o) {
       <div class="ip-acts" hidden>
         <button class="btn" data-a="save" type="button">Сохранить</button>
         <button class="btn" data-a="use" type="button">Использовать в…</button>
+        <button class="btn pri" data-a="up" type="button" title="Увеличить картинку и добавить чёткости (SeedVR2)">Улучшить картинку</button>
         <button class="btn" data-a="lib" type="button">В Библиотеке</button>
       </div>
       <div class="cw-hh ip-hh" hidden>Прошлые картинки — нажмите, чтобы открыть</div>
@@ -3833,7 +3837,7 @@ function imgPanel(el, o) {
   acts.onclick = e => {
     const a = e.target.closest('[data-a]')?.dataset.a; if (!a || !last) return;
     const it = byId(last.id) || last;
-    if (a === 'save') saveItems([it]); else if (a === 'use') useMenu(it); else goTo('library');
+    if (a === 'save') saveItems([it]); else if (a === 'use') useMenu(it); else if (a === 'up') openUpscale(it); else goTo('library');
   };
   frame.style.aspectRatio = '16 / 9'; refresh();
   return { frame, ratio: (w, h) => { if (!run && !last) frame.style.aspectRatio = `${w} / ${h}`; } };

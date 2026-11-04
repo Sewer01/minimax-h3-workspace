@@ -1067,6 +1067,7 @@ details[open] summary::before{content:'－ '}
               <button class="mcard" data-m="actor"><i></i><b>Актёрская игра</b><span>Диалоги и крупные планы: эмоции, голос по образцу</span><small></small></button>
               <button class="mcard" data-m="action"><i></i><b>Экшн-сцены</b><span>Бой, погоня, бег, прыжки</span><small></small></button>
               <button class="mcard" data-m="krea"><i></i><b>Картинка по тексту</b><span>Krea 2: красивые картинки по описанию</span><small></small></button>
+              <button class="mcard" data-m="kreareal"><i></i><b>Картинка: реализм</b><span>Krea 2 для реалистичных людей и фото (в «Картинке по тексту», +15 ГБ)</span><small></small></button>
               <button class="mcard" data-m="qwen"><i></i><b>Правка картинки</b><span>Qwen: изменить свою картинку, лист персонажа</span><small></small></button>
               <button class="mcard" data-m="upscale"><i></i><b>Улучшение качества видео</b><span>Увеличить готовое видео и добавить чёткости (долго, но по желанию)</span><small></small></button>
             </div>
@@ -2065,7 +2066,7 @@ function stop() {
 
 /* ---------- SETUP & MODELS view ---------- */
 const GB = b => b < 1e9 ? Math.round(b / 1e6) + ' МБ' : (b / 1e9).toFixed(1).replace(/\.0$/, '') + ' ГБ';
-const MODE_ORDER = ['video', 'lipsync', 'refs', 'actor', 'action', 'krea', 'qwen', 'upscale'];
+const MODE_ORDER = ['video', 'lipsync', 'refs', 'actor', 'action', 'krea', 'kreareal', 'qwen', 'upscale'];
 // start with one mode: a full set is ~100 GB, most people need one task to begin with
 let setupInfo = null, setupOpt = 'new', setupProfile = null, setupModes = ['video'];
 const SETUP_STEPS = [['comfy', 'ComfyUI'], ['nodes', 'Ноды'], ['start', 'Запуск ComfyUI'], ['models', 'Модели']];
@@ -2254,11 +2255,11 @@ function renderModels(s) {
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
-    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Улучшение качества' })[x]).join(', ') || 'дополнительно';
+    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Улучшение качества' })[x]).join(', ') || 'дополнительно';
     return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
-  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Улучшение качества видео' };
+  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Улучшение качества видео' };
   $('#mdAdd').innerHTML = s.engine === 'managed' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
     `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${gb} ГБ)</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
@@ -3716,7 +3717,7 @@ const IMG_ASPECTS = [['16:9', 'Горизонт', 16, 9], ['9:16', 'Вертик
 const IMG_SIZES = { '16:9': [1376, 768], '9:16': [768, 1376], '1:1': [1024, 1024], '4:3': [1184, 896], '3:4': [896, 1184], '3:2': [1248, 832], '2:3': [832, 1248] };
 const IMG_STAGE = {
   queued: ['В очереди ComfyUI…', 0.02], load: ['Загружаем модели в видеопамять… (первый запуск дольше)', 0.08], encode: ['Читаем промпт и картинку…', 0.2],
-  sample: ['Рисуем', 0.25], decode: ['Собираем картинку…', 0.92], save: ['Сохраняем…', 0.98],
+  sample: ['Рисуем', 0.25], upscale: ['Увеличиваем картинку…', 0.5], sample2: ['Второй проход: добавляем детали', 0.5], decode: ['Собираем картинку…', 0.92], save: ['Сохраняем…', 0.98],
 };
 const IMG = {};
 
@@ -3760,9 +3761,10 @@ function imgPanel(el, o) {
     if (!run) return;
     const [txt, base] = IMG_STAGE[run.stage] || IMG_STAGE.queued;
     let p = base, line = txt;
-    if (run.stage === 'sample' && run.max) {
+    const two = o.two && o.two();
+    if ((run.stage === 'sample' || run.stage === 'sample2') && run.max) {
       const f = (run.step || 0) / run.max;
-      p = 0.25 + 0.65 * f; line = `${txt} · шаг ${run.step || 0} из ${run.max}`;
+      p = run.stage === 'sample2' ? 0.5 + 0.4 * f : 0.25 + (two ? 0.25 : 0.65) * f; line = `${txt} · шаг ${run.step || 0} из ${run.max}`;
       if (run.step) line += ` · осталось ~${fmtTime((run.max - run.step) * (run.stepT - run.sampleT0) / run.step / 1000 + 3)}`;
     }
     bar.style.width = (p * 100) + '%';
@@ -3793,7 +3795,7 @@ function imgPanel(el, o) {
     onPrompt(run.id, ev => {
       if (!run || run.id !== ev.prompt_id) return;
       if (ev.type === 'stage') {
-        if (ev.stage === 'sample' && run.stage !== 'sample') run.sampleT0 = performance.now();
+        if (ev.stage.startsWith('sample') && run.stage !== ev.stage) run.sampleT0 = performance.now();
         run.stage = ev.stage; run.step = ev.step; run.max = ev.max; if (ev.step) run.stepT = performance.now();
         show();
       } else if (ev.type === 'done') {
@@ -3834,7 +3836,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
 
 /* --- Krea 2: by text --- */
 (() => {
-  const root = $('#view-krea'), S = { aspect: '16:9' };
+  const root = $('#view-krea'), S = { aspect: '16:9', style: 'plain', scale: '2k' };
   root.innerHTML = `
     <div class="head"><div><h1>Картинка по тексту</h1><p>Опишите картинку словами — модель Krea 2 нарисует её. Загрузить свою картинку здесь нельзя: для этого раздел «Правка картинки»</p></div>
       <div class="mode-pill"><i></i><span>Krea 2 · 1 МП</span></div></div>
@@ -3843,6 +3845,11 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         <textarea class="kr-prompt" placeholder="Опишите картинку: кто или что в кадре, где, какой свет, какой стиль (фото, иллюстрация, постер)…"></textarea>
         <div class="ta-foot"><span class="hint">Лучше писать подробно, одним абзацем. Помощник в разделе «Агент» умеет писать такие промпты</span></div></div>
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Параметры</h3></div>
+        <div class="row"><div class="row-l">Стиль</div>
+          <div class="seg" style="grid-template-columns:1fr 1fr"><button data-st="plain">Обычный<small>быстро, любые картинки</small></button><button data-st="real">Реализм<small>люди и фото как с камеры, 2 прохода</small></button></div>
+          <div class="hint kr-realhint" hidden></div></div>
+        <div class="row kr-scale" hidden><div class="row-l">Размер результата</div>
+          <div class="seg" style="grid-template-columns:1fr 1fr"><button data-sc="2k">Около 2K<small>быстрее</small></button><button data-sc="4k">4K<small>дольше и нужно больше видеопамяти</small></button></div></div>
         <div class="row"><div class="row-l">Формат <span class="resv"></span></div><div class="chips kr-asp"></div></div>
         ${imgSeedBox()}</div>
     </div><div class="preview kr-prev"></div></div>`;
@@ -3852,12 +3859,34 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   const P = imgPanel($('.kr-prev', root), {
     mode: 'krea', url: '/api/generate/krea', promptText: () => $('.kr-prompt', root).value.trim(),
     validate: () => $('.kr-prompt', root).value.trim() ? '' : 'Напишите промпт',
-    form: () => { const fd = new FormData(); fd.append('prompt', $('.kr-prompt', root).value.trim()); fd.append('aspect', S.aspect); imgSeedForm(S, fd); return fd; },
+    form: () => { const fd = new FormData(); fd.append('prompt', $('.kr-prompt', root).value.trim()); fd.append('aspect', S.aspect); fd.append('style', S.style); fd.append('scale', S.scale); imgSeedForm(S, fd); return fd; },
+    two: () => S.style === 'real',
   });
   const upd = () => {
     $$('.kr-asp .chip', root).forEach(c => c.classList.toggle('on', c.dataset.a === S.aspect));
-    const [w, h] = IMG_SIZES[S.aspect]; $('.resv', root).textContent = `${w}×${h}`; P.ratio(w, h);
+    const [w, h] = IMG_SIZES[S.aspect], k = S.style === 'real' ? (S.scale === '4k' ? 2.5 : 1.5) : 1;
+    $('.resv', root).textContent = `${Math.round(w * k)}×${Math.round(h * k)}`; P.ratio(w, h);
+    $$('[data-st]', root).forEach(b => b.classList.toggle('on', b.dataset.st === S.style));
+    $$('[data-sc]', root).forEach(b => b.classList.toggle('on', b.dataset.sc === S.scale));
+    $('.kr-scale', root).hidden = S.style !== 'real';
   };
+  root.addEventListener('click', async e => {
+    const sc = e.target.closest('[data-sc]'); if (sc) { S.scale = sc.dataset.sc; upd(); return; }
+    const b = e.target.closest('[data-st]'); if (!b) return;
+    S.style = b.dataset.st; upd();
+    const hint = $('.kr-realhint', root); hint.hidden = true;
+    if (S.style !== 'real') return;
+    try {
+      const st = await (await fetch('/api/status')).json();
+      const miss = (st.models || []).filter(m => m.role.startsWith('kreareal') && !m.have);
+      if (!(st.modes || []).includes('kreareal') || miss.length) {
+        hint.hidden = false;
+        hint.textContent = st.engine === 'managed'
+          ? 'Для реализма нужны ещё две модели (около 15 ГБ). Откройте «Модели» и нажмите «Добавить Картинка: реализм».'
+          : 'Для реализма положите в папки моделей вашего ComfyUI: redcraftKREA2RedMix_krea2Edition.safetensors (diffusion_models) и realism_engine_krea2_v2.safetensors (loras). Потом обновите раздел «Модели».';
+      }
+    } catch {}
+  });
   $('.kr-asp', root).onclick = e => { const c = e.target.closest('.chip'); if (c) { S.aspect = c.dataset.a; upd(); } };
   $('.kr-prompt', root).oninput = e => $('.kr-count', root).textContent = e.target.value.length + ' символов';
   imgSeedWire(root, S); upd();

@@ -205,7 +205,7 @@ class App:
             if hit:
                 found.add(role)
         # modes added after a set-up was made: with your own ComfyUI they switch on by themselves when the files are there
-        self.auto_modes = {m for m in ("krea", "qwen", "upscale") if self.config.get("engine") == "external"
+        self.auto_modes = {m for m in ("krea", "kreareal", "qwen", "upscale") if self.config.get("engine") == "external"
                            and all(r in found for r in catalog.MODE_ROLES[m])}
         needed = catalog.roles_for(self.modes())
         missing = [entries[r] for r in needed if r in entries and r not in found]
@@ -999,6 +999,13 @@ class App:
         if aspect not in wf.KREA_SIZES:
             raise web.HTTPBadRequest(text="Неизвестный формат")
         width, height = wf.KREA_SIZES[aspect]
+        if form.get("style") == "real":
+            await self.need_models("kreareal")
+            scale = wf.KREA_REAL_SCALES.get(form.get("scale", "2k"), 1.5)
+            graph, stages = wf.krea_real_graph(self.model_names, prompt, width, height, seed, scale)
+            return await self.queue(graph, stages, {
+                "mode": "krea", "sub": "Картинка: реализм", "prompt": prompt, "aspect": aspect, "q": "4K" if scale > 2 else "2K",
+                "len": 0.0, "res": f"{int(width * scale)}×{int(height * scale)}", "seed": seed})
         graph, stages = wf.krea_graph(self.model_names, prompt, width, height, seed)
         return await self.queue(graph, stages, {
             "mode": "krea", "sub": "Картинка по тексту", "prompt": prompt, "aspect": aspect, "q": "1K",

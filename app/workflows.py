@@ -408,6 +408,34 @@ def krea_graph(m, prompt, width, height, seed):
     return g, stages
 
 
+KREA_REAL_SCALES = {"2k": 1.5, "4k": 2.5}
+
+
+def krea_real_graph(m, prompt, width, height, seed, scale):
+    """Krea 2 realism (RedCraft RedMix + Realism Engine LoRA 0.5), two passes: draw ~1 MP, enlarge the latent, refine with denoise 0.6."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["kreareal_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["krea_clip"], "type": "krea2", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["krea_vae"]}},
+        "4": {"class_type": "LoraLoaderModelOnly", "inputs": {"lora_name": m["kreareal_lora"], "strength_model": 0.5, "model": ["1", 0]}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "6": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["5", 0]}},
+        "7": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        "8": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 8, "cfg": 1, "sampler_name": "euler_ancestral", "scheduler": "sgm_uniform", "denoise": 1,
+            "model": ["4", 0], "positive": ["5", 0], "negative": ["6", 0], "latent_image": ["7", 0]}},
+        "9": {"class_type": "LatentUpscaleBy", "inputs": {"upscale_method": "bicubic", "scale_by": scale, "samples": ["8", 0]}},
+        "10": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 6, "cfg": 1, "sampler_name": "er_sde", "scheduler": "simple", "denoise": 0.6,
+            "model": ["4", 0], "positive": ["5", 0], "negative": ["6", 0], "latent_image": ["9", 0]}},
+        "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["3", 0]}},
+        "12": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/krea_real", "images": ["11", 0]}},
+    }
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load", "5": "encode", "6": "encode", "7": "encode",
+              "8": "sample", "9": "upscale", "10": "sample2", "11": "decode", "12": "save"}
+    return g, stages
+
+
 def _qwen_base(m, image, megapixels, prompt, seed, size=None):
     """The graph of the "One Image Edit" / "Character Sheet" workflows on plain ComfyUI nodes.
     `size` (width, height) gives an empty canvas of its own; otherwise the result keeps the picture's shape."""

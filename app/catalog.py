@@ -147,6 +147,14 @@ VARIANTS = {
     "krea_vae": {
         "bf16": _m("Comfy-Org/Krea-2", "vae/qwen_image_vae.safetensors", 0.25, "vae", sub=IMG_SUB),
     },
+    # Krea 2 for realistic people and photos: RedCraft RedMix + the Realism Engine LoRA (two passes)
+    "kreareal_unet": {
+        "fp8": _m("Kerstal/krea-2_model", "redcraftKREA2RedMix_krea2Edition.safetensors", 13.14,
+                  "diffusion_models", sub=IMG_SUB),
+    },
+    "kreareal_lora": {
+        "v2": _m("uzumix/realism_engine_krea2_v2", "realism_engine_krea2_v2.safetensors", 1.56, "loras", sub=IMG_SUB),
+    },
     "qwen_unet": {
         "int8": _m("Comfy-Org/Qwen-Image-2.1", "diffusion_models/qwen_image_2.1_int8_convrot.safetensors", 7.26,
                    "diffusion_models", sub=IMG_SUB),
@@ -192,13 +200,15 @@ ROLE_TITLES = {
     "krea_unet": "Основная модель — Картинка по тексту (Krea 2)",
     "krea_clip": "Текстовый энкодер Krea 2 (Qwen3-VL 4B)",
     "krea_vae": "VAE для Krea 2",
+    "kreareal_unet": "Основная модель — Картинка: реализм (RedCraft, Krea 2)",
+    "kreareal_lora": "LoRA Realism Engine для Krea 2 (реализм)",
     "qwen_unet": "Основная модель — Правка картинки (Qwen Image 2.1)",
     "qwen_clip": "Текстовый энкодер Qwen (Qwen3-VL 8B)",
     "qwen_vae": "VAE для Qwen Image 2.1",
 }
 
 MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены",
-               "krea": "Картинка по тексту", "qwen": "Правка картинки", "upscale": "Улучшение качества видео"}
+               "krea": "Картинка по тексту", "kreareal": "Картинка: реализм", "qwen": "Правка картинки", "upscale": "Улучшение качества видео"}
 
 # Which roles each mode needs.
 MODE_ROLES = {
@@ -209,6 +219,7 @@ MODE_ROLES = {
     "actor": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora"],
     "action": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
     "krea": ["krea_unet", "krea_clip", "krea_vae"],
+    "kreareal": ["kreareal_unet", "kreareal_lora", "krea_clip", "krea_vae"],
     "qwen": ["qwen_unet", "qwen_clip", "qwen_vae"],
     "upscale": ["seedvr_unet", "seedvr_vae"],
 }
@@ -226,7 +237,7 @@ DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "
                   "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
                   "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
                   "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8",
-                  "krea_unet": "int8", "krea_clip": "fp8", "krea_vae": "bf16",
+                  "krea_unet": "int8", "krea_clip": "fp8", "krea_vae": "bf16", "kreareal_unet": "fp8", "kreareal_lora": "v2",
                   "qwen_unet": "int8", "qwen_clip": "int8", "qwen_vae": "bf16",
                   "seedvr_unet": "int8", "seedvr_vae": "fp16"}
 

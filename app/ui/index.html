@@ -1548,7 +1548,7 @@ function previewPanel(el, st, opts) {
     run = null;
     if (kind === 'done') {
       [liveImg, wait].forEach(x => x.hidden = true);
-      result.src = data.url; result.hidden = false; result.muted = true; result.play().catch(() => {});
+      result.src = data.url; result.dataset.dragid = data.id; result.draggable = true; result.hidden = false; result.muted = true; result.play().catch(() => {});
       frame.classList.add('done'); $('.hud-t', el).textContent = 'Готово'; $('.hud-s', el).textContent = took;
       status.innerHTML = `Готово за ${took} — видео в библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(data.seed ?? '—'))}</b> `
         + (data.seed != null ? '<button class="btn" id="keepSeed" type="button" style="padding:4px 10px;font-size:12px">Зафиксировать</button>' : '');
@@ -3735,6 +3735,11 @@ function useMenu(it) {
   body.addEventListener('dragstart', e => { const t = e.target.closest('[data-id]'); if (t) { e.dataTransfer.setData('text/h3lib', t.dataset.id); e.dataTransfer.effectAllowed = 'copy'; } });
   const sync = () => { tray.hidden = !!$('#view-library.active, #view-models.active, #view-agent.active, #view-queue.active'); };
   new MutationObserver(sync).observe($('main, body'), { subtree: true, attributes: true, attributeFilter: ['class'] }); sync();
+  // pictures of the result windows (the big one and the thumbnails of earlier ones) can be dragged into the picture slots too
+  document.addEventListener('dragstart', e => {
+    const t = e.target.closest && e.target.closest('[data-dragid], .cw-th[data-id]'); if (!t || e.target.closest('.lt-body')) return;
+    e.dataTransfer.setData('text/h3lib', t.dataset.dragid || t.dataset.id); e.dataTransfer.effectAllowed = 'copy';
+  });
   document.addEventListener('dragover', e => { if (e.dataTransfer.types.includes('text/h3lib') && e.target.closest('label.drop, label.ref')) e.preventDefault(); }, true);
   document.addEventListener('drop', async e => {
     const id = e.dataTransfer.getData('text/h3lib'); if (!id) return;
@@ -3783,11 +3788,11 @@ function imgPanel(el, o) {
   const refresh = () => {  // thumbnails of this section's earlier pictures
     const mine = LIB.filter(x => x.mode === o.mode && x.kind === 'image' && !x.missing && x.url).sort((a, b) => b.date - a.date).slice(0, 12);
     hh.hidden = !mine.length;
-    hist.innerHTML = mine.map(it => `<button class="cw-th${last && last.id === it.id ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc(fmtDate(it.date) + ((it.prompt || '') ? ' · ' + it.prompt.slice(0, 70) : ''))}"><img src="${it.url}" alt="" loading="lazy"></button>`).join('');
+    hist.innerHTML = mine.map(it => `<button draggable="true" class="cw-th${last && last.id === it.id ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc(fmtDate(it.date) + ((it.prompt || '') ? ' · ' + it.prompt.slice(0, 70) : ''))}"><img src="${it.url}" alt="" loading="lazy"></button>`).join('');
   };
   IMG_PANELS.push(refresh);
   const showItem = it => {
-    last = it; live.hidden = true; empty.hidden = true; res.src = it.url; res.hidden = false; acts.hidden = false; zb.hidden = false;
+    last = it; live.hidden = true; empty.hidden = true; res.dataset.dragid = it.id; res.src = it.url; res.hidden = false; acts.hidden = false; zb.hidden = false;
     status.innerHTML = `${esc(fmtDate(it.date))} · Seed: <b style="font-family:var(--mono)">${esc(String(it.seed ?? '—'))}</b>`; refresh();
   };
   hist.onclick = e => { const b = e.target.closest('.cw-th'); const it = b && LIB.find(x => x.id === b.dataset.id); if (it && !run) showItem(it); };
@@ -3835,7 +3840,7 @@ function imgPanel(el, o) {
         show();
       } else if (ev.type === 'done') {
         const took = fmtTime((performance.now() - run.t0) / 1000); end();
-        last = ev.item; live.hidden = true; res.src = ev.item.url; res.hidden = false; acts.hidden = false; zb.hidden = false; refresh();
+        last = ev.item; live.hidden = true; res.dataset.dragid = ev.item.id; res.src = ev.item.url; res.hidden = false; acts.hidden = false; zb.hidden = false; refresh();
         status.innerHTML = `Готово за ${took} — картинка в Библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(ev.item.seed ?? '—'))}</b>`;
       } else if (ev.type === 'error') {
         end(); empty.hidden = !!last; res.hidden = !last; zb.hidden = !last; status.textContent = 'Ошибка ComfyUI: ' + ev.message;
@@ -4041,7 +4046,7 @@ function cwHist() {
   const box = $('#cwHist'); if (!box) return;
   const mine = cwMine().slice(0, 16);
   $('#cwHH').hidden = !mine.length;
-  box.innerHTML = mine.map(it => `<button class="cw-th${it.id === CW.shown ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc((it.label ? it.label + ' · ' : '') + fmtDate(it.date))}">${it.missing ? '<i>—</i>'
+  box.innerHTML = mine.map(it => `<button draggable="true" class="cw-th${it.id === CW.shown ? ' on' : ''}" data-id="${it.id}" type="button" title="${esc((it.label ? it.label + ' · ' : '') + fmtDate(it.date))}">${it.missing ? '<i>—</i>'
     : it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video>`}${it.label ? `<span class="cw-lb">${esc(it.label)}</span>` : ''}</button>`).join('');
 }
 function cwTick() {

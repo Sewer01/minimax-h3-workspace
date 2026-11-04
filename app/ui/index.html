@@ -1076,7 +1076,7 @@ details[open] summary::before{content:'－ '}
               <button class="mcard" data-m="krea"><i></i><b>Картинка по тексту</b><span>Krea 2: красивые картинки по описанию</span><small></small></button>
               <button class="mcard" data-m="kreareal"><i></i><b>Картинка: реализм</b><span>Krea 2 для реалистичных людей и фото (в «Картинке по тексту», +15 ГБ)</span><small></small></button>
               <button class="mcard" data-m="qwen"><i></i><b>Правка картинки</b><span>Qwen: изменить свою картинку, лист персонажа</span><small></small></button>
-              <button class="mcard" data-m="upscale"><i></i><b>Улучшение качества видео</b><span>Увеличить готовое видео и добавить чёткости (долго, но по желанию)</span><small></small></button>
+              <button class="mcard" data-m="upscale"><i></i><b>Увеличение видео и картинок</b><span>Увеличить готовое видео и добавить чёткости (долго, но по желанию)</span><small></small></button>
             </div>
             <div class="note" id="modeTotal" style="margin-top:4px"></div>
           </div>
@@ -1181,7 +1181,7 @@ details[open] summary::before{content:'－ '}
       <div class="v-btns">
         <button class="btn pri" id="vwSave">Сохранить на компьютер</button>
         <button class="btn" id="vwRepeat">Повторить с этими настройками</button>
-        <button class="btn" id="vwUp" title="Увеличить разрешение и добавить чёткости (SeedVR2). Долго: минуты на каждые несколько секунд видео">Улучшить качество…</button>
+        <button class="btn" id="vwUp" title="Увеличить разрешение и добавить чёткости (SeedVR2). Долго: минуты на каждые несколько секунд видео">Увеличить видео…</button>
         <button class="btn" id="vwSeed" hidden>Зафиксировать seed этого видео</button>
         <button class="btn" id="vwFav">В избранное</button>
         <button class="btn danger" id="vwDel">Удалить</button>
@@ -1553,7 +1553,7 @@ function previewPanel(el, st, opts) {
       status.innerHTML = `Готово за ${took} — видео в библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(data.seed ?? '—'))}</b> `
         + (data.seed != null ? '<button class="btn" id="keepSeed" type="button" style="padding:4px 10px;font-size:12px">Зафиксировать</button>' : '');
       $('#keepSeed', el)?.addEventListener('click', () => useSeed(st, data.seed));
-      status.insertAdjacentHTML('beforeend', ' <button class="btn pri" id="upBtn" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение и добавить чёткости (SeedVR2)">Улучшить видео</button>');
+      status.insertAdjacentHTML('beforeend', ' <button class="btn pri" id="upBtn" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение и добавить чёткости (SeedVR2)">Увеличить видео</button>');
       $('#upBtn', el)?.addEventListener('click', () => openUpscale(byId(data.id) || normItem(data)));
     } else {
       resetFrame();
@@ -2262,11 +2262,11 @@ function renderModels(s) {
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
-    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Улучшение качества' })[x]).join(', ') || 'дополнительно';
+    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Увеличение' })[x]).join(', ') || 'дополнительно';
     return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
-  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Улучшение качества видео' };
+  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Увеличение видео и картинок' };
   $('#mdAdd').innerHTML = s.engine === 'managed' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
     `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${gb} ГБ)</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
@@ -2382,7 +2382,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 });
 
 /* ---------- LIBRARY ---------- */
-const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Улучшение' };
+const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Увеличение' };
 const LIB = [];
 const IMG_PANELS = [];  // refresh functions of the picture result windows
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
@@ -2586,7 +2586,7 @@ function openViewer(id) {
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
   $('#vwSeed').hidden = it.seed == null;
   $('#vwUp').hidden = it.mode === 'upscale' || it.mode === 'custom' || !it.url || !!it.missing;
-  $('#vwUp').textContent = pic ? 'Улучшить картинку…' : 'Улучшить качество…';
+  $('#vwUp').textContent = pic ? 'Увеличить картинку…' : 'Увеличить видео…';
   $('#viewer').hidden = false;
 }
 function closeViewer() { $('#viewer').hidden = true; openId = null; const v = $('#viewer video'); v.pause(); v.removeAttribute('src'); }
@@ -3364,7 +3364,7 @@ async function openUpscale(it) {
   const est = sc => (w && h ? (w * sc) * (h * sc) / 1048576 : 1.4) * (it.kind === 'image' ? 1 : Math.round(secs * 24)) * 3.24;  // seconds, measured on an RTX 4060 Ti 16 GB
   const opt = (k, name) => { const out = w ? `${Math.round(w * k / 2) * 2}×${Math.round(h * k / 2) * 2}` : '';
     return `<button class="btn up-s" data-k="${k}" type="button">${name}${out ? ` · ${out}` : ''}<small style="display:block;opacity:.7">примерно ${fmtTime(est(k))} на видеокарте уровня RTX 4060 Ti, у слабой — дольше</small></button>`; };
-  m.innerHTML = `<div class="box" style="padding:20px;max-width:460px"><div class="card-h"><h3>${it.kind === 'image' ? 'Улучшить картинку' : 'Улучшить качество видео'}</h3><button class="btn" data-x type="button">Закрыть</button></div>`
+  m.innerHTML = `<div class="box" style="padding:20px;max-width:460px"><div class="card-h"><h3>${it.kind === 'image' ? 'Увеличить картинку' : 'Увеличить видео'}</h3><button class="btn" data-x type="button">Закрыть</button></div>`
     + (it.kind === 'image'
       ? `<div class="note"><span>Картинка станет крупнее и чётче (с деталями). Это занимает от десятков секунд до нескольких минут. Задание пойдёт в очередь, а готовая картинка появится в Библиотеке отдельным файлом, исходная останется.</span></div>`
       : `<div class="note"><span>Видео станет крупнее и чётче, звук останется прежним. Это долго: от нескольких минут до часа на видео. Задание пойдёт в очередь, вы можете заниматься другим, а готовое видео появится в Библиотеке отдельным файлом. Если ждать не хочется — просто закройте это окно.</span></div>`)
@@ -3383,7 +3383,7 @@ async function openUpscale(it) {
     const b = e.target.closest('.up-s'); if (!b) return;
     try {
       const r = await postJSON('/api/upscale', { id: it.id, scale: b.dataset.k });
-      qAdd(r.prompt_id, 'upscale', it.prompt || 'Улучшение качества');
+      qAdd(r.prompt_id, 'upscale', it.prompt || 'Увеличение');
       m.hidden = true; closeViewer(); toast(`Задание в очереди: готовая ${it.kind === 'image' ? 'картинка' : 'видео'} появится в Библиотеке`); goTo('queue');
     } catch (err) { toast(err.message); }
   };
@@ -3755,7 +3755,7 @@ function imgPanel(el, o) {
       <div class="ip-acts" hidden>
         <button class="btn" data-a="save" type="button">Сохранить</button>
         <button class="btn" data-a="use" type="button">Использовать в…</button>
-        <button class="btn pri" data-a="up" type="button" title="Увеличить картинку и добавить чёткости (SeedVR2)">Улучшить картинку</button>
+        <button class="btn pri" data-a="up" type="button" title="Увеличить картинку и добавить чёткости (SeedVR2)">Увеличить картинку</button>
         <button class="btn" data-a="lib" type="button">В Библиотеке</button>
       </div>
       <div class="cw-hh ip-hh" hidden>Прошлые картинки — нажмите, чтобы открыть</div>

@@ -195,8 +195,8 @@ ROLE_TITLES = {
     "realism_lora": "LoRA «Реализм людей» (по желанию)",
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
     "pika_lora": "LoRA Pika H3 Flex Turbo (ускорение для Референсов, хороший звук)",
-    "seedvr_unet": "Улучшение качества видео — модель SeedVR2 (3B)",
-    "seedvr_vae": "Улучшение качества видео — VAE SeedVR2",
+    "seedvr_unet": "Увеличение видео и картинок — модель SeedVR2 (3B)",
+    "seedvr_vae": "Увеличение видео и картинок — VAE SeedVR2",
     "krea_unet": "Основная модель — Картинка по тексту (Krea 2)",
     "krea_clip": "Текстовый энкодер Krea 2 (Qwen3-VL 4B)",
     "krea_vae": "VAE для Krea 2",
@@ -208,7 +208,7 @@ ROLE_TITLES = {
 }
 
 MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены",
-               "krea": "Картинка по тексту", "kreareal": "Картинка: реализм", "qwen": "Правка картинки", "upscale": "Улучшение качества видео"}
+               "krea": "Картинка по тексту", "kreareal": "Картинка: реализм", "qwen": "Правка картинки", "upscale": "Увеличение видео и картинок"}
 
 # Which roles each mode needs.
 MODE_ROLES = {

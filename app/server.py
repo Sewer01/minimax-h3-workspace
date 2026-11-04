@@ -961,7 +961,7 @@ class App:
         """Improve the quality of a finished video or picture from the library (SeedVR2), the sound stays."""
         await self.need_models("upscale")
         if self.rh():
-            raise web.HTTPBadRequest(text="Улучшение качества работает только на своём ComfyUI (не в облаке RunningHub).")
+            raise web.HTTPBadRequest(text="Увеличение работает только на своём ComfyUI (не в облаке RunningHub).")
         body = await req.json()
         item = self.library.get(body.get("id", ""))
         path = self.file_path(item) if item else None
@@ -986,7 +986,7 @@ class App:
             res = ""
         graph, stages = (wf.upscale_image_graph if pic else wf.upscale_graph)(self.model_names, video, scale, seed)
         return await self.queue(graph, stages, {
-            "mode": "upscale", "sub": f"Улучшение ×{body.get('scale', '1.5')}", "prompt": item.get("prompt", "") or "Улучшение качества",
+            "mode": "upscale", "sub": f"Увеличение ×{body.get('scale', '1.5')}", "prompt": item.get("prompt", "") or "Увеличение",
             "aspect": item.get("aspect", ""), "q": item.get("q", ""), "len": item.get("len", 0.0), "res": res, "seed": seed,
             "src": item["id"]})
 

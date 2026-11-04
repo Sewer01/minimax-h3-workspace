@@ -1181,6 +1181,7 @@ details[open] summary::before{content:'－ '}
       <div class="v-prompt" id="vwPrompt"></div>
       <div class="v-btns">
         <button class="btn pri" id="vwSave">Сохранить на компьютер</button>
+        <button class="btn" id="vwCopy">Скопировать промпт</button>
         <button class="btn" id="vwRepeat">Повторить с этими настройками</button>
         <button class="btn" id="vwUp" title="Увеличить разрешение и добавить чёткости (SeedVR2). Долго: минуты на каждые несколько секунд видео">Увеличить видео…</button>
         <button class="btn" id="vwSeed" hidden>Зафиксировать seed этого видео</button>
@@ -2581,6 +2582,7 @@ function openViewer(id) {
   const pic = it.kind === 'image';
   vid.hidden = !it.url || pic; img.hidden = $('#viewer .li-play').hidden = !!it.url && !pic;
   $('#vwZoom').hidden = !pic || !it.url;
+  $('#vwCopy').hidden = !it.prompt;
   img.style.cursor = pic && it.url ? 'zoom-in' : '';
   img.onload = () => { if (pic && !it.res && img.naturalWidth) $('#vwKv').insertAdjacentHTML('afterbegin', `<span>Разрешение</span><b>${dimTxt(img.naturalWidth, img.naturalHeight)}</b>`); };
   vid.onloadedmetadata = () => { if (!pic && !it.res && vid.videoWidth) $('#vwKv').insertAdjacentHTML('afterbegin', `<span>Разрешение</span><b>${dimTxt(vid.videoWidth, vid.videoHeight)}</b>`); };
@@ -2621,6 +2623,11 @@ $('#bulkDel').onclick = () => askDelete([...selected]);
 $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.id === 'viewer' ? closeViewer() : (m.hidden = true); }));
 addEventListener('keydown', e => { if (e.key === 'Escape') { $('#confirm').hidden = true; closeViewer(); } });
 $('#vwSave').onclick = () => saveItems([byId(openId)]);
+$('#vwCopy').onclick = () => {
+  const t = (byId(openId) || {}).prompt || '';
+  if (!t) { toast('У этого файла нет промпта'); return; }
+  navigator.clipboard?.writeText(t).then(() => toast('Промпт скопирован'), () => toast('Не удалось скопировать'));
+};
 $('#vwZoom').onclick = () => { const it = byId(openId); if (it && it.url) zoomOpen(it.url); };
 $('#vwImg').onclick = () => { const it = byId(openId); if (it && it.kind === 'image' && it.url) zoomOpen(it.url); };
 $('#vwDel').onclick = () => askDelete([openId]);

@@ -1545,6 +1545,8 @@ function previewPanel(el, st, opts) {
       status.innerHTML = `Готово за ${took} — видео в библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(data.seed ?? '—'))}</b> `
         + (data.seed != null ? '<button class="btn" id="keepSeed" type="button" style="padding:4px 10px;font-size:12px">Зафиксировать</button>' : '');
       $('#keepSeed', el)?.addEventListener('click', () => useSeed(st, data.seed));
+      status.insertAdjacentHTML('beforeend', ' <button class="btn pri" id="upBtn" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение и добавить чёткости (SeedVR2)">Улучшить видео</button>');
+      $('#upBtn', el)?.addEventListener('click', () => openUpscale(byId(data.id) || normItem(data)));
     } else {
       resetFrame();
       status.textContent = kind === 'error' ? 'Ошибка ComfyUI: ' + data : 'Генерация остановлена. Поправьте промпт или настройки и запустите снова';
@@ -3328,8 +3330,9 @@ $('#mlist').addEventListener('click', async e => {
 });
 
 /* ---------- improve quality of a finished video (SeedVR2) ---------- */
-$('#vwUp').onclick = async () => {
-  const it = byId(openId); if (!it) return;
+$('#vwUp').onclick = () => openUpscale(byId(openId));
+async function openUpscale(it) {
+  if (!it) return;
   const st = await (await fetch('/api/status')).json();
   const have = (st.modes || []).includes('upscale') && !(st.models || []).some(m => m.role.startsWith('seedvr') && !m.have);
   let m = $('#upMenu');
@@ -3360,7 +3363,7 @@ $('#vwUp').onclick = async () => {
       m.hidden = true; closeViewer(); toast('Задание в очереди: готовое видео появится в Библиотеке'); goTo('queue');
     } catch (err) { toast(err.message); }
   };
-};
+}
 /* ---------- запоминаем последние настройки и файлы, чтобы они были на месте после перезапуска ---------- */
 const MEM = { KEY: 'h3-mem', skip: new Set(['first', 'last', 'refs', 'dur0', 'start', 'end', 'faithful']), ready: false, sig: {}, audio: null };
 const memIdb = new Promise(res => {

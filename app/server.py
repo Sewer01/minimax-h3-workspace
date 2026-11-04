@@ -34,6 +34,7 @@ import monitor
 import report
 import speech
 import updater
+from version import APP_VERSION
 import workflows as wf
 
 # frozen builds keep code inside the bundle but user data next to the exe
@@ -1692,6 +1693,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),
+        web.get("/api/version", lambda _req: web.json_response({"version": APP_VERSION})),
         web.get("/api/update/check", state.h_update_check),
         web.post("/api/update/install", state.h_update_install),
         web.post("/api/generate/qwen", state.h_generate_qwen),

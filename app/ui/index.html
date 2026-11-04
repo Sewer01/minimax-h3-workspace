@@ -2263,7 +2263,7 @@ function renderModels(s) {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
     const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Увеличение' })[x]).join(', ') || 'дополнительно';
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div>`;
+    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: ${esc(m.file || '')} · папка ${esc(m.folder || '')}${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Увеличение видео и картинок' };
@@ -3331,7 +3331,9 @@ $('#mlist').addEventListener('click', async e => {
       const first = $$('.pm select option', row).find(o => !o.hidden && o.value); if (words.length && first) first.selected = true;
     };
     $('.pm .pri', row).onclick = async () => {
-      await postJSON('/api/models/pick', { role, name: $('.pm select', row).value });
+      const name = $('.pm select', row).value;
+      const r = await postJSON('/api/models/pick', { role, name });
+      if (r && r.warn) { confirmBox('Это точно тот файл?', r.warn, 'Всё равно выбрать', async () => { await postJSON('/api/models/pick', { role, name, force: true }); await loadStatus(); toast('Файл выбран'); }); return; }
       await loadStatus(); toast('Файл выбран');
     };
   } catch { toast('ComfyUI не отвечает'); }

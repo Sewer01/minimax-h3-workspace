@@ -304,8 +304,9 @@ class App:
         elif t == "execution_error":
             job["state"] = "error"
             self.note_error(f'Ошибка генерации, узел {d.get("node_type", "")}: {d.get("exception_message", "").strip()}')
+            hint = self.model_hint((job.get("meta") or {}).get("mode", ""), d.get("exception_message", ""))
             await self.broadcast({"type": "error", "prompt_id": pid,
-                                  "message": f'{d.get("node_type", "")}: {d.get("exception_message", "").strip()}'})
+                                  "message": f'{d.get("node_type", "")}: {d.get("exception_message", "").strip()}' + hint})
             self.jobs.pop(pid, None)
         elif t == "execution_interrupted":
             await self.broadcast({"type": "interrupted", "prompt_id": pid})
@@ -410,6 +411,8 @@ class App:
         needed = catalog.roles_for(self.modes())
         models = [{"role": role, "title": catalog.ROLE_TITLES[role], "name": self.model_names[role],
                    "category": catalog.VARIANTS[role][variant]["category"],
+                   "folder": catalog.VARIANTS[role][variant]["category"], "marks": catalog.marks_text(role),
+                   "file": catalog.VARIANTS[role][variant]["file"],
                    "size": catalog.VARIANTS[role][variant]["size"], "have": role not in missing,
                    "needed": role in needed, "picked": role in (self.config.get("model_pick") or {}),
                    "modes": [m for m, roles in catalog.MODE_ROLES.items() if role in roles],
@@ -474,6 +477,12 @@ class App:
         role, name = body.get("role"), body.get("name") or ""
         if role not in catalog.VARIANTS:
             raise web.HTTPBadRequest(text="Неизвестная модель")
+        if name and not body.get("force") and not catalog.looks_right(role, name):
+            title = catalog.ROLE_TITLES.get(role, role)
+            return web.json_response({"ok": False, "warn": (
+                f"Название файла «{name.replace('/', chr(92)).split(chr(92))[-1]}» не похоже на нужное для «{title}». "
+                f"В названии обычно есть {catalog.marks_text(role)}. Если выбрать не тот файл, генерация сломается с "
+                f"непонятной ошибкой. Всё равно выбрать этот файл?")})
         picks = dict(self.config.get("model_pick") or {})
         if name:
             picks[role] = name
@@ -482,6 +491,28 @@ class App:
         self.config.update(model_pick=picks)
         await self.resolve_models()
         return web.json_response({"ok": True})
+
+    def model_hint(self, mode, text):
+        """After a ComfyUI error that smells like a wrong model file: say which models of this mode to check."""
+        if not re.search(r"shape|size|conv|dtype|mat1|mat2|cannot be|expected|mismatch|tensor|dimension|state_dict|missing key|unexpected key|invalid", text or "", re.I):
+            return ""
+        roles = catalog.MODE_ROLES.get(mode, [])
+        if not roles or not self.model_names:
+            return ""
+        picked = self.config.get("model_pick") or {}
+        sus = [r for r in roles if r in self.model_names and (r in picked or not catalog.looks_right(r, self.model_names[r]))]
+        bad = [r for r in sus if not catalog.looks_right(r, self.model_names[r])]
+        lines = ["", "Подсказка: похоже, одна из моделей этого раздела не подходит (ошибка про размеры или формат данных)."]
+        for r in bad:
+            lines.append(f"• «{catalog.ROLE_TITLES.get(r, r)}»: сейчас стоит {self.model_names[r].replace('/', chr(92)).split(chr(92))[-1]}, "
+                         f"а в названии нужного файла есть {catalog.marks_text(r)}.")
+        for r in sus:
+            if r not in bad:
+                lines.append(f"• «{catalog.ROLE_TITLES.get(r, r)}»: вы выбирали файл вручную, это "
+                             f"{self.model_names[r].replace('/', chr(92)).split(chr(92))[-1]}. Проверьте его.")
+        lines.append("Откройте «Модели» и для нужной строки нажмите «Заменить…», выберите файл «как по умолчанию» или тот, "
+                     "что указан в подсказке строки. Если непонятно, нажмите «Отчёт для разработчика» и пришлите файл.")
+        return "\n".join(lines)
 
     async def h_models_variant(self, req):
         """Use another version of the same model (Singularity v1.3 -> v2, a lighter one...). The file is fetched by "Докачать"."""

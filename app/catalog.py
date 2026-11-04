@@ -168,6 +168,31 @@ VARIANTS = {
     },
 }
 
+# What a file name of each role must contain (any of these words, any case). Used only to warn when a file is picked
+# by hand that does not look like the right one, and to say what to check when ComfyUI fails with a shape error.
+ROLE_MARKS = {
+    "fast_unet": ["fasth3", "h3"], "lipsync_unet": ["singularity", "h3"], "text_encoder": ["32b"],
+    "video_vae": ["video_vae"], "audio_vae": ["audio_vae"], "ref2v_turbo_lora": ["turbo"],
+    "upscaler": ["upscaler"], "preview": ["taeh3"], "action_unet": ["hybrid", "fl2va"],
+    "speed_slider_lora": ["speed"], "action_upscaler": ["upscaler"], "vocal_model": ["melband"],
+    "realism_lora": ["realism"], "motion_repair_lora": ["motion"], "pika_lora": ["pika"],
+    "seedvr_unet": ["seedvr"], "seedvr_vae": ["seedvr"], "krea_clip": ["qwen3vl", "qwen3-vl"],
+    "krea_vae": ["qwen_image", "qwen-image"], "kreareal_unet": ["krea"], "kreareal_lora": ["realism"],
+    "qwen_unet": ["qwen"], "qwen_clip": ["qwen3vl", "qwen3-vl"], "qwen_vae": ["qwen"],
+}
+
+
+def looks_right(role, filename):
+    """False only when the role has a name rule and the file name breaks it."""
+    marks = ROLE_MARKS.get(role)
+    n = filename.replace("/", "\\").split("\\")[-1].lower()
+    return not marks or any(m in n for m in marks)
+
+
+def marks_text(role):
+    return " или ".join(f"«{m}»" for m in ROLE_MARKS.get(role, [])[:2])
+
+
 # Plain words for the "another version" choice in the Models section (only versions of the same model replace each other)
 VARIANT_LABELS = {
     "fast_unet": {"int8": "обычная (int8)", "nvfp4": "лёгкая NVFP4 — только для видеокарт RTX 50-й серии"},

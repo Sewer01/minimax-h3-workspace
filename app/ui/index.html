@@ -75,6 +75,7 @@
 .cw-rs{align-self:stretch;cursor:col-resize;position:relative;touch-action:none}
 .cw-rs::before{content:'';position:absolute;left:4px;top:0;bottom:0;width:2px;border-radius:2px;background:var(--line-2);transition:.15s}
 .cw-rs:hover::before,.cw-rs.drag::before{background:var(--accent);width:3px;left:3.5px}
+.mf{cursor:copy;text-decoration:underline dotted;user-select:all}
 .cw-zb{position:absolute;right:10px;top:10px;width:36px;height:36px;border-radius:10px;background:rgba(var(--ov-rgb),.78);display:grid;place-items:center;color:var(--text);z-index:2;backdrop-filter:blur(6px)}
 .cw-zb:hover{background:var(--accent);color:#fff}
 .cw-frame img#cwImage{cursor:zoom-in}
@@ -2263,7 +2264,7 @@ function renderModels(s) {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
     const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Увеличение' })[x]).join(', ') || 'дополнительно';
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: ${esc(m.file || '')} · папка ${esc(m.folder || '')}${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${st}<button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div>`;
+    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap"><button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Скачать…</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', upscale: 'Увеличение видео и картинок' };
@@ -3317,6 +3318,13 @@ $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx
 })();
 
 
+// download page / file name of a model
+$('#mlist').addEventListener('click', async e => {
+  const d = e.target.closest('[data-dlmodel]'), c = e.target.closest('[data-copyname]'), f = e.target.closest('.mf');
+  if (d) { try { await postJSON('/api/models/open', { role: d.dataset.dlmodel }); toast('Страница скачивания открыта в браузере'); } catch (err) { toast(err.message); } return; }
+  const name = c ? c.dataset.copyname : f ? f.textContent : ''; if (!name) return;
+  navigator.clipboard?.writeText(name).then(() => toast('Имя файла скопировано'), () => toast(name));
+});
 // a model file with another name than the app expects: pick it from what ComfyUI sees
 $('#mlist').addEventListener('click', async e => {
   const b = e.target.closest('[data-pickmodel]'); if (!b) return;

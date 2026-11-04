@@ -412,7 +412,7 @@ class App:
         models = [{"role": role, "title": catalog.ROLE_TITLES[role], "name": self.model_names[role],
                    "category": catalog.VARIANTS[role][variant]["category"],
                    "folder": catalog.VARIANTS[role][variant]["category"], "marks": catalog.marks_text(role),
-                   "file": catalog.VARIANTS[role][variant]["file"],
+                   "file": catalog.VARIANTS[role][variant]["file"], "url": catalog.VARIANTS[role][variant]["url"],
                    "size": catalog.VARIANTS[role][variant]["size"], "have": role not in missing,
                    "needed": role in needed, "picked": role in (self.config.get("model_pick") or {}),
                    "modes": [m for m, roles in catalog.MODE_ROLES.items() if role in roles],
@@ -471,6 +471,16 @@ class App:
         except Exception:
             raise web.HTTPServiceUnavailable(text="ComfyUI не отвечает")
         return web.json_response({"files": lst or [], "folder": cat})
+
+    async def h_models_open(self, req):
+        """Open the download page of a model in the browser (only links of the app's own catalog)."""
+        body = await req.json()
+        role = body.get("role")
+        if role not in catalog.VARIANTS:
+            raise web.HTTPBadRequest(text="Неизвестная модель")
+        url = catalog.VARIANTS[role][self.choice().get(role) or next(iter(catalog.VARIANTS[role]))]["url"]
+        webbrowser.open(url)
+        return web.json_response({"ok": True, "url": url})
 
     async def h_models_pick(self, req):
         body = await req.json()
@@ -1732,6 +1742,7 @@ def build_app(comfy_override=None):
         web.get("/api/nodes", state.h_nodes),
         web.get("/api/models/files", state.h_models_files),
         web.post("/api/models/pick", state.h_models_pick),
+        web.post("/api/models/open", state.h_models_open),
         web.post("/api/models/variant", state.h_models_variant),
         web.get("/api/wf/list", state.h_wf_list),
         web.post("/api/wf/add", state.h_wf_add),

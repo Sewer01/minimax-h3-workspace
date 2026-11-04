@@ -3919,7 +3919,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
 
 /* --- Qwen Image 2.1: edit a picture, character sheet --- */
 (() => {
-  const root = $('#view-qwen'), S = { kind: 'edit', size: '1', headless: true, bg: 'grey' };
+  const root = $('#view-qwen'), S = { kind: 'edit', size: '1', aspect: '', headless: true, bg: 'grey' };
   root.innerHTML = `
     <div class="head"><div><h1>Правка картинки</h1><p>Загрузите картинку и напишите, что изменить: поменять место, одежду, свет, поставить персонажа в новую сцену. Или соберите лист персонажа</p></div>
       <div class="mode-pill"><i></i><span>Qwen Image 2.1</span></div></div>
@@ -3930,6 +3930,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         <div class="seg qw-kind" style="grid-template-columns:1fr 1fr"><button data-k="edit">Править картинку<small>изменить по описанию</small></button><button data-k="sheet">Лист персонажа<small>4 вида: спереди, сзади, портреты</small></button></div>
         <div class="qw-edit" style="margin-top:14px"><textarea class="qw-prompt" placeholder="Что изменить и что оставить. Например: Этот человек сидит в кафе у окна и пьёт кофе. Лицо, причёска и одежда как на картинке."></textarea>
           <div class="ta-foot"><span class="hint">Скажите и что поменять, и что оставить прежним — так результат точнее</span></div>
+          <div class="row" style="margin-top:12px"><div class="row-l">Формат кадра <span class="hint">по умолчанию как у вашей картинки</span></div><div class="chips qw-asp"></div></div>
           <div class="row" style="margin-top:12px"><div class="row-l">Размер результата</div><div class="seg qw-size" style="grid-template-columns:1fr 1fr"><button data-s="1">Обычный<small>~1 МП, быстро</small></button><button data-s="2">Крупный<small>~2 МП, дольше</small></button></div></div></div>
         <div class="qw-sheet" style="margin-top:14px" hidden>
           <div class="note"><span>Нужен персонаж на картинке (лучше в полный рост, но портрет тоже подойдёт). Получится лист из 4 панелей: в полный рост спереди и сзади, портрет анфас и в профиль. Потом его можно взять как референс в других разделах.</span></div>
@@ -3949,11 +3950,14 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     form: () => {
       const fd = new FormData(); fd.append('image', drop._file); fd.append('kind', S.kind);
       if (S.kind === 'sheet') { fd.append('headless', S.headless ? '1' : '0'); fd.append('background', S.bg); fd.append('marks', $('.qw-marks', root).value.trim()); }
-      else { fd.append('prompt', $('.qw-prompt', root).value.trim()); fd.append('size', S.size); }
+      else { fd.append('prompt', $('.qw-prompt', root).value.trim()); fd.append('size', S.size); fd.append('aspect', S.aspect); }
       imgSeedForm(S, fd); return fd;
     },
   });
+  $('.qw-asp', root).innerHTML = `<button class="chip" data-qa="">Как у картинки</button>` + IMG_ASPECTS.map(([id, name, w, h]) => { const k = 18 / Math.max(w, h);
+    return `<button class="chip" data-qa="${id}"><i class="ar" style="width:${w * k}px;height:${h * k}px"></i>${name}${name !== id ? ` <small>${id}</small>` : ''}</button>`; }).join('');
   const upd = () => {
+    $$('.qw-asp .chip', root).forEach(c => c.classList.toggle('on', c.dataset.qa === S.aspect));
     $$('.qw-kind button', root).forEach(b => b.classList.toggle('on', b.dataset.k === S.kind));
     $('.qw-edit', root).hidden = S.kind !== 'edit'; $('.qw-sheet', root).hidden = S.kind !== 'sheet';
     $$('.qw-size button', root).forEach(b => b.classList.toggle('on', b.dataset.s === S.size));
@@ -3962,6 +3966,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     if (S.kind === 'sheet') P.ratio(1920, 1088);
   };
   root.addEventListener('click', e => {
+    const qa = e.target.closest('.qw-asp .chip'); if (qa) { S.aspect = qa.dataset.qa; upd(); return; }
     const k = e.target.closest('.qw-kind button'), s = e.target.closest('.qw-size button'), h = e.target.closest('.qw-head button'), b = e.target.closest('.qw-bg button');
     if (k) S.kind = k.dataset.k; else if (s) S.size = s.dataset.s; else if (h) S.headless = h.dataset.h === '1'; else if (b) S.bg = b.dataset.b; else return;
     upd();

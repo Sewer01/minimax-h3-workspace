@@ -464,8 +464,17 @@ def _qwen_base(m, image, megapixels, prompt, seed, size=None):
     return g, stages
 
 
-def qwen_edit_graph(m, prompt, image, megapixels, seed):
-    return _qwen_base(m, image, megapixels, prompt, seed)
+def qwen_edit_size(aspect, megapixels):
+    """Canvas for a chosen aspect ratio (about 1 or 2 megapixels, sides in steps of 32); None = keep the picture's own shape."""
+    if aspect not in KREA_SIZES:
+        return None
+    w, h = KREA_SIZES[aspect]
+    k = (megapixels or 1.0) ** 0.5
+    return (round(w * k / 32) * 32, round(h * k / 32) * 32)
+
+
+def qwen_edit_graph(m, prompt, image, megapixels, seed, size=None):
+    return _qwen_base(m, image, megapixels, prompt, seed, size)
 
 
 def sheet_prompt(headless=True, background="grey", marks=""):

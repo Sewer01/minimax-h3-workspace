@@ -1028,10 +1028,12 @@ class App:
             if not prompt:
                 raise web.HTTPBadRequest(text="Напишите, что изменить на картинке")
             mp = wf.QWEN_MP.get(form.get("size", "1"), 1.0)
-            graph, stages = wf.qwen_edit_graph(self.model_names, prompt, image, mp, seed)
-            sub, res = "Правка картинки", ""
+            size = wf.qwen_edit_size(form.get("aspect", ""), mp)
+            graph, stages = wf.qwen_edit_graph(self.model_names, prompt, image, mp, seed, size)
+            sub, res = "Правка картинки", ("%d×%d" % size if size else "")
         return await self.queue(graph, stages, {
-            "mode": "qwen", "sub": sub, "prompt": prompt, "aspect": "", "q": "", "len": 0.0, "res": res, "seed": seed})
+            "mode": "qwen", "sub": sub, "prompt": prompt, "aspect": form.get("aspect", "") if form.get("kind") != "sheet" else "",
+            "q": "", "len": 0.0, "res": res, "seed": seed})
 
     async def h_generate_video(self, req):
         await self.need_models("video")

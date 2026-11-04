@@ -199,6 +199,9 @@ class App:
             picked = (self.config.get("model_pick") or {}).get(role)  # a file the user chose by hand
             def seen(file):
                 return next((n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] == file), None)
+            others = {v["file"] for r, vs in catalog.VARIANTS.items() if r != role for v in vs.values()}
+            if picked and picked.replace("/", "\\").split("\\")[-1] in others:  # the file of ANOTHER model of the app: never feed it to this role
+                picked = None
             hit = picked if picked in visible[entry["category"]] else seen(entry["file"])
             if not hit and role not in (self.config.get("choice_override") or {}):  # another variant the user already has (v1.3 instead of v2); never for a version picked by hand
                 hit = next(filter(None, (seen(v["file"]) for v in catalog.VARIANTS[role].values())), None)

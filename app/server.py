@@ -18,6 +18,7 @@ import struct
 import subprocess
 import sys
 import uuid
+import urllib.parse
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -198,7 +199,8 @@ class App:
             entry = entries[role] = catalog.model_entry(role, variant)
             picked = (self.config.get("model_pick") or {}).get(role)  # a file the user chose by hand
             def seen(file):
-                return next((n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] == file), None)
+                ok = {file, *catalog.FILE_ALIASES.get(file, ())}  # same file under another name (e.g. upscaler from Hugging Face)
+                return next((n for n in visible[entry["category"]] if n.replace("/", "\\").split("\\")[-1] in ok), None)
             others = {v["file"] for r, vs in catalog.VARIANTS.items() if r != role for v in vs.values()}
             if picked and picked.replace("/", "\\").split("\\")[-1] in others:  # the file of ANOTHER model of the app: never feed it to this role
                 picked = None
@@ -209,7 +211,7 @@ class App:
             if hit:
                 found.add(role)
         # modes added after a set-up was made: with your own ComfyUI they switch on by themselves when the files are there
-        self.auto_modes = {m for m in ("krea", "kreareal", "qwen", "upscale") if self.config.get("engine") == "external"
+        self.auto_modes = {m for m in ("krea", "kreareal", "qwen", "flux", "upscale") if self.config.get("engine") == "external"
                            and all(r in found for r in catalog.MODE_ROLES[m])}
         needed = catalog.roles_for(self.modes())
         missing = [entries[r] for r in needed if r in entries and r not in found]
@@ -433,6 +435,7 @@ class App:
             "comfy_version": stats["system"].get("comfyui_version"),
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "paths": {"install": self.config.get("install_dir"), "models": self.config.get("models_dir"),
+                      "ext_models": self.config.get("ext_models_dir"),
                       "assistant": str(self.llm.root), "data": str(DATA_DIR)},
             "models": models,
         })
@@ -474,6 +477,62 @@ class App:
         except Exception:
             raise web.HTTPServiceUnavailable(text="ComfyUI не отвечает")
         return web.json_response({"files": lst or [], "folder": cat})
+
+    async def h_models_download(self, req):
+        """Own ComfyUI: download missing model files of the app's catalog into the user's models folder (resumable)."""
+        body = await req.json()
+        folder = (body.get("folder") or self.config.get("ext_models_dir") or "").strip()
+        p = Path(folder) if folder else None
+        if not p or not p.is_dir():
+            raise web.HTTPBadRequest(text="Папка не найдена. Укажите папку models вашего ComfyUI.")
+        if not any((p / sub).is_dir() for sub in ("diffusion_models", "loras", "vae", "text_encoders", "checkpoints")):
+            raise web.HTTPBadRequest(text="Это не похоже на папку models ComfyUI: внутри нет diffusion_models, loras, vae. Выберите папку, где они лежат.")
+        if getattr(self, "dl_task", None) and not self.dl_task.done():
+            raise web.HTTPConflict(text="Скачивание уже идёт. Дождитесь окончания или остановите его.")
+        choice = self.choice()
+        roles = [r for r in (body.get("roles") or [body.get("role")]) if r in catalog.VARIANTS and r in choice]
+        if not roles:
+            raise web.HTTPBadRequest(text="Неизвестная модель")
+        self.config.update(ext_models_dir=str(p))
+        entries = [catalog.model_entry(r, choice[r]) for r in roles]
+
+        async def emit(ev):
+            await self.broadcast({"type": "mdl", "state": ev.get("state"), "label": ev.get("label"),
+                                  "done": ev.get("overall_done", ev.get("done")), "total": ev.get("overall_total", ev.get("total")),
+                                  "index": ev.get("index"), "count": ev.get("count")})
+
+        inst = engine.Installer(ROOT, self.session, emit)
+        self.dl_installer = inst
+
+        async def run():
+            total = sum(e["size"] for e in entries)
+            base = 0
+            try:
+                for i, e in enumerate(entries):
+                    dest = p / e["category"] / Path(e["name"].replace("\\", "/"))
+                    label = catalog.ROLE_TITLES.get(e["role"], e["role"])
+
+                    async def emit_overall(ev, base=base, idx=i, label=label):
+                        if ev.get("done") is not None:
+                            ev = dict(ev, overall_done=base + ev["done"], overall_total=total, index=idx + 1, count=len(entries), label=label)
+                        await emit(ev)
+                    inst.emit = emit_overall
+                    await inst.download(e["url"], dest, "models", label, e["size"])
+                    base += e["size"]
+                await self.resolve_models()
+                await self.broadcast({"type": "mdl", "state": "done", "label": "Готово: файлы скачаны и лежат в вашей папке моделей"})
+            except engine.Cancelled:
+                await self.broadcast({"type": "mdl", "state": "error", "label": "Скачивание остановлено. Скачанное сохранено: нажмите «Скачать» снова, и оно продолжится."})
+            except Exception as ex:
+                await self.broadcast({"type": "mdl", "state": "error", "label": str(ex)[:300]})
+        self.dl_task = asyncio.create_task(run())
+        return web.json_response({"ok": True, "folder": str(p), "count": len(entries), "size": sum(e["size"] for e in entries)})
+
+    async def h_models_download_cancel(self, _req):
+        inst = getattr(self, "dl_installer", None)
+        if inst:
+            inst.cancelled = True
+        return web.json_response({"ok": True})
 
     async def h_models_open(self, req):
         """Open the download page of a model in the browser (only links of the app's own catalog)."""
@@ -735,6 +794,39 @@ class App:
         webbrowser.open("https://www.nvidia.com/Download/index.aspx?lang=ru")
         return web.json_response({"ok": True})
 
+    async def h_search_web(self, req):
+        """Open a web search in the user's browser (missing model file / custom node in 'Свои workflow')."""
+        body = await req.json()
+        q = str(body.get("q", "")).strip()[:200]
+        if not q:
+            raise web.HTTPBadRequest(text="Пустой запрос")
+        webbrowser.open("https://www.google.com/search?q=" + urllib.parse.quote_plus(q))
+        return web.json_response({"ok": True})
+
+    async def h_clipboard(self, _req):
+        """Text from the Windows clipboard (the web view may refuse to let the page read it)."""
+        text = ""
+        try:
+            import ctypes
+            u, k = ctypes.windll.user32, ctypes.windll.kernel32
+            u.GetClipboardData.restype = ctypes.c_void_p
+            k.GlobalLock.restype = ctypes.c_void_p
+            k.GlobalLock.argtypes = [ctypes.c_void_p]
+            k.GlobalUnlock.argtypes = [ctypes.c_void_p]
+            if u.OpenClipboard(0):
+                try:
+                    h = u.GetClipboardData(13)  # CF_UNICODETEXT
+                    if h:
+                        p = k.GlobalLock(h)
+                        if p:
+                            text = ctypes.wstring_at(p)
+                            k.GlobalUnlock(h)
+                finally:
+                    u.CloseClipboard()
+        except Exception:
+            pass
+        return web.json_response({"text": text})
+
     async def h_setup_cancel(self, _req):
         if self.installer:
             self.installer.cancelled = True
@@ -993,12 +1085,15 @@ class App:
         """Multipart form of the picture sections: text fields plus one optional file `image`."""
         if self.rh():
             raise web.HTTPBadRequest(text="Картинки работают только на своём ComfyUI (не в облаке RunningHub).")
-        form, image = {}, None
+        form, image, extra = {}, None, []
         async for field in await req.multipart():
             if field.name == "image" and field.filename:
                 image = await self.upload_input(field)
+            elif field.name in ("image2", "image3") and field.filename:
+                extra.append(await self.upload_input(field))
             else:
                 form[field.name] = await field.text()
+        form["_extra"] = extra
         seed = int(form["seed"]) if form.get("seed", "").isdigit() else random.randrange(2 ** 50)
         return form, image, seed
 
@@ -1009,14 +1104,31 @@ class App:
             raise web.HTTPBadRequest(text="Увеличение работает только на своём ComfyUI (не в облаке RunningHub).")
         body = await req.json()
         item = self.library.get(body.get("id", ""))
-        path = self.file_path(item) if item else None
-        if not item or not path or not path.exists():
-            raise web.HTTPBadRequest(text="Файл не найден на диске")
+        if not item:
+            raise web.HTTPBadRequest(text="Файл не найден")
+        path = self.file_path(item)
+        content = None
+        if path and path.exists():
+            content = path.read_bytes()
+            suffix = path.suffix
+        else:
+            # output folder unknown (own ComfyUI without --output-directory): take the file from ComfyUI itself
+            f = item["file"]
+            params = {"filename": f.get("filename", ""), "subfolder": f.get("subfolder", ""), "type": f.get("type", "output")}
+            try:
+                async with self.session.get(self.comfy + "/view", params=params) as r:
+                    if r.status == 200:
+                        content = await r.read()
+            except aiohttp.ClientError:
+                content = None
+            suffix = Path(f.get("filename", "")).suffix
+        if not content:
+            raise web.HTTPBadRequest(text="Файл не найден")
         pic = item.get("kind") == "image"
         scale = wf.UPSCALE_SCALES.get(str(body.get("scale")), 1.5)
         data = aiohttp.FormData()
-        name = f"h3s_{uuid.uuid4().hex[:8]}{path.suffix or ('.png' if pic else '.mp4')}"
-        data.add_field("image", path.read_bytes(), filename=name, content_type="image/png" if pic else "video/mp4")
+        name = f"h3s_{uuid.uuid4().hex[:8]}{suffix or ('.png' if pic else '.mp4')}"
+        data.add_field("image", content, filename=name, content_type="image/png" if pic else "video/mp4")
         data.add_field("subfolder", "h3studio")
         data.add_field("type", "input")
         status, res = await self.comfy_json("POST", "/upload/image", data=data)
@@ -1045,6 +1157,19 @@ class App:
         if aspect not in wf.KREA_SIZES:
             raise web.HTTPBadRequest(text="Неизвестный формат")
         width, height = wf.KREA_SIZES[aspect]
+        engine = form.get("engine", "krea")
+        if engine == "flux":
+            await self.need_models("flux")
+            graph, stages = wf.flux_t2i_graph(self.model_names, prompt, width, height, seed)
+            return await self.queue(graph, stages, {
+                "mode": "krea", "sub": "Картинка (FLUX.2)", "prompt": prompt, "aspect": aspect, "q": "1K",
+                "len": 0.0, "res": f"{width}×{height}", "seed": seed})
+        if engine == "qwen":
+            await self.need_models("qwen")
+            graph, stages = wf.qwen_t2i_graph(self.model_names, prompt, form.get("negative", "").strip()[:600], width, height, seed)
+            return await self.queue(graph, stages, {
+                "mode": "krea", "sub": "Картинка (Qwen 2.1)", "prompt": prompt, "aspect": aspect, "q": "1K",
+                "len": 0.0, "res": f"{width}×{height}", "seed": seed})
         if form.get("style") == "real":
             await self.need_models("kreareal")
             scale = wf.KREA_REAL_SCALES.get(form.get("scale", "2k"), 1.5)
@@ -1058,16 +1183,39 @@ class App:
             "len": 0.0, "res": f"{width}×{height}", "seed": seed})
 
     async def h_generate_qwen(self, req):
-        await self.need_models("qwen")
         form, image, seed = await self.read_image_form(req)
+        flux = form.get("kind") != "sheet" and form.get("engine") == "flux"
+        await self.need_models("flux" if flux else "qwen")
         if not image:
             raise web.HTTPBadRequest(text="Загрузите картинку")
+        if form.get("kind") == "story":
+            prompt = form.get("prompt", "").strip()
+            if not prompt:
+                raise web.HTTPBadRequest(text="Опишите историю по кадрам")
+            refs = [image] + list(form.get("_extra") or [])
+            if flux:
+                graph, stages = wf.flux_story_graph(self.model_names, refs, prompt, seed)
+            else:
+                graph, stages = wf.qwen_story_graph(self.model_names, refs, prompt, seed)
+            return await self.queue(graph, stages, {
+                "mode": "qwen", "sub": "Раскадровка по картинкам", "prompt": prompt, "aspect": "",
+                "q": "", "len": 0.0, "res": "%d×%d" % wf.STORY_SIZE, "seed": seed})
+        if flux:
+            prompt = form.get("prompt", "").strip()
+            if not prompt:
+                raise web.HTTPBadRequest(text="Напишите, что изменить на картинке")
+            mp = wf.QWEN_MP.get(form.get("size", "1"), 1.0)
+            graph, stages = wf.flux_edit_graph(self.model_names, prompt, image, mp, seed)
+            return await self.queue(graph, stages, {
+                "mode": "qwen", "sub": "Правка картинки (FLUX.2)", "prompt": prompt, "aspect": "",
+                "q": "", "len": 0.0, "res": "", "seed": seed})
         if form.get("kind") == "sheet":
+            panels = 6 if form.get("panels") == "6" else 4
             graph, stages, prompt = wf.qwen_sheet_graph(
                 self.model_names, image, seed, headless=form.get("headless", "1") != "0",
-                background=form.get("background", "grey"), marks=form.get("marks", "")[:300])
-            sub, res = "Лист персонажа", "%d×%d" % wf.SHEET_SIZE
-            prompt = "Лист персонажа" + (": " + form["marks"].strip()[:80] if form.get("marks", "").strip() else "")
+                background=form.get("background", "grey"), marks=form.get("marks", "")[:300], panels=panels)
+            sub, res = "Лист персонажа", "%d×%d" % (wf.SHEET6_SIZE if panels == 6 else wf.SHEET_SIZE)
+            prompt = "Лист персонажа" + (" (6 панелей)" if panels == 6 else "") + (": " + form["marks"].strip()[:80] if form.get("marks", "").strip() else "")
         else:
             prompt = form.get("prompt", "").strip()
             if not prompt:
@@ -1084,11 +1232,14 @@ class App:
         await self.need_models("video")
         form, images, prompt, aspect, quality, seed = await self.read_form(req, ("first", "last"))
         seconds = min(MAX_SECONDS, max(3.0, float(form.get("duration", 5))))
-        width, height = wf.resolution(aspect, quality)
+        width, height = wf.resolution(aspect, quality, form)
         first, last = images.get("first"), images.get("last") if images.get("first") else None
+        loop = bool(first) and form.get("loop") == "1"
+        if loop:  # seamless loop (live wallpaper): the video ends on the same picture it starts with
+            last = first
 
         graph, stages = wf.video_graph(self.model_names, prompt, width, height, seconds, seed, first, last, self.custom_loras())
-        sub = "Кадр → кадр" if last else "Картинка → видео" if first else "Текст → видео"
+        sub = "Зацикленное видео" if loop else "Кадр → кадр" if last else "Картинка → видео" if first else "Текст → видео"
         return await self.queue(graph, stages, {
             "mode": "video", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality,
             "len": seconds, "res": f"{width}×{height}", "seed": seed})
@@ -1108,7 +1259,7 @@ class App:
 
         ref_size = form.get("ref_size") if form.get("ref_size") in ("match", "max") else "max"
         scale = wf.lipsync_scale(quality)
-        out_w, out_h = wf.resolution(aspect, quality)
+        out_w, out_h = wf.resolution(aspect, quality, form)
         width, height = wf.r32(out_w / scale), wf.r32(out_h / scale)
         extra = self.optional_loras(form, (("realism", "realism_lora"),)) + self.custom_loras()
         graph, stages = wf.lipsync_graph(self.model_names, wf.lipsync_prompt(prompt, len(refs)), width, height,
@@ -1174,7 +1325,7 @@ class App:
         steps = min(8, max(4, steps))
         ref_size = form.get("ref_size") if form.get("ref_size") in ("match", "max") else "max"
         extra = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora"))) + self.custom_loras()
-        width, height = wf.resolution(aspect, quality)
+        width, height = wf.resolution(aspect, quality, form)
         pika = None
         if form.get("accel") == "pika":
             if "pika_lora" in {m["role"] for m in self.missing}:
@@ -1197,7 +1348,7 @@ class App:
         missing = {m["role"] for m in self.missing}
         if v is not None and "realism_lora" not in missing and "realism_lora" in self.model_names:
             realism = (self.model_names["realism_lora"], v)
-        width, height = wf.resolution(aspect, quality)
+        width, height = wf.resolution(aspect, quality, form)
         graph, stages = wf.actor_graph(self.model_names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed,
                                        images, audios, realism, self.custom_loras())
         sub = f"{len(images)} карт." + (f", голос ({len(audios)})" if audios else ", без голоса") + " · 10 шагов"
@@ -1249,7 +1400,7 @@ class App:
                 loras.append((name, v))
         loras += self.custom_loras()
         names = dict(self.model_names)
-        width, height = wf.resolution(aspect, quality)
+        width, height = wf.resolution(aspect, quality, form)
         graph, stages = wf.action_graph(names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed, images, audios,
                                         s["faithful"], loras)
         if s["faithful"]:
@@ -1732,6 +1883,8 @@ def build_app(comfy_override=None):
         web.post("/api/setup/install", state.h_setup_install),
         web.post("/api/setup/cancel", state.h_setup_cancel),
         web.post("/api/open-driver-page", state.h_open_driver),
+        web.post("/api/clipboard", state.h_clipboard),
+        web.post("/api/search-web", state.h_search_web),
         web.post("/api/report", state.h_report),
         web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
@@ -1746,6 +1899,8 @@ def build_app(comfy_override=None):
         web.get("/api/models/files", state.h_models_files),
         web.post("/api/models/pick", state.h_models_pick),
         web.post("/api/models/open", state.h_models_open),
+        web.post("/api/models/download", state.h_models_download),
+        web.post("/api/models/download/cancel", state.h_models_download_cancel),
         web.post("/api/models/variant", state.h_models_variant),
         web.get("/api/wf/list", state.h_wf_list),
         web.post("/api/wf/add", state.h_wf_add),

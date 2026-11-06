@@ -19,7 +19,12 @@ def r32(v):
     return max(32, round(v / 32) * 32)
 
 
-def resolution(aspect, quality):
+def resolution(aspect, quality, form=None):
+    """Size from the format + quality, or the user's own width/height (rounded to a multiple of 32)."""
+    if form and str(form.get("width", "")).isdigit() and str(form.get("height", "")).isdigit():
+        cw, ch = int(form["width"]), int(form["height"])
+        if cw >= 64 and ch >= 64:
+            return min(2048, r32(cw)), min(2048, r32(ch))
     w, h = ASPECTS[aspect]
     px = QUALITY[quality]
     return r32(math.sqrt(px * w / h)), r32(math.sqrt(px * h / w))
@@ -382,9 +387,10 @@ def lipsync_graph(m, prompt, width, height, seconds, seed, audio, ref_images, sc
 
 # Krea 2 works at about 1 MP only
 KREA_SIZES = {"16:9": (1376, 768), "9:16": (768, 1376), "1:1": (1024, 1024), "4:3": (1184, 896),
-              "3:4": (896, 1184), "3:2": (1248, 832), "2:3": (832, 1248)}
+              "3:4": (896, 1184), "3:2": (1248, 832), "2:3": (832, 1248), "21:9": (1568, 672)}
 QWEN_MP = {"1": 1.0, "2": 2.0}
 SHEET_SIZE = (1920, 1088)
+SHEET6_SIZE = (2112, 960)  # six tall panels in one row, about 2 MP like the four-panel sheet
 SHEET_BG = {"grey": "light grey", "white": "white", "black": "black"}
 
 
@@ -464,6 +470,149 @@ def _qwen_base(m, image, megapixels, prompt, seed, size=None):
     return g, stages
 
 
+def flux_t2i_graph(m, prompt, width, height, seed):
+    """FLUX.2 klein 4B (distilled), picture by text: 4 steps, CFG 1, no negative prompt."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["flux_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["flux_clip"], "type": "flux2", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["flux_vae"]}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "5": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["4", 0]}},
+        "6": {"class_type": "CFGGuider", "inputs": {"model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0], "cfg": 1}},
+        "7": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        "8": {"class_type": "Flux2Scheduler", "inputs": {"steps": 4, "width": width, "height": height}},
+        "9": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "10": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "11": {"class_type": "SamplerCustomAdvanced", "inputs": {
+            "noise": ["10", 0], "guider": ["6", 0], "sampler": ["9", 0], "sigmas": ["8", 0], "latent_image": ["7", 0]}},
+        "12": {"class_type": "VAEDecode", "inputs": {"samples": ["11", 0], "vae": ["3", 0]}},
+        "13": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/flux_t2i", "images": ["12", 0]}},
+    }
+    stages = {"1": "load", "2": "load", "3": "load", "4": "encode", "5": "encode", "6": "encode", "7": "encode",
+              "8": "encode", "9": "encode", "10": "encode", "11": "sample", "12": "decode", "13": "save"}
+    return g, stages
+
+
+def qwen_t2i_graph(m, prompt, negative, width, height, seed):
+    """Qwen Image 2.1, picture by text (no reference). With a negative prompt CFG goes above 1 so that it works."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["qwen_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["qwen_clip"], "type": "qwen_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["qwen_vae"]}},
+        "4": {"class_type": "QwenImage21Cache", "inputs": {"device": "auto", "dtype": "default", "model": ["1", 0]}},
+        "7": {"class_type": "TextEncodeQwenImage21", "inputs": {
+            "prompt": prompt, "negative_prompt": negative, "resolution": 0, "clip": ["2", 0], "vae": ["3", 0]}},
+        "8": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
+        "9": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 25, "cfg": 3 if negative.strip() else 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+            "model": ["4", 0], "positive": ["7", 0], "negative": ["7", 1], "latent_image": ["8", 0]}},
+        "10": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["3", 0]}},
+        "11": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/qwen_t2i", "images": ["10", 0]}},
+    }
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load", "7": "encode", "8": "encode",
+              "9": "sample", "10": "decode", "11": "save"}
+    return g, stages
+
+
+STORY_SIZE = (1920, 1088)
+
+
+def qwen_story_graph(m, images, prompt, seed, size=STORY_SIZE):
+    """Storyboard from 1-3 pictures (character, location...) on Qwen Image 2.1: <image1>, <image2> in the prompt."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["qwen_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["qwen_clip"], "type": "qwen_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["qwen_vae"]}},
+        "4": {"class_type": "QwenImage21Cache", "inputs": {"device": "auto", "dtype": "default", "model": ["1", 0]}},
+    }
+    enc = {"prompt": prompt, "negative_prompt": "", "resolution": 0, "clip": ["2", 0], "vae": ["3", 0]}
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load"}
+    for i, img in enumerate(images, 1):
+        a, b = f"10{i}", f"11{i}"
+        g[a] = {"class_type": "LoadImage", "inputs": {"image": img}}
+        g[b] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 32, "image": [a, 0]}}
+        enc[f"images.image_{i}"] = [b, 0]
+        stages[a] = stages[b] = "encode"
+    g["7"] = {"class_type": "TextEncodeQwenImage21", "inputs": enc}
+    g["8"] = {"class_type": "EmptyLatentImage", "inputs": {"width": size[0], "height": size[1], "batch_size": 1}}
+    g["9"] = {"class_type": "KSampler", "inputs": {
+        "seed": seed, "steps": 25, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+        "model": ["4", 0], "positive": ["7", 0], "negative": ["7", 1], "latent_image": ["8", 0]}}
+    g["10"] = {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["3", 0]}}
+    g["11"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/qwen_story", "images": ["10", 0]}}
+    stages.update({"7": "encode", "8": "encode", "9": "sample", "10": "decode", "11": "save"})
+    return g, stages
+
+
+def flux_story_graph(m, images, prompt, seed, size=STORY_SIZE):
+    """Storyboard from 1-3 pictures on FLUX.2 klein: every picture is one more ReferenceLatent (image 1, image 2 ...)."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["flux_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["flux_clip"], "type": "flux2", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["flux_vae"]}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "8": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
+    }
+    stages = {"1": "load", "2": "load", "3": "load", "7": "encode", "8": "encode"}
+    pos, neg = ["7", 0], ["8", 0]
+    for i, img in enumerate(images, 1):
+        a, b, v, rp, rn = f"10{i}", f"11{i}", f"12{i}", f"13{i}", f"14{i}"
+        g[a] = {"class_type": "LoadImage", "inputs": {"image": img}}
+        g[b] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 16, "image": [a, 0]}}
+        g[v] = {"class_type": "VAEEncode", "inputs": {"pixels": [b, 0], "vae": ["3", 0]}}
+        g[rp] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": pos, "latent": [v, 0]}}
+        g[rn] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": neg, "latent": [v, 0]}}
+        pos, neg = [rp, 0], [rn, 0]
+        for k in (a, b, v, rp, rn):
+            stages[k] = "encode"
+    g["12"] = {"class_type": "CFGGuider", "inputs": {"model": ["1", 0], "positive": pos, "negative": neg, "cfg": 1}}
+    g["13"] = {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": size[0], "height": size[1], "batch_size": 1}}
+    g["14"] = {"class_type": "Flux2Scheduler", "inputs": {"steps": 4, "width": size[0], "height": size[1]}}
+    g["15"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}}
+    g["16"] = {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}}
+    g["17"] = {"class_type": "SamplerCustomAdvanced", "inputs": {
+        "noise": ["16", 0], "guider": ["12", 0], "sampler": ["15", 0], "sigmas": ["14", 0], "latent_image": ["13", 0]}}
+    g["18"] = {"class_type": "VAEDecode", "inputs": {"samples": ["17", 0], "vae": ["3", 0]}}
+    g["19"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/flux_story", "images": ["18", 0]}}
+    stages.update({"12": "encode", "13": "encode", "14": "encode", "15": "encode", "16": "encode",
+                   "17": "sample", "18": "decode", "19": "save"})
+    return g, stages
+
+
+def flux_edit_graph(m, prompt, image, megapixels, seed):
+    """FLUX.2 klein 4B (distilled), edit a picture: the official ComfyUI template on plain nodes, 4 steps, CFG 1.
+    The result keeps the shape of the picture (sides in steps of 16)."""
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["flux_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["flux_clip"], "type": "flux2", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["flux_vae"]}},
+        "4": {"class_type": "LoadImage", "inputs": {"image": image}},
+        "5": {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "upscale_method": "lanczos", "megapixels": megapixels, "resolution_steps": 16, "image": ["4", 0]}},
+        "6": {"class_type": "GetImageSize", "inputs": {"image": ["5", 0]}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["2", 0]}},
+        "8": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["7", 0]}},
+        "9": {"class_type": "VAEEncode", "inputs": {"pixels": ["5", 0], "vae": ["3", 0]}},
+        "10": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["7", 0], "latent": ["9", 0]}},
+        "11": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["8", 0], "latent": ["9", 0]}},
+        "12": {"class_type": "CFGGuider", "inputs": {"model": ["1", 0], "positive": ["10", 0], "negative": ["11", 0], "cfg": 1}},
+        "13": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": ["6", 0], "height": ["6", 1], "batch_size": 1}},
+        "14": {"class_type": "Flux2Scheduler", "inputs": {"steps": 4, "width": ["6", 0], "height": ["6", 1]}},
+        "15": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "16": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "17": {"class_type": "SamplerCustomAdvanced", "inputs": {
+            "noise": ["16", 0], "guider": ["12", 0], "sampler": ["15", 0], "sigmas": ["14", 0], "latent_image": ["13", 0]}},
+        "18": {"class_type": "VAEDecode", "inputs": {"samples": ["17", 0], "vae": ["3", 0]}},
+        "19": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/flux", "images": ["18", 0]}},
+    }
+    stages = {str(i): "load" for i in (1, 2, 3)}
+    stages.update({str(i): "encode" for i in range(4, 17)})
+    stages.update({"17": "sample", "18": "decode", "19": "save"})
+    return g, stages
+
+
 def qwen_edit_size(aspect, megapixels):
     """Canvas for a chosen aspect ratio (about 1 or 2 megapixels, sides in steps of 32); None = keep the picture's own shape."""
     if aspect not in KREA_SIZES:
@@ -477,7 +626,7 @@ def qwen_edit_graph(m, prompt, image, megapixels, seed, size=None):
     return _qwen_base(m, image, megapixels, prompt, seed, size)
 
 
-def sheet_prompt(headless=True, background="grey", marks=""):
+def sheet_prompt(headless=True, background="grey", marks="", panels=4):
     """Four panels: full body front (without the head by default), full body back, close-up front, close-up profile.
     Tested on Qwen Image 2.1 with a cartoon character: same style and outfit on all panels."""
     bg = SHEET_BG.get(background, "light grey")
@@ -488,6 +637,19 @@ def sheet_prompt(headless=True, background="grey", marks=""):
              "from head to shoes.")
     keep = "Keep the same face, hairstyle, " + (marks.strip().rstrip(".,") + ", " if marks.strip() else "") \
         + "clothing, colors, proportions and art style as in <image1> in every panel."
+    if panels == 6:
+        return (
+            "A character reference sheet of the character from <image1>, split into six equal tall panels side by side in one "
+            "row, all at the same scale, in the same art style as <image1>.\n"
+            f"Panel one: {first}\n"
+            "Panel two: full-body three-quarter view of the same character, turned about forty-five degrees to the left, "
+            "same pose and outfit, head fully visible.\n"
+            "Panel three: full-body side view in profile facing left, same pose and outfit, head fully visible.\n"
+            "Panel four: full-body back view of the same character, same pose and outfit, seen from behind, head fully visible.\n"
+            "Panel five: close-up head-and-shoulders portrait facing the viewer with a neutral expression.\n"
+            "Panel six: close-up head-and-shoulders portrait in three-quarter view, with the same lighting and scale as panel five.\n"
+            f"{keep}\n"
+            f"Plain solid {bg} background, soft even lighting, no text, no labels.")
     return (
         "A character reference sheet of the character from <image1>, split into four equal panels side by side in one "
         "row, all at the same scale, in the same art style as <image1>.\n"
@@ -499,9 +661,10 @@ def sheet_prompt(headless=True, background="grey", marks=""):
         f"Plain solid {bg} background, soft even lighting, no text, no labels.")
 
 
-def qwen_sheet_graph(m, image, seed, headless=True, background="grey", marks=""):
-    prompt = sheet_prompt(headless, background, marks)
-    g, stages = _qwen_base(m, image, SHEET_SIZE[0] * SHEET_SIZE[1] / 1048576, prompt, seed, size=SHEET_SIZE)
+def qwen_sheet_graph(m, image, seed, headless=True, background="grey", marks="", panels=4):
+    prompt = sheet_prompt(headless, background, marks, panels)
+    size = SHEET6_SIZE if panels == 6 else SHEET_SIZE
+    g, stages = _qwen_base(m, image, size[0] * size[1] / 1048576, prompt, seed, size=size)
     return g, stages, prompt
 
 

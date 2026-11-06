@@ -1640,6 +1640,7 @@ class App:
 
     async def preview_opts(self):
         """Settings for the animated live preview, or None when ComfyUI has no KJNodes' Model Preview Override."""
+        return None   # switched off: the animated preview made generation noticeably slower; the usual single-frame preview is used
         try:
             status, oi = await self.comfy_json("GET", "/object_info/ModelPreviewOverrideKJ")
         except Exception:

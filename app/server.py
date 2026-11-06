@@ -37,6 +37,15 @@ import speech
 import updater
 from version import APP_VERSION
 
+def split_frames(text):
+    """One frame per line / numbered item: "1: ...", "Frame 2. ...", "Кадр 3 - ..."."""
+    parts = re.split(r"(?m)^\s*(?:frame|кадр)?\s*\d+\s*[:.)\-–]\s*", text.strip(), flags=re.I)
+    frames = [p.strip().replace("\n", " ") for p in parts if p.strip()]
+    if len(frames) < 2:
+        frames = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    return frames
+
+
 SUPPORT_URL = "https://pay.cloudtips.ru/p/0e4d4824"
 import workflows as wf
 
@@ -343,7 +352,11 @@ class App:
         if videos:
             picked = [videos[-1] if job.get("last_output") else videos[0]]
         else:  # a workflow that makes pictures: every saved picture goes to the library
-            picked = images[:8]
+            picked = images[:12]
+            def order(f):  # the glued sheet first, then the frames 1, 2, 3...
+                t = str((job.get("titles") or {}).get(node_of.get(id(f)), ""))
+                return (0 if t.startswith("Лист") else 1, t)
+            picked.sort(key=order)
         items = []
         for f in picked:
             item = dict(job["meta"], id=uuid.uuid4().hex[:12], prompt_id=pid,
@@ -1198,6 +1211,17 @@ class App:
         form, image, seed = await self.read_image_form(req)
         flux = form.get("kind") != "sheet" and form.get("engine") == "flux"
         await self.need_models("flux" if flux else "qwen")
+        if form.get("kind") == "story" and form.get("frames") == "1":
+            # storyboard frame by frame (FLUX.2 klein): every frame is its own picture, the sheet is glued from them
+            await self.need_models("flux")
+            frames = split_frames(form.get("prompt", ""))
+            if len(frames) not in wf.FRAME_COLS:
+                raise web.HTTPBadRequest(text=f"Нужно 2, 3, 4, 6, 8 или 9 кадров, а в описании их {len(frames)}. Напишите каждый кадр с новой строки: «1: ...», «2: ...».")
+            refs = [x for x in ([image] if image else []) + list(form.get("_extra") or [])]
+            graph, stages, titles = wf.flux_frames_graph(self.model_names, refs, frames, seed, line=form.get("line", "white"))
+            return await self.queue(graph, stages, {
+                "mode": "qwen", "sub": "Раскадровка по кадрам", "prompt": form.get("prompt", "").strip(), "aspect": "",
+                "q": "", "len": 0.0, "res": "", "seed": seed}, titles=titles)
         if not image:
             raise web.HTTPBadRequest(text="Загрузите картинку")
         if form.get("kind") == "story":

@@ -962,6 +962,9 @@ details[open] summary::before{content:'－ '}
               <button data-t="sheet">Лист персонажа<small>4 панели, Krea 2</small></button>
               <button data-t="sheet6">Лист персонажа ×6<small>6 панелей, Krea 2</small></button>
             </div>
+            <div class="seg" id="agStoryF" hidden style="grid-template-columns:1fr 1fr;margin-top:10px">
+              <button data-f="1">По кадрам<small>кадры отдельно + лист (FLUX.2)</small></button><button data-f="0">Одним листом<small>одна картинка сразу</small></button>
+            </div>
             <div class="seg" id="agStoryM" hidden style="grid-template-columns:repeat(3,1fr);margin-top:10px">
               <button data-m="krea">Krea 2<small>лучшее качество</small></button><button data-m="flux">FLUX.2 klein<small>для коммерции</small></button><button data-m="qwen">Qwen 2.1<small>не для коммерции</small></button>
             </div>
@@ -3052,16 +3055,19 @@ $('#agEmpty').onclick = e => { const s = e.target.closest('span'); if (s) { $('#
 $('#agIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#agSend').click(); } });
 const AG_NAMES = { video: 'Генерацию видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрскую игру', action: 'Экшн-сцены', krea: 'Картинку по тексту', qwen: 'Правку картинки', sheet: 'Картинку по тексту', sheet6: 'Картинку по тексту', fluxt: 'Картинку по тексту', qwent: 'Картинку по тексту', story: 'Картинку по тексту' };
 const AG_IMG = ['krea', 'qwen', 'sheet', 'sheet6', 'fluxt', 'qwent', 'story'];
-AG.storyModel = 'krea';
+AG.storyModel = 'krea'; AG.storyFrames = true;
 const agTargetClick = e => {
   const b = e.target.closest('button[data-t]'); if (!b) return;
   AG.target = b.dataset.t; $$('#agTarget button, #agTarget2 button').forEach(x => x.classList.toggle('on', x === b)); agCtx();
 };
+$('#agStoryF').onclick = e => { const b = e.target.closest('button[data-f]'); if (!b) return; AG.storyFrames = b.dataset.f === '1'; agCtx(); };
 $('#agStoryM').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; AG.storyModel = b.dataset.m; agCtx(); };
 $('#agTarget').onclick = agTargetClick; $('#agTarget2').onclick = agTargetClick;
 function agCtx() {
   const n = agImgCount() + AG.att.length;
-  $('#agStoryM').hidden = AG.target !== 'story';
+  $('#agStoryF').hidden = AG.target !== 'story';
+  $('#agStoryM').hidden = AG.target !== 'story' || AG.storyFrames;
+  $$('#agStoryF button').forEach(b => b.classList.toggle('on', (b.dataset.f === '1') === AG.storyFrames));
   $$('#agStoryM button').forEach(b => b.classList.toggle('on', b.dataset.m === AG.storyModel));
   $('#agCtx').textContent = AG_IMG.includes(AG.target)
     ? ({ krea: 'Опишите картинку словами: агент напишет промпт для Krea 2. Картинки в чате — только образцы настроения.',
@@ -3226,7 +3232,7 @@ async function agSend() {
   AG.msgs.push(reply); renderMsgs();
   const el = $('#agMsgs .msg:last-child');
   AG.busy = true; $('#agSend').textContent = 'Стоп'; AG.ctrl = new AbortController();
-  const ctx = { model: AG.storyModel, duration: AG_IMG.includes(AG.target) ? null : AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
+  const ctx = { model: AG.storyFrames && AG.target === 'story' ? 'flux' : AG.storyModel, frames: AG.target === 'story' && AG.storyFrames, duration: AG_IMG.includes(AG.target) ? null : AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
   if (AG.target === 'actor') ctx.voice = RM.actor.voice() ? 1 : 0;
   try {
     const r = await fetch('/api/agent/chat', {
@@ -3314,8 +3320,8 @@ async function sendPrompt(blk, to) {
   // pictures of a reopened chat exist only as data URLs; turn them back into files
   const toFile = (u, i) => { const [h, b] = u.split(','); const bin = atob(b); const a = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) a[k] = bin.charCodeAt(k); return new File([a], `picture${i + 1}.jpg`, { type: h.slice(5, h.indexOf(';')) }); };
   const files = AG.msgs.flatMap(m => m.files || (m.images || []).map(toFile));
-  if (to === 'story' && files.length && AG.storyModel !== 'krea') {
-    IMG.qwen.fill({ prompt, kind: 'story', engine: AG.storyModel });
+  if (to === 'story' && (AG.storyFrames || (files.length && AG.storyModel !== 'krea'))) {
+    IMG.qwen.fill({ prompt, kind: 'story', engine: AG.storyFrames ? 'flux' : AG.storyModel, frames: AG.storyFrames });
     for (const [i, sel] of ['#qwDrop', '#qwDrop2', '#qwDrop3'].entries()) {
       $(sel + ' .x')?.click();
       if (files[i]) await setDropFile($(sel + ' input'), files[i]);
@@ -4266,7 +4272,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
 
 /* --- Qwen Image 2.1: edit a picture, character sheet --- */
 (() => {
-  const root = $('#view-qwen'), S = { kind: 'edit', size: '1', aspect: '', headless: true, bg: 'grey', panels: 4, engine: 'qwen' };
+  const root = $('#view-qwen'), S = { kind: 'edit', size: '1', aspect: '', headless: true, bg: 'grey', panels: 4, engine: 'qwen', frames: true, line: 'white' };
   root.innerHTML = `
     <div class="head"><div><h1>Правка картинки</h1><p>Загрузите картинку и напишите, что изменить: поменять место, одежду, свет, поставить персонажа в новую сцену. Или соберите лист персонажа</p></div>
       <div class="mode-pill"><i></i><span>Qwen Image 2.1</span></div></div>
@@ -4281,6 +4287,11 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Что делаем</h3></div>
         <div class="seg qw-kind" style="grid-template-columns:repeat(3,1fr)"><button data-k="edit">Править картинку<small>изменить по описанию</small></button><button data-k="sheet">Лист персонажа<small>4 или 6 видов с разных сторон</small></button><button data-k="story">Раскадровка<small>история по картинкам героя и места</small></button></div>
         <div class="qw-edit" style="margin-top:14px">
+          <div class="row qw-storyopts" hidden style="margin-bottom:12px"><div class="row-l">Как рисовать</div>
+            <div class="seg qw-fr" style="grid-template-columns:1fr 1fr"><button data-fr="1">По кадрам<small>каждый кадр отдельно, лист склеит программа (FLUX.2)</small></button><button data-fr="0">Одним листом<small>одна картинка сразу</small></button></div>
+            <div class="row qw-lnrow" style="margin-top:10px"><div class="row-l">Линия между кадрами</div>
+              <div class="seg qw-ln" style="grid-template-columns:repeat(3,1fr)"><button data-ln="white">Тонкая белая</button><button data-ln="black">Тонкая чёрная</button><button data-ln="none">Без линии</button></div></div>
+            <div class="hint" style="margin-top:6px">Кадры пишите по одному в строке: «1: ...», «2: ...» (2, 3, 4, 6, 8 или 9 кадров). Каждый кадр сохраняется отдельно в Библиотеку в полном размере.</div></div>
           <div class="row" style="margin-bottom:12px"><div class="row-l">Модель</div><div class="seg qw-eng" style="grid-template-columns:1fr 1fr"><button data-e="qwen">Qwen 2.1<small>для творчества, не для коммерции</small></button><button data-e="flux">FLUX.2 klein<small>можно в коммерцию</small></button></div>
             <div class="hint qw-fluxhint" hidden></div></div>
           <textarea class="qw-prompt" placeholder="Что изменить и что оставить. Например: Этот человек сидит в кафе у окна и пьёт кофе. Лицо, причёска и одежда как на картинке."></textarea>
@@ -4304,9 +4315,10 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   const P = imgPanel($('.qw-prev', root), {
     mode: 'qwen', url: '/api/generate/qwen',
     promptText: () => S.kind === 'sheet' ? 'Лист персонажа' : $('.qw-prompt', root).value.trim(),
-    validate: () => !drop._file ? 'Загрузите картинку' : S.kind === 'edit' && !$('.qw-prompt', root).value.trim() ? 'Напишите, что изменить на картинке' : S.kind === 'story' && !$('.qw-prompt', root).value.trim() ? 'Опишите историю по кадрам' : '',
+    validate: () => !drop._file && !(S.kind === 'story' && S.frames) ? 'Загрузите картинку' : S.kind === 'edit' && !$('.qw-prompt', root).value.trim() ? 'Напишите, что изменить на картинке' : S.kind === 'story' && !$('.qw-prompt', root).value.trim() ? 'Опишите историю по кадрам' : '',
     form: () => {
-      const fd = new FormData(); fd.append('image', drop._file); fd.append('kind', S.kind); fd.append('engine', S.kind === 'sheet' ? 'qwen' : S.engine);
+      const fd = new FormData(); if (drop._file) fd.append('image', drop._file); fd.append('kind', S.kind);
+      if (S.kind === 'story') { fd.append('frames', S.frames ? '1' : '0'); fd.append('line', S.line); } fd.append('engine', S.kind === 'sheet' ? 'qwen' : S.engine);
       if (S.kind === 'story') { if (drop2._file) fd.append('image2', drop2._file); if (drop3._file) fd.append('image3', drop3._file); }
       if (S.kind === 'sheet') { fd.append('panels', S.panels); fd.append('headless', S.headless ? '1' : '0'); fd.append('background', S.bg); fd.append('marks', $('.qw-marks', root).value.trim()); }
       else { fd.append('prompt', $('.qw-prompt', root).value.trim()); fd.append('size', S.size); fd.append('aspect', S.aspect); }
@@ -4320,8 +4332,13 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     $$('.qw-kind button', root).forEach(b => b.classList.toggle('on', b.dataset.k === S.kind));
     $('.qw-edit', root).hidden = S.kind === 'sheet'; $('.qw-sheet', root).hidden = S.kind !== 'sheet';
     $('.qw-more', root).hidden = S.kind !== 'story';
+    $('.qw-storyopts', root).hidden = S.kind !== 'story';
+    if (S.kind === 'story' && S.frames) S.engine = 'flux';
+    $('.qw-lnrow', root).hidden = !S.frames;
+    $$('.qw-fr button', root).forEach(b => b.classList.toggle('on', (b.dataset.fr === '1') === S.frames));
+    $$('.qw-ln button', root).forEach(b => b.classList.toggle('on', b.dataset.ln === S.line));
     $$('.qw-editonly', root).forEach(r => r.hidden = S.kind === 'story' || (S.engine === 'flux' && r.contains($('.qw-asp', root))));
-    $('.qw-prompt', root).placeholder = S.kind === 'story' ? 'Расскажите историю по кадрам: первый кадр — …, второй кадр — …. Героя и место называйте <image1>, <image2>. Или попросите Агента (Раскадровка) написать промпт.' : 'Что изменить и что оставить. Например: Этот человек сидит в кафе у окна и пьёт кофе. Лицо, причёска и одежда как на картинке.';
+    $('.qw-prompt', root).placeholder = S.kind === 'story' && S.frames ? '1: первый кадр по-английски...\n2: второй кадр...\n(героя и место называйте image 1, image 2). Или попросите Агента (Раскадровка → По кадрам).' : S.kind === 'story' ? 'Расскажите историю по кадрам: первый кадр — …, второй кадр — …. Героя и место называйте <image1>, <image2>. Или попросите Агента (Раскадровка) написать промпт.' : 'Что изменить и что оставить. Например: Этот человек сидит в кафе у окна и пьёт кофе. Лицо, причёска и одежда как на картинке.';
     $$('.qw-size button', root).forEach(b => b.classList.toggle('on', b.dataset.s === S.size));
     $$('.qw-head button', root).forEach(b => b.classList.toggle('on', (b.dataset.h === '1') === S.headless));
     $$('.qw-bg button', root).forEach(b => b.classList.toggle('on', b.dataset.b === S.bg));
@@ -4331,6 +4348,9 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     else if (S.kind === 'story') P.ratio(1920, 1088);
   };
   root.addEventListener('click', e => {
+    const fr = e.target.closest('.qw-fr button'), ln = e.target.closest('.qw-ln button');
+    if (fr) { S.frames = fr.dataset.fr === '1'; upd(); return; }
+    if (ln) { S.line = ln.dataset.ln; upd(); return; }
     const qa = e.target.closest('.qw-asp .chip'); if (qa) { S.aspect = qa.dataset.qa; upd(); return; }
     const k = e.target.closest('.qw-kind button'), s = e.target.closest('.qw-size button'), h = e.target.closest('.qw-head button'), b = e.target.closest('.qw-bg button'), pn = e.target.closest('.qw-pn button'), en = e.target.closest('.qw-eng button');
     if (en) { S.engine = en.dataset.e; upd(); qwFluxCheck(); return; }
@@ -4352,7 +4372,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     } catch {}
   }
   imgSeedWire(root, S); upd();
-  IMG.qwen = { fill: it => { if (it.engine) S.engine = it.engine; if (it.kind === 'story' || String(it.sub || '').startsWith('Раскадровка')) { S.kind = 'story'; $('.qw-prompt', root).value = it.prompt || ''; } else if (it.sub === 'Лист персонажа') S.kind = 'sheet'; else { S.kind = 'edit'; $('.qw-prompt', root).value = it.prompt || ''; } upd(); } };
+  IMG.qwen = { fill: it => { if (it.engine) S.engine = it.engine; if (it.frames !== undefined) S.frames = !!it.frames; if (String(it.sub || '').startsWith('Раскадровка по кадрам')) S.frames = true; else if (String(it.sub || '').startsWith('Раскадровка')) S.frames = false; if (it.kind === 'story' || String(it.sub || '').startsWith('Раскадровка')) { S.kind = 'story'; $('.qw-prompt', root).value = it.prompt || ''; } else if (it.sub === 'Лист персонажа') S.kind = 'sheet'; else { S.kind = 'edit'; $('.qw-prompt', root).value = it.prompt || ''; } upd(); } };
 })();
 
 

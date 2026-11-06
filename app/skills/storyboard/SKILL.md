@@ -67,6 +67,23 @@ A storyboard sheet, [STYLE], one wide image divided into six equal frames in a g
 The image is a [STYLE] storyboard sheet divided into six equal frames in a grid of three columns and two rows, a full-bleed layout where the pictures extend all the way to the outer edges of the image, so that the top, bottom, left and right sides of the image are picture content with no white margin at all, and the pictures are separated from each other only by very thin black gutters. In the top left frame, [description]. In the top middle frame, [...]. In the top right frame, [...]. In the bottom left frame, [...]. In the bottom middle frame, [...]. In the bottom right frame, [...]. The same [CHARACTER SHORT] appears in every frame with the same face, hair and clothing. The lighting and colors are consistent across all frames: [LIGHT AND PALETTE]. The sheet contains only the six illustrated frames and nothing is printed on it.
 ```
 
+## Режим по кадрам (рекомендуется)
+
+В приложении есть режим «По кадрам» (FLUX.2 klein): каждый кадр рисуется ОТДЕЛЬНОЙ картинкой (сохраняется отдельно в полном размере), а лист с тонкой линией между кадрами склеивает программа. Поэтому здесь никаких рамок, полей и «листа» в промптах нет.
+
+Выдача: один блок prompt, в котором каждый кадр на своей строке: `1: ...`, `2: ...`. Число кадров строго 2, 3, 4, 6, 8 или 9. Каждая строка полный самостоятельный английский промпт ОДНОГО кадра:
+- начало строки: "In the same art style as image 1, a full-bleed picture that fills the entire frame right to its edges with no white border, no paper margin and no vignette." (если картинок нет, вместо "image 1" назови стиль словами);
+- герой: ссылкой ("one single small girl from image 1") И коротко словами (причёска, одежда, цвета), одинаково во всех строках;
+- место: "the location from image 2" или словами; пиши "a new composition, not a copy of image 2";
+- план и действие одного кадра, свет.
+
+```prompt
+1: In the same art style as image 1, a full-bleed picture that fills the entire frame right to its edges with no white border, no paper margin and no vignette. A wide shot of one single small girl from image 1 (short brown bob, red scarf, green coat) standing on the porch in front of the door of the wooden house from image 2 at dawn; a new composition, not a copy of image 2.
+2: In the same art style as image 1, a full-bleed picture ... A close-up of the face of one single small girl from image 1 (short brown bob, red scarf, green coat) looking up in surprise, soft dawn light.
+3: ...
+4: ...
+```
+
 ## Если приложены картинки (герой, локация): раздел про референсы
 
 Работает только с Qwen 2.1 и FLUX.2 klein (Krea 2 картинки не принимает). Порядок задаёт пользователь: `<image1>` первая приложенная картинка (обычно герой или лист персонажа), `<image2>` вторая (обычно локация), `<image3>` третья по желанию. Тогда:

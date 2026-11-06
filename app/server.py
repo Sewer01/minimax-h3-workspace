@@ -46,6 +46,23 @@ def split_frames(text):
     return frames
 
 
+class JobStore(dict):
+    """prompt_id -> job; every change is written to disk so a closed program or a power cut does not lose the queue."""
+
+    def __init__(self, on_change):
+        super().__init__()
+        self.on_change = on_change
+
+    def __setitem__(self, k, v):
+        super().__setitem__(k, v)
+        self.on_change()
+
+    def pop(self, k, *a):
+        r = super().pop(k, *a)
+        self.on_change()
+        return r
+
+
 SUPPORT_URL = "https://pay.cloudtips.ru/p/0e4d4824"
 import workflows as wf
 
@@ -55,6 +72,7 @@ HOME = Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT
 UI_DIR = ROOT / "ui"
 DATA_DIR = Path(os.environ.get("H3STUDIO_DATA", HOME / "data"))
 LIBRARY_FILE = DATA_DIR / "library.json"
+QUEUE_FILE = DATA_DIR / "queue.json"
 WORKFLOWS_DIR = DATA_DIR / "workflows"
 MAX_SECONDS = 25.0  # H3 itself is made for up to 15 s; longer clips are allowed, quality is the user's call
 
@@ -96,7 +114,8 @@ class App:
         self.comfy_override = comfy_override.rstrip("/") if comfy_override else None
         self.session = None
         self.browsers = set()
-        self.jobs = {}  # prompt_id -> job dict
+        self.saved_queue = self.load_queue()  # unfinished jobs of the previous run (asked about at start)
+        self.jobs = JobStore(self.save_queue)  # prompt_id -> job dict
         self.library = Library(LIBRARY_FILE)
         self.output_dir = None
         self.comfy_online = False
@@ -823,6 +842,53 @@ class App:
         webbrowser.open("https://www.google.com/search?q=" + urllib.parse.quote_plus(q))
         return web.json_response({"ok": True})
 
+    def load_queue(self):
+        try:
+            data = json.loads(QUEUE_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+        week = datetime.now().timestamp() - 7 * 86400
+        return [j for j in data if isinstance(j, dict) and j.get("graph") and j.get("saved", 0) > week]
+
+    def save_queue(self):
+        items = list(self.saved_queue) + [
+            {"graph": j["graph"], "stages": j.get("stages") or {}, "meta": j.get("meta") or {}, "last_output": j.get("last_output", False),
+             "titles": j.get("titles") or {}, "pid": j.get("prompt_id"), "saved": datetime.now().timestamp()}
+            for j in dict.values(self.jobs) if j.get("graph")]
+        try:
+            if items:
+                QUEUE_FILE.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+            elif QUEUE_FILE.exists():
+                QUEUE_FILE.unlink()
+        except OSError:
+            pass
+
+    async def h_queue_saved(self, _req):
+        return web.json_response({"count": len(self.saved_queue),
+                                  "items": [{"mode": j["meta"].get("mode"), "prompt": (j["meta"].get("prompt") or "")[:80]} for j in self.saved_queue]})
+
+    async def h_queue_resume(self, _req):
+        items, self.saved_queue = list(self.saved_queue), []
+        self.save_queue()
+        out = []
+        try:  # a job that ComfyUI still has (or already finished) while only the program was closed is not run twice
+            _, q = await self.comfy_json("GET", "/queue")
+            alive = {str(x[1]) for key in ("queue_running", "queue_pending") for x in (q or {}).get(key, []) if len(x) > 1}
+        except Exception:
+            alive = set()
+        for j in items:
+            if j.get("pid") and (j["pid"] in alive):
+                continue
+            resp = await self.queue(j["graph"], j.get("stages") or {}, j.get("meta") or {}, j.get("last_output", False), j.get("titles"))
+            pid = json.loads(resp.text)["prompt_id"]
+            out.append({"prompt_id": pid, "mode": j["meta"].get("mode"), "prompt": j["meta"].get("prompt", "")})
+        return web.json_response({"jobs": out})
+
+    async def h_queue_discard(self, _req):
+        self.saved_queue = []
+        self.save_queue()
+        return web.json_response({"ok": True})
+
     async def h_support(self, _req):
         """Open the author's donation page (a fixed address, never taken from the request)."""
         webbrowser.open(SUPPORT_URL)
@@ -1007,7 +1073,8 @@ class App:
         if status != 200:
             return web.json_response({"error": comfy_error_text(res)}, status=400)
         pid = res["prompt_id"]
-        self.jobs[pid] = {"prompt_id": pid, "state": "queued", "stages": stages, "stage": None, "meta": meta, "last_output": last_output, "titles": titles or {}}
+        self.jobs[pid] = {"prompt_id": pid, "state": "queued", "stages": stages, "stage": None, "meta": meta, "last_output": last_output, "titles": titles or {},
+                          "graph": graph}
         return web.json_response({"prompt_id": pid, "seed": meta["seed"], "queue_number": res.get("number")})
 
     async def need_models(self, mode):
@@ -1243,7 +1310,7 @@ class App:
             if not prompt:
                 raise web.HTTPBadRequest(text="Напишите, что изменить на картинке")
             mp = wf.QWEN_MP.get(form.get("size", "1"), 1.0)
-            graph, stages = wf.flux_edit_graph(self.model_names, prompt, image, mp, seed)
+            graph, stages = wf.flux_edit_graph(self.model_names, prompt, image, mp, seed, form.get("_extra") or ())
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Правка картинки (FLUX.2)", "prompt": prompt, "aspect": "",
                 "q": "", "len": 0.0, "res": "", "seed": seed})
@@ -1260,7 +1327,7 @@ class App:
                 raise web.HTTPBadRequest(text="Напишите, что изменить на картинке")
             mp = wf.QWEN_MP.get(form.get("size", "1"), 1.0)
             size = wf.qwen_edit_size(form.get("aspect", ""), mp)
-            graph, stages = wf.qwen_edit_graph(self.model_names, prompt, image, mp, seed, size)
+            graph, stages = wf.qwen_edit_graph(self.model_names, prompt, image, mp, seed, size, form.get("_extra") or ())
             sub, res = "Правка картинки", ("%d×%d" % size if size else "")
         return await self.queue(graph, stages, {
             "mode": "qwen", "sub": sub, "prompt": prompt, "aspect": form.get("aspect", "") if form.get("kind") != "sheet" else "",
@@ -1932,6 +1999,9 @@ def build_app(comfy_override=None):
         web.post("/api/open-driver-page", state.h_open_driver),
         web.post("/api/clipboard", state.h_clipboard),
         web.post("/api/support", state.h_support),
+        web.get("/api/queue/saved", state.h_queue_saved),
+        web.post("/api/queue/resume", state.h_queue_resume),
+        web.post("/api/queue/discard", state.h_queue_discard),
         web.post("/api/search-web", state.h_search_web),
         web.post("/api/report", state.h_report),
         web.post("/api/setup/reset", state.h_setup_reset),

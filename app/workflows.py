@@ -447,7 +447,7 @@ def krea_real_graph(m, prompt, width, height, seed, scale):
     return g, stages
 
 
-def _qwen_base(m, image, megapixels, prompt, seed, size=None):
+def _qwen_base(m, image, megapixels, prompt, seed, size=None, extras=()):
     """The graph of the "One Image Edit" / "Character Sheet" workflows on plain ComfyUI nodes.
     `size` (width, height) gives an empty canvas of its own; otherwise the result keeps the picture's shape."""
     g = {
@@ -467,11 +467,19 @@ def _qwen_base(m, image, megapixels, prompt, seed, size=None):
         "10": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["3", 0]}},
         "11": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/qwen", "images": ["10", 0]}},
     }
+    for k, img in enumerate(list(extras)[:2], 2):  # more reference pictures: <image2>, <image3>
+        a, b = f"12{k}", f"13{k}"
+        g[a] = {"class_type": "LoadImage", "inputs": {"image": img}}
+        g[b] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "upscale_method": "lanczos", "megapixels": megapixels, "resolution_steps": 32, "image": [a, 0]}}
+        g["7"]["inputs"][f"images.image_{k}"] = [b, 0]
     if size:
         g["8"] = {"class_type": "EmptyLatentImage", "inputs": {"width": size[0], "height": size[1], "batch_size": 1}}
         g["9"]["inputs"]["latent_image"] = ["8", 0]
     stages = {"1": "load", "2": "load", "3": "load", "4": "load", "5": "encode", "6": "encode", "7": "encode",
               "8": "encode", "9": "sample", "10": "decode", "11": "save"}
+    for k in (2, 3):
+        stages[f"12{k}"] = stages[f"13{k}"] = "encode"
     return g, stages
 
 
@@ -715,7 +723,7 @@ def flux_story_graph(m, images, prompt, seed, size=STORY_SIZE):
     return g, stages
 
 
-def flux_edit_graph(m, prompt, image, megapixels, seed):
+def flux_edit_graph(m, prompt, image, megapixels, seed, extras=()):
     """FLUX.2 klein 4B (distilled), edit a picture: the official ComfyUI template on plain nodes, 4 steps, CFG 1.
     The result keeps the shape of the picture (sides in steps of 16)."""
     g = {
@@ -731,7 +739,19 @@ def flux_edit_graph(m, prompt, image, megapixels, seed):
         "9": {"class_type": "VAEEncode", "inputs": {"pixels": ["5", 0], "vae": ["3", 0]}},
         "10": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["7", 0], "latent": ["9", 0]}},
         "11": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["8", 0], "latent": ["9", 0]}},
-        "12": {"class_type": "CFGGuider", "inputs": {"model": ["1", 0], "positive": ["10", 0], "negative": ["11", 0], "cfg": 1}},
+    }
+    pos, neg = ["10", 0], ["11", 0]
+    for k, img in enumerate(list(extras)[:2]):  # more reference pictures: image 2, image 3
+        a, b, v, rp, rn = (f"{p}{k}" for p in ("30", "31", "32", "33", "34"))
+        g[a] = {"class_type": "LoadImage", "inputs": {"image": img}}
+        g[b] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "upscale_method": "lanczos", "megapixels": megapixels, "resolution_steps": 16, "image": [a, 0]}}
+        g[v] = {"class_type": "VAEEncode", "inputs": {"pixels": [b, 0], "vae": ["3", 0]}}
+        g[rp] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": pos, "latent": [v, 0]}}
+        g[rn] = {"class_type": "ReferenceLatent", "inputs": {"conditioning": neg, "latent": [v, 0]}}
+        pos, neg = [rp, 0], [rn, 0]
+    g.update({
+        "12": {"class_type": "CFGGuider", "inputs": {"model": ["1", 0], "positive": pos, "negative": neg, "cfg": 1}},
         "13": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": ["6", 0], "height": ["6", 1], "batch_size": 1}},
         "14": {"class_type": "Flux2Scheduler", "inputs": {"steps": 4, "width": ["6", 0], "height": ["6", 1]}},
         "15": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
@@ -740,9 +760,10 @@ def flux_edit_graph(m, prompt, image, megapixels, seed):
             "noise": ["16", 0], "guider": ["12", 0], "sampler": ["15", 0], "sigmas": ["14", 0], "latent_image": ["13", 0]}},
         "18": {"class_type": "VAEDecode", "inputs": {"samples": ["17", 0], "vae": ["3", 0]}},
         "19": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/flux", "images": ["18", 0]}},
-    }
+    })
     stages = {str(i): "load" for i in (1, 2, 3)}
     stages.update({str(i): "encode" for i in range(4, 17)})
+    stages.update({k: "encode" for k in g if k.startswith(("30", "31", "32", "33", "34")) and len(k) == 3})
     stages.update({"17": "sample", "18": "decode", "19": "save"})
     return g, stages
 
@@ -756,8 +777,8 @@ def qwen_edit_size(aspect, megapixels):
     return (round(w * k / 32) * 32, round(h * k / 32) * 32)
 
 
-def qwen_edit_graph(m, prompt, image, megapixels, seed, size=None):
-    return _qwen_base(m, image, megapixels, prompt, seed, size)
+def qwen_edit_graph(m, prompt, image, megapixels, seed, size=None, extras=()):
+    return _qwen_base(m, image, megapixels, prompt, seed, size, extras)
 
 
 def sheet_prompt(headless=True, background="grey", marks="", panels=4):

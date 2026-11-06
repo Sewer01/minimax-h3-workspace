@@ -1300,12 +1300,29 @@ function setEngine(on) {
   $('#engDot').classList.toggle('off', !on && !cloudOn);
   $('#engTxt').textContent = cloudOn ? 'облако' : on ? 'подключён' : 'не запущен';
 }
+let SQ_ASKED = false;
+async function askSavedQueue() {
+  if (SQ_ASKED) return; SQ_ASKED = true;
+  try {
+    const r = await (await fetch('/api/queue/saved')).json();
+    if (!r.count) return;
+    const cancel = () => fetch('/api/queue/discard', { method: 'POST' });
+    const btn = $('#confirm [data-close]'); btn.addEventListener('click', cancel, { once: true });
+    confirmBox('Продолжить очередь?', `В прошлый раз осталось ${r.count} незавершённых заданий (программу закрыли или пропало питание). Продолжить их? Задание, которое шло, начнётся заново. Если нажать «Отмена», они будут забыты.`, 'Продолжить', async () => {
+      btn.removeEventListener('click', cancel);
+      const j = await postJSON('/api/queue/resume');
+      (j.jobs || []).forEach(x => qAdd(x.prompt_id, x.mode, x.prompt));
+      toast('Задания вернулись в очередь'); goTo('queue');
+    });
+  } catch {}
+}
 async function loadStatus() {
   try {
     const s = await (await fetch('/api/status')).json();
     $('#navCustom').hidden = s.engine !== 'external';
     setEngine(s.online);
     if (!s.online) return;
+    askSavedQueue();
     renderModels(s);
   } catch { setEngine(false); }
 }
@@ -3333,7 +3350,10 @@ async function sendPrompt(blk, to) {
     IMG.krea.fill({ prompt, engine, aspect: six ? '21:9' : AG.target === 'sheet' || to === 'sheet' || AG.target === 'story' ? '16:9' : undefined }); to = 'krea';
   } else if (to === 'qwen') {
     IMG.qwen.fill({ prompt });
-    if (files[0]) { $('#qwDrop .x')?.click(); await setDropFile($('#qwDrop input'), files[0]); }
+    for (const [i, sel] of ['#qwDrop', '#qwDrop2', '#qwDrop3'].entries()) {
+      $(sel + ' .x')?.click();
+      if (files[i]) await setDropFile($(sel + ' input'), files[i]);
+    }
   } else if (to === 'video') {
     $('#vPrompt').value = prompt; $('#vPrompt').oninput({ target: $('#vPrompt') });
     if (files[0]) { $('#dFirst .x')?.click(); await setDropFile($('#dFirst input'), files[0]); }
@@ -4279,10 +4299,10 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     <div class="grid"><div class="col">
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Картинка</h3></div>
         <label class="drop" id="qwDrop" style="--fh:240px"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-5-5L5 21"/></svg><b>Ваша картинка</b><span>перетащите, нажмите или возьмите из Библиотеки</span></div><span class="tag" hidden>Исходная</span><button class="x" type="button">✕</button></label>
-        <div class="qw-more" hidden style="margin-top:10px"><div class="hint" style="margin-bottom:6px">Раскадровка: 1-я картинка — герой (или лист персонажа), 2-я — локация, 3-я — по желанию. В промпте они называются <b>&lt;image1&gt;</b>, <b>&lt;image2&gt;</b>, <b>&lt;image3&gt;</b>.</div>
+        <div class="qw-more" hidden style="margin-top:10px"><div class="hint qw-morehint" style="margin-bottom:6px"></div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <label class="drop" id="qwDrop2" style="--fh:130px"><input type="file" accept="image/*"><div class="ph"><b>2. Локация</b><span>перетащите или нажмите</span></div><span class="tag" hidden>image2</span><button class="x" type="button">✕</button></label>
-            <label class="drop" id="qwDrop3" style="--fh:130px"><input type="file" accept="image/*"><div class="ph"><b>3. Ещё картинка</b><span>по желанию</span></div><span class="tag" hidden>image3</span><button class="x" type="button">✕</button></label>
+            <label class="drop" id="qwDrop2" style="--fh:130px"><input type="file" accept="image/*"><div class="ph"><b>2. Ещё картинка</b><span>референс, по желанию</span></div><span class="tag" hidden>image2</span><button class="x" type="button">✕</button></label>
+            <label class="drop" id="qwDrop3" style="--fh:130px"><input type="file" accept="image/*"><div class="ph"><b>3. Ещё картинка</b><span>референс, по желанию</span></div><span class="tag" hidden>image3</span><button class="x" type="button">✕</button></label>
           </div></div></div>
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Что делаем</h3></div>
         <div class="seg qw-kind" style="grid-template-columns:repeat(3,1fr)"><button data-k="edit">Править картинку<small>изменить по описанию</small></button><button data-k="sheet">Лист персонажа<small>4 или 6 видов с разных сторон</small></button><button data-k="story">Раскадровка<small>история по картинкам героя и места</small></button></div>
@@ -4319,7 +4339,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     form: () => {
       const fd = new FormData(); if (drop._file) fd.append('image', drop._file); fd.append('kind', S.kind);
       if (S.kind === 'story') { fd.append('frames', S.frames ? '1' : '0'); fd.append('line', S.line); } fd.append('engine', S.kind === 'sheet' ? 'qwen' : S.engine);
-      if (S.kind === 'story') { if (drop2._file) fd.append('image2', drop2._file); if (drop3._file) fd.append('image3', drop3._file); }
+      if (S.kind !== 'sheet') { if (drop2._file) fd.append('image2', drop2._file); if (drop3._file) fd.append('image3', drop3._file); }
       if (S.kind === 'sheet') { fd.append('panels', S.panels); fd.append('headless', S.headless ? '1' : '0'); fd.append('background', S.bg); fd.append('marks', $('.qw-marks', root).value.trim()); }
       else { fd.append('prompt', $('.qw-prompt', root).value.trim()); fd.append('size', S.size); fd.append('aspect', S.aspect); }
       imgSeedForm(S, fd); return fd;
@@ -4331,7 +4351,10 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     $$('.qw-asp .chip', root).forEach(c => c.classList.toggle('on', c.dataset.qa === S.aspect));
     $$('.qw-kind button', root).forEach(b => b.classList.toggle('on', b.dataset.k === S.kind));
     $('.qw-edit', root).hidden = S.kind === 'sheet'; $('.qw-sheet', root).hidden = S.kind !== 'sheet';
-    $('.qw-more', root).hidden = S.kind !== 'story';
+    $('.qw-more', root).hidden = S.kind === 'sheet';
+    $('.qw-morehint', root).innerHTML = S.kind === 'story'
+      ? 'Раскадровка: 1-я картинка — герой (или лист персонажа), 2-я — локация, 3-я — по желанию. В тексте они называются <b>&lt;image1&gt;</b>, <b>&lt;image2&gt;</b>, <b>&lt;image3&gt;</b> (для FLUX.2: «image 1», «image 2»).'
+      : 'Референсы (по желанию): 1-я картинка — та, что меняем, 2-я и 3-я — например, герой, предмет или одежда. В тексте они называются <b>&lt;image2&gt;</b>, <b>&lt;image3&gt;</b> (для FLUX.2: «image 2», «image 3»).';
     $('.qw-storyopts', root).hidden = S.kind !== 'story';
     $('.qw-lnrow', root).hidden = !S.frames;
     $$('.qw-fr button', root).forEach(b => b.classList.toggle('on', (b.dataset.fr === '1') === S.frames));

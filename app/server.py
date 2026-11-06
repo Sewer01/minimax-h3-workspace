@@ -1565,6 +1565,56 @@ class App:
             "mode": "refs", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed, "steps": steps, "ref_size": ref_size})
 
+    async def long_source(self, item_id, uploaded, first_sec):
+        """A video the user already has (from the library, or a file from the computer) to continue from: put it into ComfyUI and
+        find out how many frames it has. Returns (file name in ComfyUI input, frames)."""
+        if uploaded:
+            name = uploaded   # read_form already uploaded it to ComfyUI
+        else:
+            it = self.library.get(item_id)
+            if not it or it.get("kind") == "image":
+                raise web.HTTPBadRequest(text="Видео для продолжения не найдено в Библиотеке")
+            data = await self.item_bytes(it)
+            fd = aiohttp.FormData()
+            nm = f"h3s_c_{uuid.uuid4().hex[:10]}.{it.get('ext') or 'mp4'}"
+            fd.add_field("image", data, filename=nm, content_type="video/mp4")
+            fd.add_field("type", "input")
+            status, res = await self.comfy_json("POST", "/upload/image", data=fd)
+            if status != 200:
+                raise web.HTTPBadGateway(text="Не удалось передать видео в ComfyUI")
+            name = res["name"]
+        # how long is it: a tiny job that only opens the video and reports its number of frames
+        probe = {"L": {"class_type": "LoadVideo", "inputs": {"file": name}},
+                 "G": {"class_type": "GetVideoComponents", "inputs": {"video": ["L", 0]}},
+                 "Z": {"class_type": "GetImageSize", "inputs": {"image": ["G", 0]}},
+                 "N": {"class_type": "PreviewAny", "inputs": {"source": ["Z", 2]}},
+                 "F": {"class_type": "PreviewAny", "inputs": {"source": ["G", 2]}}}
+        status, res = await self.comfy_json("POST", "/prompt", json={"prompt": probe, "client_id": CLIENT_ID})
+        if status != 200:
+            raise web.HTTPBadRequest(text="ComfyUI не смог открыть это видео: " + comfy_error_text(res))
+        pid = res["prompt_id"]
+        loop = asyncio.get_running_loop()
+        end = loop.time() + 180
+        meta = None
+        while loop.time() < end and not meta:
+            await asyncio.sleep(0.7)
+            _, hist = await self.comfy_json("GET", f"/history/{pid}")
+            e = (hist or {}).get(pid)
+            if e:
+                if e.get("status", {}).get("status_str") == "error":
+                    break
+                try:
+                    meta = {"frame_count": int(float(e["outputs"]["N"]["text"][0])), "fps": float(e["outputs"]["F"]["text"][0])}
+                except (KeyError, IndexError, ValueError):
+                    break
+        if not meta:
+            raise web.HTTPBadRequest(text="Не удалось прочитать это видео. Подойдёт обычный mp4.")
+        frames = int(meta["frame_count"])
+        need = wf.long_plan([first_sec], cont_first=True)[0]["ov"]
+        if frames < need:
+            raise web.HTTPBadRequest(text=f"Видео слишком короткое для продолжения: в нём {frames} кадров, нужно не меньше {need} (около 2,5 секунд).")
+        return (name, frames)
+
     async def preview_opts(self):
         """Settings for the animated live preview, or None when ComfyUI has no KJNodes' Model Preview Override."""
         try:
@@ -1585,7 +1635,7 @@ class App:
 
     async def h_generate_long(self, req):
         await self.need_models("long")
-        form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "aud0") + tuple(f"simg{i}" for i in range(12)))
+        form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "aud0", "srcvid") + tuple(f"simg{i}" for i in range(12)))
         try:
             scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10))) for x in json.loads(form.get("scenes") or "[]")]
         except (ValueError, TypeError, AttributeError):
@@ -1614,7 +1664,9 @@ class App:
             run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]
             if not run or k >= len(scenes):
                 raise web.HTTPBadRequest(text="Неверный номер сцены")
-            state = None
+            state, cont = None, None
+            if k == 0 and (form.get("src_item") or files.get("srcvid")):
+                cont = await self.long_source(form.get("src_item"), files.get("srcvid"), scenes[0][1])
             if k:
                 src = LONG_DIR / run / f"state_{k - 1}.latent"
                 if not src.exists():
@@ -1622,8 +1674,8 @@ class App:
                 state = await self.upload_state(src, f"h3s_long_{run}_{k - 1}.latent")
             graph, stages = wf.long_part_graph(self.model_names, scenes, k, width, height, seed, images, audio, start,
                                                self.model_names["pika_lora"], self.custom_loras(), "match", vocals, state,
-                                               await self.preview_opts())
-            plan = wf.long_plan([sc[1] for sc in scenes])
+                                               await self.preview_opts(), cont, form.get("src_project") == "1")
+            plan = wf.long_plan([sc[1] for sc in scenes], cont_first=bool(cont) or form.get("src_project") == "1")
             sub = f"сцена {k + 1} из {len(scenes)}" + (" · музыка" if audio else " · звук от модели")
             return await self.queue(graph, stages, {
                 "mode": "long", "sub": sub, "prompt": scenes[k][0], "aspect": aspect, "q": quality,

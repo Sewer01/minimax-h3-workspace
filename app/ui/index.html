@@ -2901,7 +2901,7 @@ function openViewer(id) {
   $('#vwPrompt').textContent = it.prompt || 'без промпта';
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
   $('#vwSeed').hidden = it.seed == null;
-  $('#vwContinue').hidden = !(it.long && it.long.run);
+  $('#vwContinue').hidden = pic || !it.url || !!it.missing;
   $('#vwUp').hidden = it.mode === 'upscale' || it.mode === 'custom' || !it.url || !!it.missing;
   $('#vwUp').textContent = pic ? 'Увеличить картинку…' : 'Увеличить видео…';
   $('#viewer').hidden = false;
@@ -2942,12 +2942,19 @@ $('#vwImg').onclick = () => { const it = byId(openId); if (it && it.kind === 'im
 $('#vwDel').onclick = () => askDelete([openId]);
 async function continueLong(it) {
   const L2 = RM.long.root;
-  if (L2._run !== it.long.run && !(await L2._openRun(it.long.run))) { toast('Проект этого ролика не сохранился в программе. Начните новый и добавьте те же картинки героя.'); goTo('long'); return; }
+  if (!(it.long && it.long.run) || (L2._run !== it.long.run && !(await L2._openRun(it.long.run)))) {
+    // a video that was not made here (or whose project is gone): continue from its last frames as a new project
+    L2._setSrc({ id: it.id, name: (it.prompt || it.sub || 'видео из Библиотеки').slice(0, 50) });
+    await useInWorkflow(it, 'long');   // the last picture of the video becomes the hero
+    goTo('long');
+    toast('Продолжаем это видео. Последний кадр встал как герой: добавьте место и других героев, опишите следующую сцену и нажмите «Сделать эту сцену».');
+    return;
+  }
   goTo('long');
   if (L2._mode === 'parts' && L2._ready() >= $$('.sc', L2).length && $$('.sc', L2).length < 12) L2._addScene('', 10);
   toast('Проект открыт: те же картинки и сцены. Опишите следующую сцену и нажмите «Сделать эту сцену».');
 }
-$('#vwContinue').onclick = () => { const it = byId(openId); if (!it || !it.long) return; closeViewer(); continueLong(it); };
+$('#vwContinue').onclick = () => { const it = byId(openId); if (!it) return; closeViewer(); continueLong(it); };
 $('#vwSeed').onclick = () => {
   const it = byId(openId); if (!it || it.seed == null) return;
   const st = it.mode === 'video' ? V : it.mode === 'lipsync' ? L : RM[it.mode]?.S; if (!st) return;
@@ -3047,8 +3054,10 @@ function makeRefMode(cfg) {
     card.innerHTML = `<div class="card-h"><h3><span class="n">3</span>Сцены</h3><span class="counter lm-total"></span></div>
       <div class="seg lm-mode" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><button type="button" data-m="parts">По частям<small>сцена за сценой, каждая сохраняется отдельно</small></button><button type="button" data-m="all">Весь ролик сразу<small>один готовый файл, ждать дольше</small></button></div>
       <div class="hint lm-mode-hint" style="margin-bottom:10px"></div>
+      <div class="note lm-src" hidden style="margin-bottom:10px"><span><b>Продолжаем готовое видео:</b> <span class="lm-srcname"></span>. Первая сцена продолжит его конец, как будто это была прошлая сцена.</span> <button class="btn lm-srcx" type="button" style="padding:2px 9px;margin-left:8px">Убрать</button></div>
       <div class="lm-scenes"></div>
       <button class="btn" type="button" id="lmAdd" style="margin-top:10px">+ Добавить сцену</button>
+      <label class="btn" style="margin-top:10px;cursor:pointer" title="Видео, сделанное в другом месте: возьмём его последние кадры, и первая сцена продолжит их">Продолжить своё видео с компьютера…<input type="file" accept="video/*" class="lm-srcfile" hidden></label>
       <div class="ta-foot"><div class="tokens rm-tokens"></div><span class="hint">нажмите, чтобы вставить в сцену</span></div>
       <div class="note" style="margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg><span>Сцены идут одна за другой, каждая продолжает прошлую: герой, место и звук переходят дальше. В каждой сцене опишите героя, что он делает и как движется камера. Длину сцены задаёт ползунок. Текст сцены можно составить в разделе «Агент».</span></div>`;
     const c1 = $('.rm-imgs', root).closest('.card');
@@ -3099,6 +3108,34 @@ function makeRefMode(cfg) {
       if (root._save && !root._restoring) root._save();
     }
     root._ready = readyUpTo; root._sig = sig;
+    root._src = null;
+    const lastFrameFile = async file => {   // the last picture of a video file from the computer
+      const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = URL.createObjectURL(file);
+      await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('Не удалось открыть видео')); });
+      v.currentTime = Math.max(0, (v.duration || 1) - 0.12);
+      await new Promise(res => { v.onseeked = res; setTimeout(res, 3000); });
+      const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
+      const blob = await new Promise(r => c.toBlob(r, 'image/png')); URL.revokeObjectURL(v.src);
+      return new File([blob], 'last_frame.png', { type: 'image/png' });
+    };
+    root._setSrc = (src, fresh = true) => {   // src: { id } of a library clip or { file } from the computer; null removes it
+      root._src = src || null;
+      $('.lm-src', root).hidden = !src; $('.lm-srcname', root).textContent = src ? src.name : '';
+      if (src && fresh) { root._run = Math.random().toString(36).slice(2, 12); $$('.sc', root).forEach(c => { c._done = null; }); }
+      if (src) setMode('parts');
+      $('.lm-mode [data-m="all"]', root).disabled = !!src;
+      refreshStates();
+    };
+    $('.lm-srcx', root).onclick = () => root._setSrc(null);
+    $('.lm-srcfile', root).onchange = async e => {
+      const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+      try {
+        const frame = await lastFrameFile(f);
+        root._setSrc({ file: f, name: f.name });
+        $$('.ref:not(.filled) input', imgsEl)[0] && await putInto($$('.ref:not(.filled) input', imgsEl)[0], frame);
+        toast('Видео загружено: последний кадр встал как герой, добавьте остальные картинки и опишите сцену.');
+      } catch (err) { toast(err.message); }
+    };
     root._setScenes = list => {   // from the agent: replace all scenes
       if (!list.length) return;
       $$('.sc', root).forEach(c => c.remove());
@@ -3130,7 +3167,7 @@ function makeRefMode(cfg) {
       try {
         const run = root._run, slotA = $('.rm-auds .slot', root);
         const proj = { run, t: Date.now(), mode: root._mode, snd: root._snd, start: $('.lm-start', root).value, vocals: $('.lm-vocals', root).checked,
-          aspect: S.aspect, q: S.q, cw: S.cw || 0, ch: S.ch || 0,
+          aspect: S.aspect, q: S.q, cw: S.cw || 0, ch: S.ch || 0, src: root._src ? { id: root._src.id || '', name: root._src.name } : null,
           scenes: $$('.sc', root).map(c => ({ prompt: $('textarea', c).value, sec: +$('input[type=range]', c).value, img: c._file ? c._file.name : '',
             done: c._done ? { sig: c._done.sig, url: c._done.url, id: c._done.id } : null })) };
         const all = loadAll(); all[run] = proj;
@@ -3138,6 +3175,7 @@ function makeRefMode(cfg) {
         localStorage.setItem(PKEY, JSON.stringify(all)); localStorage.setItem('h3-long-last', run);
         $$('.ref', imgsEl).forEach((r, i) => putFile(`long/${run}/img${i}`, r._file));
         putFile(`long/${run}/aud0`, slotA ? slotA._file : null);
+        putFile(`long/${run}/src`, root._src && root._src.file ? root._src.file : null);
         $$('.sc', root).forEach((c, i) => putFile(`long/${run}/simg${i}`, c._file));
       } catch {}
     }
@@ -3156,6 +3194,8 @@ function makeRefMode(cfg) {
       for (const x of p.scenes) addScene(x.prompt, x.sec);
       const cards = $$('.sc', root);
       for (const [i, x] of p.scenes.entries()) if (x.img) await putInto($('.sc-img input', cards[i]), await memFile('get', `long/${run}/simg${i}`));
+      if (p.src) { const sf = p.src.id ? null : await memFile('get', `long/${run}/src`); root._setSrc(p.src.id ? { id: p.src.id, name: p.src.name } : sf instanceof File ? { file: sf, name: p.src.name } : null, false); }
+      else root._setSrc(null, false);
       p.scenes.forEach((x, i) => { cards[i]._done = x.done && byId(x.done.id) ? { sig: x.done.sig, url: x.done.url, id: x.done.id } : null; });
       // the continuation point of the last finished scene must still be on the disk
       const ready = readyUpTo();
@@ -3289,6 +3329,7 @@ function makeRefMode(cfg) {
           if (k >= all.length) throw new Error('Все сцены уже сделаны. Чтобы переделать одну, нажмите «Переделать» в её карточке.');
           if (k > root._ready()) throw new Error(`Сначала сделайте сцену ${root._ready() + 1}: следующая продолжает её конец.`);
           fd.append('part', k); fd.append('run', root._run);
+          if (root._src) { fd.append('src_project', '1'); if (k === 0) { if (root._src.id) fd.append('src_item', root._src.id); else if (root._src.file) fd.append('srcvid', root._src.file); } }
           root._pending = { k, sig: root._sig(all[k]) };
         }
         if (cfg.scenes && root._mode !== 'parts') fd.append('run', root._run);
@@ -4419,9 +4460,9 @@ function useMenu(it) {
   if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'useMenu'; document.body.append(m); }
   m.hidden = false;
   m.innerHTML = '<div class="box" style="padding:20px;max-width:360px"><div class="card-h"><h3>Куда отправить?</h3><button class="btn" data-x type="button">Закрыть</button></div><div style="display:grid;gap:8px">'
-    + (it.long && it.long.run ? '<button class="btn pri" data-v="__continue" type="button">Длинное видео: продолжить это видео</button>' : '')
+    + (it.kind !== 'image' && it.url && !it.missing ? '<button class="btn pri" data-v="__continue" type="button">Длинное видео: продолжить это видео</button>' : '')
     + USE_TARGETS.filter(t => !$(`.nav[data-view="${t[0]}"]`)?.disabled).map(t => `<button class="btn" data-v="${t[0]}" type="button">${t[1]}${t[0] === 'long' && it.kind !== 'image' ? ': кадр как герой' : ''}</button>`).join('') + '</div>'
-    + (it.kind === 'image' ? '' : '<div class="hint" style="margin-top:10px">Из видео берётся последний кадр. Продолжить ролик можно только если он сделан в «Длинном видео» (в этой версии и новее).</div>') + '</div>';
+    + (it.kind === 'image' ? '' : '<div class="hint" style="margin-top:10px">Из видео берётся последний кадр. «Продолжить это видео» берёт последние секунды клипа, и новая сцена продолжает их.</div>') + '</div>';
   m.onclick = async e => {
     if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; }
     const b = e.target.closest('[data-v]'); if (!b) return;

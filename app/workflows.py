@@ -264,12 +264,13 @@ def _tokens(f):
     return round((f - 5) / 17 * 5 + 2)
 
 
-def long_plan(scene_seconds, overlap=LONG_OVERLAP):
-    """Frame arithmetic of the original workflow: per scene (frames to generate, overlap frames, frames kept so far)."""
+def long_plan(scene_seconds, overlap=LONG_OVERLAP, cont_first=False):
+    """Frame arithmetic of the original workflow: per scene (frames to generate, overlap frames, frames kept so far).
+    `cont_first`: the first scene continues an existing video, so it is planned like a later scene."""
     plan, acc = [], 0
     for i, sec in enumerate(scene_seconds):
         seg = frames(min(LONG_MAX_SCENE, max(1, sec)))
-        if i == 0:
+        if i == 0 and not cont_first:
             plan.append({"total": seg, "ov": 0, "acc_before": 0, "acc": seg})
             acc = seg
         else:
@@ -419,7 +420,7 @@ LONG_STATE_TOKENS = 17   # latent tokens of the last second(s) of a scene that t
 
 
 def long_part_graph(m, scenes, k, width, height, seed, images, audio=None, start=0.0, pika=None, extra_loras=(),
-                    ref_size="match", vocals=None, state=None, preview=None):
+                    ref_size="match", vocals=None, state=None, preview=None, src=None, cont_plan=False):
     """Scene number `k` (0-based) of the long video as its own job. Scene 0 starts fresh; scene k > 0 continues from the saved
     latent tail of scene k-1 (`state`, a .latent file in ComfyUI's input folder). The clip it saves has the overlap with the
     previous scene cut off, so the clips join end to end. Also saves the tail of its own latent for scene k+1."""
@@ -435,7 +436,8 @@ def long_part_graph(m, scenes, k, width, height, seed, images, audio=None, start
             g["13"] = {"class_type": "MelBandRoFormerSampler", "inputs": {"model": ["12", 0], "audio": ["11", 0]}}
             heard = ["13", 0]
     stages = {n: "load" for n in g}
-    plan = long_plan([sc[1] for sc in scenes])
+    cont = bool(src) and k == 0   # the first scene continues a video the user already has (src = (file in ComfyUI input, frames))
+    plan = long_plan([sc[1] for sc in scenes], cont_first=bool(src) or cont_plan)   # a project that continues an existing video
     p, sc = plan[k], scenes[k]
     total, ov = p["total"], p["ov"]
     nid = [200]
@@ -455,17 +457,25 @@ def long_part_graph(m, scenes, k, width, height, seed, images, audio=None, start
         stages["150"] = "encode"
     new = add("LTXVSeparateAVLatent", av_latent=[ref, 1])
     if audio:
-        ptr = start + ((p["acc_before"] - ov) / FPS if k else 0)
+        ptr = max(0.0, start - ov / FPS) if cont else start + ((p["acc_before"] - ov) / FPS if k else 0)
         trim = add("TrimAudioDuration", audio=heard, start_index=round(ptr, 3), duration=round(total / FPS, 3))
         enc = add("VAEEncodeAudio", audio=[trim, 0], vae=["7", 0])
         amask = add("SolidMask", value=0.0, width=round(total * 5 / 3), height=2)
         a_lat = [add("SetLatentNoiseMask", samples=[enc, 0], mask=[amask, 0]), 0]
     else:
         a_lat = [new, 1]
-    if k == 0:
+    if k == 0 and not cont:
         v_lat = [new, 0]
     else:
-        old = add("LoadLatent", latent=state)
+        if cont:   # the tail of the existing video, encoded back into a latent
+            vid_in = add("LoadVideo", file=src[0])
+            comp = add("GetVideoComponents", video=[vid_in, 0])
+            last = add("ImageFromBatch", image=[comp, 0], batch_index=max(0, src[1] - ov), length=ov)
+            fit = add("ImageScale", image=[last, 0], upscale_method="lanczos", width=width, height=height, crop="center")
+            old = add("VAEEncode", pixels=[fit, 0], vae=["6", 0])
+            stages.update({vid_in: "encode", comp: "encode", last: "encode", fit: "encode", old: "encode"})
+        else:
+            old = add("LoadLatent", latent=state)
         t_ov, t_tot = _tokens(ov), _tokens(total)
         cut = add("LatentCut", samples=[old, 0], dim="t", index=-t_ov, amount=t_ov)
         cat = add("LatentConcat", samples1=[cut, 0], samples2=[new, 0], dim="t")
@@ -484,15 +494,15 @@ def long_part_graph(m, scenes, k, width, height, seed, images, audio=None, start
               latent_image=[lat, 0])
     img = add("VAEDecode", samples=[smp, 1], vae=["6", 0])
     clip_len = total - ov
-    frames_out = [img, 0] if not k else [add("ImageFromBatch", image=[img, 0], batch_index=ov, length=clip_len), 0]
+    frames_out = [img, 0] if (not k and not cont) else [add("ImageFromBatch", image=[img, 0], batch_index=ov, length=clip_len), 0]
     if audio:
         a0 = start + (p["acc_before"] / FPS if k else 0)
         aud = [add("TrimAudioDuration", audio=["11", 0], start_index=round(a0, 3), duration=round(clip_len / FPS, 3)), 0]
     else:
         dec = add("VAEDecodeAudio", samples=[smp, 1], vae=["7", 0])
         stages[dec] = "decode"
-        aud = [dec, 0] if not k else [add("TrimAudioDuration", audio=[dec, 0], start_index=round(ov / FPS, 3),
-                                           duration=round(clip_len / FPS, 3)), 0]
+        aud = [dec, 0] if (not k and not cont) else [add("TrimAudioDuration", audio=[dec, 0], start_index=round(ov / FPS, 3),
+                                                          duration=round(clip_len / FPS, 3)), 0]
     vid = add("CreateVideo", images=frames_out, audio=aud, fps=float(FPS), bit_depth="auto", color_space="sRGB", codec="none")
     save = add("SaveVideo", video=[vid, 0], filename_prefix="H3Workspace/long_part", format="auto", **{"format.codec": "auto"})
     sep2 = add("LTXVSeparateAVLatent", av_latent=[smp, 1])

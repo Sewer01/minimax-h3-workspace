@@ -3122,6 +3122,7 @@ function makeRefMode(cfg) {
         $('.sc-state', c).textContent = done ? '✓ готова, клип в Библиотеке' : stale ? 'изменена: переделайте (следующие тоже)' : i > ready ? `ждёт сцену ${ready + 1}: эта продолжает её конец` : '';
         $('.sc-state', c).style.color = done ? 'var(--ok, #7bd88f)' : stale ? 'var(--pink)' : '';
         const b = $('.sc-do', c); b.disabled = false; b.style.opacity = i > ready ? 0.55 : ''; b.textContent = done ? 'Переделать' : 'Сделать эту сцену';
+        const rg = $('.sc-redogo', c); if (rg) rg.hidden = !(done && parts && i < $$('.sc', root).length - 1);
       });
       const r = $('.lm-reset', root); if (r) r.hidden = !parts || !ready;
       const ch = $('.lm-chain', root); if (ch) ch.hidden = !parts;
@@ -3279,7 +3280,8 @@ function makeRefMode(cfg) {
       fin.onchange = () => { c._file = fin.files[0] || null; $('.sc-name', c).textContent = c._file ? c._file.name : ''; $('.sc-imgx', c).hidden = !c._file; };
       $('.sc-imgx', c).onclick = () => { c._file = null; fin.value = ''; $('.sc-name', c).textContent = ''; $('.sc-imgx', c).hidden = true; };
       $('textarea', c).value = txt; box.append(c);
-      c.insertAdjacentHTML('beforeend', `<div class="sc-act" style="display:flex;gap:10px;align-items:center;margin-top:8px"><button class="btn sc-do" type="button">Сделать эту сцену</button><span class="hint sc-state"></span></div>`);
+      c.insertAdjacentHTML('beforeend', `<div class="sc-act" style="display:flex;gap:10px;align-items:center;margin-top:8px"><button class="btn sc-do" type="button">Сделать эту сцену</button><button class="btn pri sc-redogo" type="button" hidden title="Эта сцена считается заново, а потом сами пересчитаются все следующие, уже продолжая новую версию">Переделать и продолжить дальше</button><span class="hint sc-state"></span></div>`);
+      $('.sc-redogo', c).onclick = () => { const i = $$('.sc', root).indexOf(c); root._chainEnd = null; root._chainPart = i; root._target = i; $('.go', $('.rm-preview', root)).click(); };
       $('.sc-do', c).onclick = () => {
         const i = $$('.sc', root).indexOf(c), ready = readyUpTo();
         const active = QUEUE.some(j => j.mode === 'long' && (j.state === 'queued' || j.state === 'running'));

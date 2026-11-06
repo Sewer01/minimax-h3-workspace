@@ -555,6 +555,34 @@ FRAME_SIZE = (1376, 768)
 FRAME_LINE = {"white": ("white", 6), "black": ("black", 4), "none": ("white", 0)}
 
 
+def _glue(g, stages, titles, frame_nodes, line):
+    """Glue the decoded frames into one sheet with ImageStitch (exact thin line), saved as "Лист раскадровки"."""
+    n = len(frame_nodes)
+    color, gap = FRAME_LINE.get(line, FRAME_LINE["white"])
+    cols = FRAME_COLS.get(n, n)
+    rows = [frame_nodes[k:k + cols] for k in range(0, n, cols)]
+    row_out = []
+    for r, items in enumerate(rows):
+        cur = items[0]
+        for k, nxt in enumerate(items[1:]):
+            nid = f"4{r}{k}"
+            g[nid] = {"class_type": "ImageStitch", "inputs": {
+                "image1": cur, "direction": "right", "match_image_size": True, "spacing_width": gap, "spacing_color": color, "image2": nxt}}
+            stages[nid] = "decode"
+            cur = [nid, 0]
+        row_out.append(cur)
+    cur = row_out[0]
+    for r, nxt in enumerate(row_out[1:]):
+        nid = f"49{r}"
+        g[nid] = {"class_type": "ImageStitch", "inputs": {
+            "image1": cur, "direction": "down", "match_image_size": True, "spacing_width": gap, "spacing_color": color, "image2": nxt}}
+        stages[nid] = "decode"
+        cur = [nid, 0]
+    g["500"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/story_sheet", "images": cur}}
+    stages["500"] = "save"
+    titles["500"] = "Лист раскадровки"
+
+
 def flux_frames_graph(m, refs, prompts, seed, size=FRAME_SIZE, line="white"):
     """Storyboard frame by frame on FLUX.2 klein: every frame is its own picture (saved separately, full size) and the
     sheet is glued from them by ImageStitch with an exact thin line, so there are no margins or double frames."""
@@ -608,29 +636,46 @@ def flux_frames_graph(m, refs, prompts, seed, size=FRAME_SIZE, line="white"):
         stages.update({t: "encode", gd: "encode", nz: "encode", sm: "sample", dc: "decode", sv: "save"})
         titles[sv] = f"Кадр {i + 1}"
         frame_nodes.append([dc, 0])
-    color, gap = FRAME_LINE.get(line, FRAME_LINE["white"])
-    cols = FRAME_COLS.get(n, n)
-    rows = [frame_nodes[k:k + cols] for k in range(0, n, cols)]
-    row_out = []
-    for r, items in enumerate(rows):
-        cur = items[0]
-        for k, nxt in enumerate(items[1:]):
-            nid = f"4{r}{k}"
-            g[nid] = {"class_type": "ImageStitch", "inputs": {
-                "image1": cur, "direction": "right", "match_image_size": True, "spacing_width": gap, "spacing_color": color, "image2": nxt}}
-            stages[nid] = "decode"
-            cur = [nid, 0]
-        row_out.append(cur)
-    cur = row_out[0]
-    for r, nxt in enumerate(row_out[1:]):
-        nid = f"49{r}"
-        g[nid] = {"class_type": "ImageStitch", "inputs": {
-            "image1": cur, "direction": "down", "match_image_size": True, "spacing_width": gap, "spacing_color": color, "image2": nxt}}
-        stages[nid] = "decode"
-        cur = [nid, 0]
-    g["500"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/story_sheet", "images": cur}}
-    stages["500"] = "save"
-    titles["500"] = "Лист раскадровки"
+    _glue(g, stages, titles, frame_nodes, line)
+    return g, stages, titles
+
+
+def qwen_frames_graph(m, refs, prompts, seed, size=FRAME_SIZE, line="white"):
+    """The same frame-by-frame storyboard on Qwen Image 2.1 (slower than FLUX, no commercial license)."""
+    n = len(prompts)
+    g = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["qwen_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["qwen_clip"], "type": "qwen_image", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["qwen_vae"]}},
+        "4": {"class_type": "QwenImage21Cache", "inputs": {"device": "auto", "dtype": "default", "model": ["1", 0]}},
+        "8": {"class_type": "EmptyLatentImage", "inputs": {"width": size[0], "height": size[1], "batch_size": 1}},
+    }
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load", "8": "encode"}
+    scaled = []
+    for i, img in enumerate(refs[:3], 1):
+        a, b = f"10{i}", f"11{i}"
+        g[a] = {"class_type": "LoadImage", "inputs": {"image": img}}
+        g[b] = {"class_type": "ImageScaleToTotalPixels", "inputs": {
+            "upscale_method": "lanczos", "megapixels": 1.0, "resolution_steps": 32, "image": [a, 0]}}
+        scaled.append(b)
+        stages[a] = stages[b] = "encode"
+    titles, frame_nodes = {}, []
+    for i, text in enumerate(prompts):
+        base = 200 + i * 10
+        en, ks, dc, sv = (str(base + k) for k in (0, 1, 2, 3))
+        enc = {"prompt": text, "negative_prompt": "", "resolution": 0, "clip": ["2", 0], "vae": ["3", 0]}
+        for k, b in enumerate(scaled, 1):
+            enc[f"images.image_{k}"] = [b, 0]
+        g[en] = {"class_type": "TextEncodeQwenImage21", "inputs": enc}
+        g[ks] = {"class_type": "KSampler", "inputs": {
+            "seed": seed + i, "steps": 25, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+            "model": ["4", 0], "positive": [en, 0], "negative": [en, 1], "latent_image": ["8", 0]}}
+        g[dc] = {"class_type": "VAEDecode", "inputs": {"samples": [ks, 0], "vae": ["3", 0]}}
+        g[sv] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/story_frame", "images": [dc, 0]}}
+        stages.update({en: "encode", ks: "sample", dc: "decode", sv: "save"})
+        titles[sv] = f"Кадр {i + 1}"
+        frame_nodes.append([dc, 0])
+    _glue(g, stages, titles, frame_nodes, line)
     return g, stages, titles
 
 

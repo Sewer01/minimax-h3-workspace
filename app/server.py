@@ -1213,12 +1213,14 @@ class App:
         await self.need_models("flux" if flux else "qwen")
         if form.get("kind") == "story" and form.get("frames") == "1":
             # storyboard frame by frame (FLUX.2 klein): every frame is its own picture, the sheet is glued from them
-            await self.need_models("flux")
+            use_qwen = form.get("engine") == "qwen"
+            await self.need_models("qwen" if use_qwen else "flux")
             frames = split_frames(form.get("prompt", ""))
             if len(frames) not in wf.FRAME_COLS:
                 raise web.HTTPBadRequest(text=f"Нужно 2, 3, 4, 6, 8 или 9 кадров, а в описании их {len(frames)}. Напишите каждый кадр с новой строки: «1: ...», «2: ...».")
             refs = [x for x in ([image] if image else []) + list(form.get("_extra") or [])]
-            graph, stages, titles = wf.flux_frames_graph(self.model_names, refs, frames, seed, line=form.get("line", "white"))
+            build = wf.qwen_frames_graph if use_qwen else wf.flux_frames_graph
+            graph, stages, titles = build(self.model_names, refs, frames, seed, line=form.get("line", "white"))
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Раскадровка по кадрам", "prompt": form.get("prompt", "").strip(), "aspect": "",
                 "q": "", "len": 0.0, "res": "", "seed": seed}, titles=titles)

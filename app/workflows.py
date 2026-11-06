@@ -406,7 +406,11 @@ def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pi
         final_a = prev_aud
     vid = add("CreateVideo", images=prev_img, audio=final_a, fps=float(FPS), bit_depth="auto", color_space="sRGB", codec="none")
     save = add("SaveVideo", video=[vid, 0], filename_prefix="H3Workspace/long", format="auto", **{"format.codec": "auto"})
-    stages.update({vid: "save", save: "save"})
+    # the tail of the last scene's latent: lets the finished video be continued with one more scene later
+    sep2 = add("LTXVSeparateAVLatent", av_latent=prev_lat)
+    tail = add("LatentCut", samples=[sep2, 0], dim="t", index=-LONG_STATE_TOKENS, amount=LONG_STATE_TOKENS)
+    keep = add("SaveLatent", samples=[tail, 0], filename_prefix="H3Workspace/long_state")
+    stages.update({vid: "save", save: "save", sep2: "save", tail: "save", keep: "save"})
     stages["__scenes__"] = {"n": len(scenes), "map": scene_of}   # progress text "scene 2 of 4"
     return g, stages
 

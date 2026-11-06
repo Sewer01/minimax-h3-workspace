@@ -1631,11 +1631,21 @@ class App:
                 "long": {"run": run, "part": k, "n": len(scenes)}})
         graph, stages = wf.long_graph(self.model_names, scenes, width, height, seed, images, audio, start,
                                       self.model_names["pika_lora"], self.custom_loras(), "match", vocals, await self.preview_opts())
+        run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]
         total = wf.long_plan([sc[1] for sc in scenes])[-1]["acc"] / wf.FPS
         sub = f"{len(scenes)} сцен · {len(images)} карт." + (", музыка" if audio else ", звук от модели")
-        return await self.queue(graph, stages, {
-            "mode": "long", "sub": sub, "prompt": "\n\n".join(sc[0] for sc in scenes), "aspect": aspect, "q": quality,
-            "len": round(total, 1), "res": f"{width}×{height}", "seed": seed})
+        meta = {"mode": "long", "sub": sub, "prompt": "\n\n".join(sc[0] for sc in scenes), "aspect": aspect, "q": quality,
+                "len": round(total, 1), "res": f"{width}×{height}", "seed": seed}
+        if run:
+            meta["long"] = {"run": run, "part": len(scenes) - 1, "n": len(scenes), "all": True}
+        return await self.queue(graph, stages, meta)
+
+    async def h_long_state(self, req):
+        """Which scenes of a long video project have a saved continuation point (so the project can go on after a restart)."""
+        run = re.sub(r"[^A-Za-z0-9]", "", req.query.get("run", ""))[:32]
+        d = LONG_DIR / run
+        parts = sorted(int(m.group(1)) for f in d.glob("state_*.latent") if (m := re.match(r"state_(\d+)\.latent$", f.name))) if run and d.is_dir() else []
+        return web.json_response({"parts": parts})
 
     async def item_bytes(self, item):
         """The file of a library item: from disk, or from ComfyUI when its output folder is not known to the app."""
@@ -2262,6 +2272,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/actor", state.h_generate_actor),
         web.post("/api/generate/long", state.h_generate_long),
         web.post("/api/montage", state.h_montage),
+        web.get("/api/long/state", state.h_long_state),
         web.post("/api/generate/action", state.h_generate_action),
         web.get("/api/action/info", state.h_action_info),
         web.get("/api/cloud", state.h_cloud_get),

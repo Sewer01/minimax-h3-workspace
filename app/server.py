@@ -2197,6 +2197,11 @@ class App:
             thinking = False
             payload = {"messages": [{"role": "system", "content": system}] + ag.to_openai(messages),
                        "stream": True, "temperature": 0.6, "cache_prompt": True}
+            if body.get("think") != "deep":
+                # "fast" (default): no hidden reasoning before the answer. On the user's machine a light request took 17 s with it
+                # (about 2000 characters of thoughts) and 1.5 s without; the long-video rules took minutes with it
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
+                payload["thinking_budget_tokens"] = 0
             async with self.session.post(self.llm.url + "/v1/chat/completions", json=payload,
                                          timeout=aiohttp.ClientTimeout(total=None, sock_read=600)) as r:
                 if r.status != 200:

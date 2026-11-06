@@ -977,6 +977,9 @@ details[open] summary::before{content:'－ '}
             </details>
           </div>
           <div class="card">
+            <div class="card-h"><h3>Ответ агента</h3></div>
+            <div class="seg" id="agThink" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><button type="button" data-k="fast">Быстро<small>без долгих рассуждений</small></button><button type="button" data-k="deep">Думать глубже<small>дольше, для сложных историй</small></button></div>
+            <div class="hint" id="agThinkHint" style="margin-bottom:14px"></div>
             <div class="card-h"><h3>Промпт для</h3></div>
             <div class="hint" style="margin-bottom:6px">Видео</div>
             <div class="seg" id="agTarget" style="grid-template-columns:1fr 1fr;grid-auto-rows:auto">
@@ -3530,6 +3533,13 @@ $('#agIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftK
 const AG_NAMES = { plist: 'список кадров', long: 'сцены длинного видео', video: 'Генерацию видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрскую игру', action: 'Экшн-сцены', krea: 'Картинку по тексту', qwen: 'Правку картинки', sheet: 'Картинку по тексту', sheet6: 'Картинку по тексту', fluxt: 'Картинку по тексту', qwent: 'Картинку по тексту', story: 'Картинку по тексту' };
 const AG_IMG = ['plist', 'krea', 'qwen', 'sheet', 'sheet6', 'fluxt', 'qwent', 'story'];
 AG.storyModel = 'krea'; AG.storyFrames = true;
+AG.think = (() => { try { return localStorage.getItem('h3-ag-think') === 'deep' ? 'deep' : 'fast'; } catch { return 'fast'; } })();
+function agThinkPaint() {
+  $$('#agThink button').forEach(b => b.classList.toggle('on', b.dataset.k === AG.think));
+  $('#agThinkHint').textContent = AG.think === 'fast' ? 'Агент отвечает сразу. Для обычных сцен и промптов этого хватает.' : 'Агент сначала долго рассуждает, потом отвечает: на одну сцену может уйти пара минут. Включайте для сложных историй.';
+}
+$('#agThink').onclick = e => { const b = e.target.closest('button'); if (!b) return; AG.think = b.dataset.k; try { localStorage.setItem('h3-ag-think', AG.think); } catch {} agThinkPaint(); };
+agThinkPaint();
 const agTargetClick = e => {
   const b = e.target.closest('button[data-t]'); if (!b) return;
   AG.target = b.dataset.t; $$('#agTarget button, #agTarget2 button').forEach(x => x.classList.toggle('on', x === b)); agCtx();
@@ -3716,7 +3726,7 @@ async function agSend() {
   try {
     const r = await fetch('/api/agent/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AG.ctrl.signal,
-      body: JSON.stringify({ target: AG.target, ctx, messages: AG.msgs.slice(0, -1).map(m => ({ role: m.role, content: m.content, images: m.images })) }),
+      body: JSON.stringify({ target: AG.target, ctx, think: AG.think, messages: AG.msgs.slice(0, -1).map(m => ({ role: m.role, content: m.content, images: m.images })) }),
     });
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
     for (;;) {
@@ -3828,7 +3838,8 @@ async function sendPrompt(blk, to) {
       const mm = line.match(/^\s*SCENE\s*(\d+)\s*\|\s*(\d+(?:\.\d+)?)\s*$/i);
       if (mm) { cur = { sec: +mm[2], text: [] }; list.push(cur); } else if (cur) cur.text.push(line); else if (line.trim()) { cur = { sec: 10, text: [line] }; list.push(cur); }
     }
-    L2.root._setScenes(list.map(x => ({ prompt: x.text.join('\n').trim(), sec: x.sec })).filter(x => x.prompt));
+    const clean = t => t.split('\n').filter(l => !/^\s*(overall_soundscape|non_diegetic_music|integrated_multimodal_description)\s*:/i.test(l)).join('\n').trim();
+    L2.root._setScenes(list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec })).filter(x => x.prompt));
     for (const f of files) {   // existing references (e.g. the last frame of the video being continued) stay; new pictures take the free slots
       const have = $$('label.ref.filled', L2.root).some(r => r._file && r._file.name === f.name && r._file.size === f.size);
       const free = $$('label.ref:not(.filled) input', L2.root)[0];

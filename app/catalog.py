@@ -100,6 +100,11 @@ VARIANTS = {
                    "minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",
                    0.69, "latent_upscale_models", name="minimax_h3_latent_upscaler_3d_bf16.safetensors", sub=None),
     },
+    # Turbo-SLA (lightx2v): 4-step LoRA for the first/last frame model; used on top of FastH3 for the "fast" switch
+    "sla_lora": {
+        "bf16": _m("lightx2v/Minimax-h3-Turbo-SLA", "minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors",
+                   1.96, "loras"),
+    },
     "preview": {
         "taeh3": _m("Alissonerdx/Minimax-H3-ComfyUI", "vae_approx/taeh3.safetensors", 0.02, "vae_approx", sub=None),
     },
@@ -192,7 +197,7 @@ ROLE_MARKS = {
     "video_vae": ["video_vae"], "audio_vae": ["audio_vae"], "ref2v_turbo_lora": ["turbo"],
     "upscaler": ["upscaler"], "preview": ["taeh3"], "action_unet": ["hybrid", "fl2va"],
     "speed_slider_lora": ["speed"], "action_upscaler": ["upscaler"], "vocal_model": ["melband"],
-    "realism_lora": ["realism"], "motion_repair_lora": ["motion"], "pika_lora": ["pika"],
+    "realism_lora": ["realism"], "motion_repair_lora": ["motion"], "pika_lora": ["pika"], "sla_lora": ["sla"],
     "seedvr_unet": ["seedvr"], "seedvr_vae": ["seedvr"], "krea_clip": ["qwen3vl", "qwen3-vl"],
     "krea_vae": ["qwen_image", "qwen-image"], "kreareal_unet": ["krea"], "kreareal_lora": ["realism"],
     "qwen_unet": ["qwen"], "qwen_clip": ["qwen3vl", "qwen3-vl"], "qwen_vae": ["qwen"],
@@ -238,6 +243,7 @@ ROLE_TITLES = {
     "realism_lora": "LoRA «Реализм людей» (по желанию)",
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
     "pika_lora": "LoRA Pika H3 Flex Turbo (ускорение для Референсов, хороший звук)",
+    "sla_lora": "LoRA Turbo-SLA (быстрое ускорение для Image-to-Video)",
     "seedvr_unet": "Увеличение видео и картинок — модель SeedVR2 (3B)",
     "seedvr_vae": "Увеличение видео и картинок — VAE SeedVR2",
     "krea_unet": "Основная модель — Картинка по тексту (Krea 2)",
@@ -273,6 +279,7 @@ MODE_ROLES = {
 }
 # Small extras downloaded with a mode but not required to run it.
 MODE_OPTIONAL = {
+    "video": ["sla_lora"],
     "lipsync": ["realism_lora", "vocal_model"],
     "refs": ["pika_lora", "realism_lora", "motion_repair_lora"],
     "actor": ["realism_lora"],
@@ -284,7 +291,7 @@ ALL_ROLES = list(VARIANTS)
 DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
                   "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
                   "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
-                  "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8",
+                  "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8", "sla_lora": "bf16",
                   "krea_unet": "int8", "krea_clip": "fp8", "krea_vae": "bf16", "kreareal_unet": "fp8", "kreareal_lora": "v2",
                   "qwen_unet": "int8", "qwen_clip": "int8", "qwen_vae": "bf16",
                   "flux_unet": "fp8", "flux_clip": "bf16", "flux_vae": "bf16",

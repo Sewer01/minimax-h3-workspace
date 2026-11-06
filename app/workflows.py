@@ -36,7 +36,7 @@ def frames(seconds):
     return f + (5 - f % 17) % 17
 
 
-def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None, extra_loras=()):
+def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None, extra_loras=(), fast=None):
     """MINIMAXH3_FASTvideo_I2V: text / first frame / first + last frame."""
     g = {
         "1": {"class_type": "UNETLoader", "inputs": {
@@ -83,8 +83,13 @@ def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None, 
             "image": [load_id, 0], "upscale_method": "lanczos",
             "width": width, "height": height, "crop": "center"}}
         g["8"]["inputs"][slot] = [scale_id, 0]
-    if extra_loras:  # the user's own LoRAs go right after the model loader
-        g["2"]["inputs"]["model"] = _lora_chain(g, ["1", 0], list(extra_loras))
+    loras = ([(fast, 1.0)] if fast else []) + list(extra_loras)  # Turbo-SLA first, then the user's own LoRAs
+    if loras:
+        g["2"]["inputs"]["model"] = _lora_chain(g, ["1", 0], loras)
+    if fast:  # "fast" switch: Turbo-SLA 4 steps (flow shifts 6 / 3 and 15% sparse attention as in its own setup)
+        g["2"]["inputs"].update(shift_video=6, shift_audio=3)
+        g["4"]["inputs"]["selection.keep_percent"] = 15.0
+        g["11"]["inputs"]["steps"] = 4
 
     stages = {n: "load" for n in ("1", "2", "3", "4", "5", "6", "7")}
     stages.update({n: "encode" for n in ("8", "20", "21", "22", "23")})

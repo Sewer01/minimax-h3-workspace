@@ -481,7 +481,11 @@ class App:
     async def h_models_download(self, req):
         """Own ComfyUI: download missing model files of the app's catalog into the user's models folder (resumable)."""
         body = await req.json()
-        folder = (body.get("folder") or self.config.get("ext_models_dir") or "").strip()
+        managed = self.config.get("engine") == "managed"
+        if managed:  # the app's own ComfyUI: the folder is known
+            folder = str(Path(self.config.get("install_dir") or "") / catalog.COMFY_DIRNAME / "ComfyUI" / "models")
+        else:
+            folder = (body.get("folder") or self.config.get("ext_models_dir") or "").strip()
         p = Path(folder) if folder else None
         if not p or not p.is_dir():
             raise web.HTTPBadRequest(text="Папка не найдена. Укажите папку models вашего ComfyUI.")
@@ -493,7 +497,8 @@ class App:
         roles = [r for r in (body.get("roles") or [body.get("role")]) if r in catalog.VARIANTS and r in choice]
         if not roles:
             raise web.HTTPBadRequest(text="Неизвестная модель")
-        self.config.update(ext_models_dir=str(p))
+        if not managed:
+            self.config.update(ext_models_dir=str(p))
         entries = [catalog.model_entry(r, choice[r]) for r in roles]
 
         async def emit(ev):
@@ -1238,8 +1243,17 @@ class App:
         if loop:  # seamless loop (live wallpaper): the video ends on the same picture it starts with
             last = first
 
-        graph, stages = wf.video_graph(self.model_names, prompt, width, height, seconds, seed, first, last, self.custom_loras())
+        fast = None
+        if form.get("accel") == "sla":
+            miss = {mm["role"] for mm in self.missing}
+            if "sla_lora" in miss or "sla_lora" not in self.model_names:
+                raise web.HTTPBadRequest(text="Для быстрого режима нужен файл Turbo-SLA (около 2 ГБ). Нажмите «Скачать» под переключателем «Ускорение» "
+                                              "или выберите «Обычное».")
+            fast = self.model_names["sla_lora"]
+        graph, stages = wf.video_graph(self.model_names, prompt, width, height, seconds, seed, first, last, self.custom_loras(), fast)
         sub = "Зацикленное видео" if loop else "Кадр → кадр" if last else "Картинка → видео" if first else "Текст → видео"
+        if fast:
+            sub += " · быстрое"
         return await self.queue(graph, stages, {
             "mode": "video", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality,
             "len": seconds, "res": f"{width}×{height}", "seed": seed})

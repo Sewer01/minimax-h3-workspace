@@ -211,7 +211,27 @@ class App:
         self.apply_mirror()
         return web.json_response({"ok": True, "on": on})
 
+    def awake_loop(self):
+        """While generations are queued or running (and for ten minutes after the last one), Windows is not allowed to go to sleep:
+        a long video made scene after scene overnight must not be stopped by the power plan. The screen may still switch off."""
+        import ctypes
+        import time
+        ES_CONTINUOUS, ES_SYSTEM_REQUIRED = 0x80000000, 0x00000001
+        last_busy = 0.0
+        while True:
+            if self.jobs:
+                last_busy = time.time()
+            keep = time.time() - last_busy < 600
+            try:
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | (ES_SYSTEM_REQUIRED if keep else 0))
+            except Exception:
+                return
+            time.sleep(15)
+
     async def start(self, _app):
+        if sys.platform == "win32":
+            import threading
+            threading.Thread(target=self.awake_loop, daemon=True, name="keep-awake").start()
         self.apply_mirror()
         self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=_ssl_context()))
         if self.config.get("engine") == "managed" and self.config.get("setup_done") and not self.comfy_override:

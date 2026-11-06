@@ -115,6 +115,10 @@
 .cw-sw b{font-weight:600;font-size:13px}
 .cw-bt{font-weight:800;font-size:12.5px;letter-spacing:.02em;margin-bottom:7px}
 .cw-wide textarea{min-height:110px}
+.qw-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.qw-slots.one{grid-template-columns:1fr}
+.qw-slots .drop{height:130px}
+.qw-slots .drop .ph svg{width:24px;height:24px}
 .cw-media{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
 .cw-file{display:grid;gap:3px;justify-items:center;text-align:center;padding:8px;border:1.5px dashed var(--line-2);border-radius:14px;background:var(--bg-2);cursor:pointer;transition:.15s}
 .cw-file:hover,.cw-file.on{border-color:var(--accent)}
@@ -250,7 +254,7 @@ h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
 .drop.filled .x{display:grid}
 .drop input{display:none}
 
-textarea{width:100%;min-height:clamp(150px,26vh,340px);resize:vertical;background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:13px 14px;outline:none;line-height:1.55}
+textarea{width:100%;min-height:64px;height:110px;resize:vertical;background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:13px 14px;outline:none;line-height:1.55}
 textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .ta-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px;flex-wrap:wrap}
 .tokens{display:flex;gap:6px;flex-wrap:wrap}
@@ -1480,6 +1484,26 @@ function paramsCard(el, st, opts) {
   $('.seed-in', el).oninput = e => { st.seed = e.target.value.replace(/\D/g, '').slice(0, 18); e.target.value = st.seed; };
   if (opts.duration) $('.dur', el).oninput = e => { st.dur = +e.target.value; upd(); };
   return upd;
+}
+const SZ_ROW = `<div class="row sz-row"><div class="row-l">Свой размер <span class="hint">(необязательно)</span></div>
+  <div class="path on" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input class="sz-w" inputmode="numeric" placeholder="ширина" style="width:90px"> <span>×</span> <input class="sz-h" inputmode="numeric" placeholder="высота" style="width:90px"> <button class="btn sz-reset" type="button" hidden style="padding:6px 12px;font-size:12.5px">Сбросить</button></div>
+  <div class="hint sz-hint">Размер подстраивается под шаг модели, кратно 32: например, 1920×1080 станет 1920×1088. Пусто — размер по формату выше.</div></div>`;
+function szWire(el, st, onChange) {
+  const iw = $('.sz-w', el), ih = $('.sz-h', el), hint = $('.sz-hint', el), rs = $('.sz-reset', el);
+  const def = hint.textContent;
+  const apply = () => {
+    const a = parseInt(iw.value, 10), b = parseInt(ih.value, 10);
+    if (a >= 64 && b >= 64) {
+      let k = a * b > 2200000 ? Math.sqrt(2200000 / (a * b)) : 1;
+      const r = v => Math.min(2048, Math.max(256, Math.round(v * k / 32) * 32));
+      st.cw = r(a); st.ch = r(b); iw.value = st.cw; ih.value = st.ch;
+      hint.textContent = `Будет ${st.cw}×${st.ch}` + (st.cw !== a || st.ch !== b ? ` (округлено с ${a}×${b}, шаг 32)` : '') + (st.cw * st.ch > 1500000 ? '. Это больше 1,5 МП: дольше и больше видеопамяти.' : '');
+    } else { st.cw = st.ch = 0; hint.textContent = def; }
+    rs.hidden = !(st.cw || st.ch);
+    onChange();
+  };
+  iw.onchange = ih.onchange = apply;
+  rs.onclick = () => { iw.value = ih.value = ''; apply(); };
 }
 function sizeForm(st, fd) { if (st.cw && st.ch) { fd.append('width', st.cw); fd.append('height', st.ch); } }
 const newSeed = () => String(Math.floor(Math.random() * 2 ** 50));
@@ -4227,6 +4251,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         <div class="row kr-scale" hidden><div class="row-l">Размер результата</div>
           <div class="seg" style="grid-template-columns:1fr 1fr"><button data-sc="2k">Около 2K<small>быстрее</small></button><button data-sc="4k">4K<small>дольше и нужно больше видеопамяти</small></button></div></div>
         <div class="row"><div class="row-l">Формат <span class="resv"></span></div><div class="chips kr-asp"></div></div>
+        ${SZ_ROW}
         ${imgSeedBox()}</div>
     </div><div class="preview kr-prev"></div></div>`;
   gridResize($('.grid', root));
@@ -4235,12 +4260,12 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   const P = imgPanel($('.kr-prev', root), {
     mode: 'krea', url: '/api/generate/krea', promptText: () => $('.kr-prompt', root).value.trim(),
     validate: () => $('.kr-prompt', root).value.trim() ? '' : 'Напишите промпт',
-    form: () => { const fd = new FormData(); fd.append('prompt', $('.kr-prompt', root).value.trim()); fd.append('aspect', S.aspect); fd.append('style', S.engine === 'krea' ? S.style : 'plain'); fd.append('scale', S.scale); fd.append('engine', S.engine); if (S.engine === 'qwen') fd.append('negative', $('.kr-negtxt', root).value.trim()); imgSeedForm(S, fd); return fd; },
+    form: () => { const fd = new FormData(); fd.append('prompt', $('.kr-prompt', root).value.trim()); fd.append('aspect', S.aspect); fd.append('style', S.engine === 'krea' ? S.style : 'plain'); fd.append('scale', S.scale); fd.append('engine', S.engine); if (S.cw && S.ch) { fd.append('width', S.cw); fd.append('height', S.ch); } if (S.engine === 'qwen') fd.append('negative', $('.kr-negtxt', root).value.trim()); imgSeedForm(S, fd); return fd; },
     two: () => S.engine === 'krea' && S.style === 'real',
   });
   const upd = () => {
     $$('.kr-asp .chip', root).forEach(c => c.classList.toggle('on', c.dataset.a === S.aspect));
-    const [w, h] = IMG_SIZES[S.aspect], k = S.style === 'real' ? (S.scale === '4k' ? 2.5 : 1.5) : 1;
+    const [w, h] = S.cw && S.ch ? [S.cw, S.ch] : IMG_SIZES[S.aspect], k = S.style === 'real' ? (S.scale === '4k' ? 2.5 : 1.5) : 1;
     $('.resv', root).textContent = `${Math.round(w * k)}×${Math.round(h * k)}`; P.ratio(w, h);
     $$('[data-st]', root).forEach(b => b.classList.toggle('on', b.dataset.st === S.style));
     $$('[data-sc]', root).forEach(b => b.classList.toggle('on', b.dataset.sc === S.scale));
@@ -4284,7 +4309,8 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
       }
     } catch {}
   });
-  $('.kr-asp', root).onclick = e => { const c = e.target.closest('.chip'); if (c) { S.aspect = c.dataset.a; upd(); } };
+  $('.kr-asp', root).onclick = e => { const c = e.target.closest('.chip'); if (c) { S.aspect = c.dataset.a; S.cw = S.ch = 0; $('.sz-w', root).value = $('.sz-h', root).value = ''; $('.sz-reset', root).hidden = true; upd(); } };
+  szWire(root, S, () => upd());
   $('.kr-prompt', root).oninput = e => $('.kr-count', root).textContent = e.target.value.length + ' символов';
   imgSeedWire(root, S); upd();
   IMG.krea = { fill: it => { if (it.engine) S.engine = it.engine; else if (it.sub === 'Картинка (FLUX.2)') S.engine = 'flux'; else if (it.sub === 'Картинка (Qwen 2.1)') S.engine = 'qwen'; else S.engine = 'krea'; $('.kr-prompt', root).value = it.prompt || ''; $('.kr-prompt', root).oninput({ target: $('.kr-prompt', root) }); if (IMG_SIZES[it.aspect]) S.aspect = it.aspect; upd(); } };
@@ -4298,12 +4324,12 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
       <div class="mode-pill"><i></i><span>Qwen Image 2.1</span></div></div>
     <div class="grid"><div class="col">
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Картинка</h3></div>
-        <label class="drop" id="qwDrop" style="--fh:240px"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-5-5L5 21"/></svg><b>Ваша картинка</b><span>перетащите, нажмите или возьмите из Библиотеки</span></div><span class="tag" hidden>Исходная</span><button class="x" type="button">✕</button></label>
-        <div class="qw-more" hidden style="margin-top:10px"><div class="hint qw-morehint" style="margin-bottom:6px"></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <label class="drop" id="qwDrop2" style="--fh:130px"><input type="file" accept="image/*"><div class="ph"><b>2. Ещё картинка</b><span>референс, по желанию</span></div><span class="tag" hidden>image2</span><button class="x" type="button">✕</button></label>
-            <label class="drop" id="qwDrop3" style="--fh:130px"><input type="file" accept="image/*"><div class="ph"><b>3. Ещё картинка</b><span>референс, по желанию</span></div><span class="tag" hidden>image3</span><button class="x" type="button">✕</button></label>
-          </div></div></div>
+        <div class="qw-slots">
+          <label class="drop" id="qwDrop"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-5-5L5 21"/></svg><b>Ваша картинка</b><span>перетащите или нажмите</span></div><span class="tag" hidden>Исходная</span><button class="x" type="button">✕</button></label>
+          <label class="drop qw-s2" id="qwDrop2" title="Ещё одна картинка (референс, по желанию)"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span class="tag" hidden>2</span><button class="x" type="button">✕</button></label>
+          <label class="drop qw-s3" id="qwDrop3" title="Ещё одна картинка (референс, по желанию)"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span class="tag" hidden>3</span><button class="x" type="button">✕</button></label>
+        </div>
+        <div class="hint qw-morehint" style="margin-top:8px"></div></div>
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Что делаем</h3></div>
         <div class="seg qw-kind" style="grid-template-columns:repeat(3,1fr)"><button data-k="edit">Править картинку<small>изменить по описанию</small></button><button data-k="sheet">Лист персонажа<small>4 или 6 видов с разных сторон</small></button><button data-k="story">Раскадровка<small>история по картинкам героя и места</small></button></div>
         <div class="qw-edit" style="margin-top:14px">
@@ -4317,6 +4343,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
           <textarea class="qw-prompt" placeholder="Что изменить и что оставить. Например: Этот человек сидит в кафе у окна и пьёт кофе. Лицо, причёска и одежда как на картинке."></textarea>
           <div class="ta-foot"><span class="hint">Скажите и что поменять, и что оставить прежним — так результат точнее</span></div>
           <div class="row qw-editonly" style="margin-top:12px"><div class="row-l">Формат кадра <span class="hint">по умолчанию как у вашей картинки</span></div><div class="chips qw-asp"></div></div>
+          <div class="qw-szwrap" style="margin-top:12px">${SZ_ROW}</div>
           <div class="row qw-editonly" style="margin-top:12px"><div class="row-l">Размер результата</div><div class="seg qw-size" style="grid-template-columns:1fr 1fr"><button data-s="1">Обычный<small>~1 МП, быстро</small></button><button data-s="2">Крупный<small>~2 МП, дольше</small></button></div></div></div>
         <div class="qw-sheet" style="margin-top:14px" hidden>
           <div class="note"><span>Нужен персонаж на картинке (лучше в полный рост, но портрет тоже подойдёт). Потом лист можно взять как референс в других разделах.</span></div>
@@ -4331,6 +4358,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   const drop = $('#qwDrop');
   wireDrop(drop, () => {});
   const drop2 = $('#qwDrop2'), drop3 = $('#qwDrop3');
+  szWire($('.qw-szwrap', root), S, () => upd());
   wireDrop(drop2, () => {}); wireDrop(drop3, () => {});
   const P = imgPanel($('.qw-prev', root), {
     mode: 'qwen', url: '/api/generate/qwen',
@@ -4339,6 +4367,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     form: () => {
       const fd = new FormData(); if (drop._file) fd.append('image', drop._file); fd.append('kind', S.kind);
       if (S.kind === 'story') { fd.append('frames', S.frames ? '1' : '0'); fd.append('line', S.line); } fd.append('engine', S.kind === 'sheet' ? 'qwen' : S.engine);
+      if (S.kind !== 'sheet' && S.cw && S.ch) { fd.append('width', S.cw); fd.append('height', S.ch); }
       if (S.kind !== 'sheet') { if (drop2._file) fd.append('image2', drop2._file); if (drop3._file) fd.append('image3', drop3._file); }
       if (S.kind === 'sheet') { fd.append('panels', S.panels); fd.append('headless', S.headless ? '1' : '0'); fd.append('background', S.bg); fd.append('marks', $('.qw-marks', root).value.trim()); }
       else { fd.append('prompt', $('.qw-prompt', root).value.trim()); fd.append('size', S.size); fd.append('aspect', S.aspect); }
@@ -4351,7 +4380,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     $$('.qw-asp .chip', root).forEach(c => c.classList.toggle('on', c.dataset.qa === S.aspect));
     $$('.qw-kind button', root).forEach(b => b.classList.toggle('on', b.dataset.k === S.kind));
     $('.qw-edit', root).hidden = S.kind === 'sheet'; $('.qw-sheet', root).hidden = S.kind !== 'sheet';
-    $('.qw-more', root).hidden = S.kind === 'sheet';
+    $$('.qw-s2, .qw-s3', root).forEach(x => x.hidden = S.kind === 'sheet'); $('.qw-slots', root).classList.toggle('one', S.kind === 'sheet'); $('.qw-morehint', root).hidden = S.kind === 'sheet';
     $('.qw-morehint', root).innerHTML = S.kind === 'story'
       ? 'Раскадровка: 1-я картинка — герой (или лист персонажа), 2-я — локация, 3-я — по желанию. В тексте они называются <b>&lt;image1&gt;</b>, <b>&lt;image2&gt;</b>, <b>&lt;image3&gt;</b> (для FLUX.2: «image 1», «image 2»).'
       : 'Референсы (по желанию): 1-я картинка — та, что меняем, 2-я и 3-я — например, герой, предмет или одежда. В тексте они называются <b>&lt;image2&gt;</b>, <b>&lt;image3&gt;</b> (для FLUX.2: «image 2», «image 3»).';
@@ -4368,6 +4397,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     $$('.qw-pn button', root).forEach(b => b.classList.toggle('on', +b.dataset.p === S.panels));
     if (S.kind === 'sheet') S.panels === 6 ? P.ratio(2112, 960) : P.ratio(1920, 1088);
     else if (S.kind === 'story') P.ratio(1920, 1088);
+    if (S.kind !== 'sheet' && S.cw && S.ch) P.ratio(S.cw, S.ch);
   };
   root.addEventListener('click', e => {
     const fr = e.target.closest('.qw-fr button'), ln = e.target.closest('.qw-ln button');

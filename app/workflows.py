@@ -723,7 +723,7 @@ def flux_story_graph(m, images, prompt, seed, size=STORY_SIZE):
     return g, stages
 
 
-def flux_edit_graph(m, prompt, image, megapixels, seed, extras=()):
+def flux_edit_graph(m, prompt, image, megapixels, seed, extras=(), size=None):
     """FLUX.2 klein 4B (distilled), edit a picture: the official ComfyUI template on plain nodes, 4 steps, CFG 1.
     The result keeps the shape of the picture (sides in steps of 16)."""
     g = {
@@ -761,6 +761,9 @@ def flux_edit_graph(m, prompt, image, megapixels, seed, extras=()):
         "18": {"class_type": "VAEDecode", "inputs": {"samples": ["17", 0], "vae": ["3", 0]}},
         "19": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/flux", "images": ["18", 0]}},
     })
+    if size:  # own size: the picture is scaled to it, the result follows
+        g["5"] = {"class_type": "ImageScale", "inputs": {
+            "image": ["4", 0], "upscale_method": "lanczos", "width": size[0], "height": size[1], "crop": "center"}}
     stages = {str(i): "load" for i in (1, 2, 3)}
     stages.update({str(i): "encode" for i in range(4, 17)})
     stages.update({k: "encode" for k in g if k.startswith(("30", "31", "32", "33", "34")) and len(k) == 3})

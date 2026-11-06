@@ -63,6 +63,19 @@ class JobStore(dict):
         return r
 
 
+def round_size(form, step=32, low=256, high=2048, max_px=2200000):
+    """The user's own width/height from the form, rounded to the model's step (None when not given)."""
+    w, h = str(form.get("width", "")), str(form.get("height", ""))
+    if not (w.isdigit() and h.isdigit()):
+        return None
+    w, h = int(w), int(h)
+    if min(w, h) < 64:
+        return None
+    k = (max_px / (w * h)) ** 0.5 if w * h > max_px else 1.0
+    r = lambda v: min(high, max(low, round(v * k / step) * step))
+    return r(w), r(h)
+
+
 SUPPORT_URL = "https://pay.cloudtips.ru/p/0e4d4824"
 import workflows as wf
 
@@ -1249,6 +1262,9 @@ class App:
         if aspect not in wf.KREA_SIZES:
             raise web.HTTPBadRequest(text="Неизвестный формат")
         width, height = wf.KREA_SIZES[aspect]
+        custom = round_size(form)
+        if custom:
+            width, height = custom
         engine = form.get("engine", "krea")
         if engine == "flux":
             await self.need_models("flux")
@@ -1287,7 +1303,7 @@ class App:
                 raise web.HTTPBadRequest(text=f"Нужно 2, 3, 4, 6, 8 или 9 кадров, а в описании их {len(frames)}. Напишите каждый кадр с новой строки: «1: ...», «2: ...».")
             refs = [x for x in ([image] if image else []) + list(form.get("_extra") or [])]
             build = wf.qwen_frames_graph if use_qwen else wf.flux_frames_graph
-            graph, stages, titles = build(self.model_names, refs, frames, seed, line=form.get("line", "white"))
+            graph, stages, titles = build(self.model_names, refs, frames, seed, size=round_size(form) or wf.FRAME_SIZE, line=form.get("line", "white"))
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Раскадровка по кадрам", "prompt": form.get("prompt", "").strip(), "aspect": "",
                 "q": "", "len": 0.0, "res": "", "seed": seed}, titles=titles)
@@ -1298,10 +1314,11 @@ class App:
             if not prompt:
                 raise web.HTTPBadRequest(text="Опишите историю по кадрам")
             refs = [image] + list(form.get("_extra") or [])
+            sz = round_size(form) or wf.STORY_SIZE
             if flux:
-                graph, stages = wf.flux_story_graph(self.model_names, refs, prompt, seed)
+                graph, stages = wf.flux_story_graph(self.model_names, refs, prompt, seed, sz)
             else:
-                graph, stages = wf.qwen_story_graph(self.model_names, refs, prompt, seed)
+                graph, stages = wf.qwen_story_graph(self.model_names, refs, prompt, seed, sz)
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Раскадровка по картинкам", "prompt": prompt, "aspect": "",
                 "q": "", "len": 0.0, "res": "%d×%d" % wf.STORY_SIZE, "seed": seed})
@@ -1310,7 +1327,7 @@ class App:
             if not prompt:
                 raise web.HTTPBadRequest(text="Напишите, что изменить на картинке")
             mp = wf.QWEN_MP.get(form.get("size", "1"), 1.0)
-            graph, stages = wf.flux_edit_graph(self.model_names, prompt, image, mp, seed, form.get("_extra") or ())
+            graph, stages = wf.flux_edit_graph(self.model_names, prompt, image, mp, seed, form.get("_extra") or (), round_size(form))
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Правка картинки (FLUX.2)", "prompt": prompt, "aspect": "",
                 "q": "", "len": 0.0, "res": "", "seed": seed})
@@ -1326,7 +1343,7 @@ class App:
             if not prompt:
                 raise web.HTTPBadRequest(text="Напишите, что изменить на картинке")
             mp = wf.QWEN_MP.get(form.get("size", "1"), 1.0)
-            size = wf.qwen_edit_size(form.get("aspect", ""), mp)
+            size = round_size(form) or wf.qwen_edit_size(form.get("aspect", ""), mp)
             graph, stages = wf.qwen_edit_graph(self.model_names, prompt, image, mp, seed, size, form.get("_extra") or ())
             sub, res = "Правка картинки", ("%d×%d" % size if size else "")
         return await self.queue(graph, stages, {

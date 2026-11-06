@@ -1384,7 +1384,7 @@ class App:
         graph, stages = wf.video_graph(self.model_names, prompt, width, height, seconds, seed, first, last, self.custom_loras(), fast)
         sub = "Зацикленное видео" if loop else "Кадр → кадр" if last else "Картинка → видео" if first else "Текст → видео"
         if fast:
-            sub += " · быстрое"
+            sub += " · быстрый черновик"
         return await self.queue(graph, stages, {
             "mode": "video", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality,
             "len": seconds, "res": f"{width}×{height}", "seed": seed})

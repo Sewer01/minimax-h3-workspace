@@ -86,9 +86,12 @@ def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None, 
     loras = ([(fast, 1.0)] if fast else []) + list(extra_loras)  # Turbo-SLA first, then the user's own LoRAs
     if loras:
         g["2"]["inputs"]["model"] = _lora_chain(g, ["1", 0], loras)
-    if fast:  # "fast" switch: Turbo-SLA 4 steps (flow shifts 6 / 3 and 15% sparse attention as in its own setup)
+    if fast:  # "fast draft": Turbo-SLA 4 steps, flow shifts 6 / 3; block-sparse attention is switched OFF (it left square
+        # mosaic artifacts on busy scenes: debris, explosions), dense attention is cleaner and still about 1.3x faster
         g["2"]["inputs"].update(shift_video=6, shift_audio=3)
-        g["4"]["inputs"]["selection.keep_percent"] = 15.0
+        g["11"]["inputs"]["model"] = ["3", 0]
+        g["12"]["inputs"]["model"] = ["3", 0]
+        g.pop("4", None)
         g["11"]["inputs"]["steps"] = 4
 
     stages = {n: "load" for n in ("1", "2", "3", "4", "5", "6", "7")}

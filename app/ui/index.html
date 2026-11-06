@@ -970,7 +970,7 @@ details[open] summary::before{content:'－ '}
               <button data-f="1">По кадрам<small>кадры отдельно + лист</small></button><button data-f="0">Одним листом<small>одна картинка сразу</small></button>
             </div>
             <div class="seg" id="agStoryM" hidden style="grid-template-columns:repeat(3,1fr);margin-top:10px">
-              <button data-m="krea">Krea 2<small>лучшее качество</small></button><button data-m="flux">FLUX.2 klein<small>для коммерции</small></button><button data-m="qwen">Qwen 2.1<small>не для коммерции</small></button>
+              <button data-m="krea">Krea 2<small>можно в коммерцию</small></button><button data-m="flux">FLUX.2 klein<small>для коммерции</small></button><button data-m="qwen">Qwen 2.1<small>не для коммерции</small></button>
             </div>
             <small class="hint" id="agCtx" style="display:block;margin-top:8px"></small>
           </div>
@@ -1113,7 +1113,7 @@ details[open] summary::before{content:'－ '}
               <button class="mcard" data-m="refs"><i></i><b>Референсы</b><span>Видео по нескольким картинкам, референс-видео и аудио</span><small></small></button>
               <button class="mcard" data-m="actor"><i></i><b>Актёрская игра</b><span>Диалоги и крупные планы: эмоции, голос по образцу</span><small></small></button>
               <button class="mcard" data-m="action"><i></i><b>Экшн-сцены</b><span>Бой, погоня, бег, прыжки</span><small></small></button>
-              <button class="mcard" data-m="krea"><i></i><b>Картинка по тексту</b><span>Krea 2: красивые картинки по описанию</span><small></small></button>
+              <button class="mcard" data-m="krea"><i></i><b>Картинка по тексту</b><span>Krea 2: красивые картинки по описанию (можно в коммерцию)</span><small></small></button>
               <button class="mcard" data-m="kreareal"><i></i><b>Картинка: реализм</b><span>Krea 2 для реалистичных людей и фото (в «Картинке по тексту», +15 ГБ)</span><small></small></button>
               <button class="mcard" data-m="qwen"><i></i><b>Правка картинки</b><span>Qwen: изменить свою картинку, лист персонажа</span><small></small></button>
               <button class="mcard" data-m="flux"><i></i><b>Правка картинки: можно в коммерцию</b><span>FLUX.2 klein: изменить свою картинку со свободной лицензией (+12 ГБ)</span><small></small></button>
@@ -4241,8 +4241,9 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         <div class="ta-foot"><span class="hint">Лучше писать подробно, одним абзацем. Помощник в разделе «Агент» умеет писать такие промпты</span></div></div>
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Параметры</h3></div>
         <div class="row"><div class="row-l">Модель</div>
-          <div class="seg kr-eng" style="grid-template-columns:repeat(3,1fr)"><button data-e="krea">Krea 2<small>лучшее качество</small></button><button data-e="flux">FLUX.2 klein<small>можно в коммерцию</small></button><button data-e="qwen">Qwen 2.1<small>текст на картинке, не для коммерции</small></button></div>
-          <div class="hint kr-enghint" hidden></div></div>
+          <div class="seg kr-eng" style="grid-template-columns:repeat(3,1fr)"><button data-e="krea">Krea 2<small>лучшее качество, можно в коммерцию</small></button><button data-e="flux">FLUX.2 klein<small>можно в коммерцию</small></button><button data-e="qwen">Qwen 2.1<small>текст на картинке, не для коммерции</small></button></div>
+          <div class="hint kr-enghint" hidden></div>
+          <div class="hint" style="margin-top:6px">Лицензии: <b>Krea 2</b> и <b>FLUX.2 klein</b> можно использовать в коммерции (Krea 2 — если годовой доход компании меньше 1 млн $). <b>Qwen 2.1</b> только для творчества, не для коммерции.</div></div>
         <div class="row kr-neg" hidden><div class="row-l">Негативный промпт <span class="hint">что не должно быть на картинке</span></div>
           <textarea class="kr-negtxt" rows="2">blurry, low quality, deformed hands, extra fingers, text, watermark</textarea></div>
         <div class="row kr-stylerow"><div class="row-l">Стиль</div>

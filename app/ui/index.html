@@ -158,7 +158,7 @@ body{
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none}
 
-.app{display:grid;grid-template-columns:248px 1fr;height:100vh}
+.app{display:grid;grid-template-columns:248px 1fr;height:calc(var(--vh,1vh)*100)}
 
 /* sidebar */
 .side{background:rgba(var(--bg2-rgb),.7);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:20px 14px;gap:6px;backdrop-filter:blur(12px);overflow-y:auto;min-height:0}
@@ -226,7 +226,7 @@ h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
 .frames{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center}
 .arrow{color:var(--dim)}
 /* the frames are compact by default; the grip under them changes their height (--fh) */
-:root{--fh:clamp(130px,17vh,210px)}
+:root{--fh:clamp(130px,calc(var(--vh,1vh)*17),210px)}
 .hresize{height:16px;margin:8px 0 -8px;cursor:row-resize;position:relative;touch-action:none}
 .hresize::after{content:'';position:absolute;left:50%;top:6px;width:56px;height:4px;margin-left:-28px;border-radius:4px;background:var(--line-2);transition:background .15s}
 .hresize:hover::after,.hresize.drag::after{background:var(--accent)}
@@ -294,7 +294,7 @@ details[open] summary::before{content:'－ '}
 /* preview */
 .preview{position:sticky;top:28px;display:grid;gap:14px}
 .screen{background:var(--screen);border:1px solid var(--line);border-radius:var(--radius);display:grid;place-items:center;padding:18px;min-height:330px}
-.frame{position:relative;width:100%;max-height:min(62vh,640px);border-radius:12px;background:
+.frame{position:relative;width:100%;max-height:min(calc(var(--vh,1vh)*62),640px);border-radius:12px;background:
   repeating-linear-gradient(45deg,rgba(255,255,255,.015) 0 10px,transparent 10px 20px),var(--bg-2);
   border:1px solid var(--line-2);display:grid;place-items:center;transition:aspect-ratio .3s,width .3s;overflow:hidden}
 .frame .res{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:center;display:grid;gap:4px}
@@ -453,7 +453,7 @@ details[open] summary::before{content:'－ '}
 :root{--aw:clamp(300px,24vw,480px)}
 .ag-grid{position:relative;display:grid;grid-template-columns:230px minmax(0,1fr) var(--aw);gap:16px;align-items:start}
 .ag-grid .gresize{right:calc(var(--aw) - 3px)}
-.ag-hist{display:flex;flex-direction:column;gap:10px;height:calc(100vh - 150px);min-height:480px;padding:12px}
+.ag-hist{display:flex;flex-direction:column;gap:10px;height:calc(calc(var(--vh,1vh)*100) - 150px);min-height:480px;padding:12px}
 .ag-hlist{flex:1;overflow:auto;display:flex;flex-direction:column;gap:4px}
 .ag-h{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;cursor:pointer;color:var(--muted)}
 .ag-h:hover{background:var(--surface-2);color:var(--text)}
@@ -465,7 +465,7 @@ details[open] summary::before{content:'－ '}
 .ag-h:hover button{opacity:1;background:var(--surface)}
 .ag-h button:hover{background:var(--accent)!important}
 .ag-hempty{font-size:12px;color:var(--dim);text-align:center;padding:20px 6px}
-.ag-chat{display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:480px;padding:0;overflow:hidden}
+.ag-chat{display:flex;flex-direction:column;height:calc(calc(var(--vh,1vh)*100) - 150px);min-height:480px;padding:0;overflow:hidden}
 .ag-msgs{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
 .ag-empty{margin:auto;display:grid;gap:8px;text-align:center;color:var(--muted);max-width:460px}
 .ag-empty b{color:var(--text);font-size:15px}
@@ -514,7 +514,7 @@ details[open] summary::before{content:'－ '}
 .sk p{font-size:11.5px;color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sk input{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;outline:none;font-family:var(--mono)}
 @media (max-width:1300px){.ag-grid{grid-template-columns:200px minmax(0,1fr)}.ag-grid>.col{grid-column:1/-1}.ag-grid .gresize{display:none}}
-@media (max-width:900px){.ag-grid{grid-template-columns:1fr}.ag-chat,.ag-hist{height:auto}.ag-chat{height:70vh}.ag-hlist{max-height:200px}}
+@media (max-width:900px){.ag-grid{grid-template-columns:1fr}.ag-chat,.ag-hist{height:auto}.ag-chat{height:calc(var(--vh,1vh)*70)}.ag-hlist{max-height:200px}}
 /* refs & action */
 /* reference videos / audios: small squares, video and audio side by side */
 .rm-media{display:flex;flex-wrap:wrap;gap:6px 28px;align-items:flex-start}
@@ -555,7 +555,7 @@ details[open] summary::before{content:'－ '}
 
 /* library */
 .li-th video{width:100%;height:100%;object-fit:cover;display:block}
-.v-media video{width:100%;max-height:70vh;display:block;background:#000}
+.v-media video{width:100%;max-height:calc(var(--vh,1vh)*70);display:block;background:#000}
 .lib-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
 .lib-bar .sp{flex:1}
 .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--lib-min,230px),1fr));gap:14px}
@@ -610,10 +610,10 @@ details[open] summary::before{content:'－ '}
 
 /* modals, toast */
 .modal{position:fixed;inset:0;background:rgba(5,2,3,.72);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px;z-index:50}
-.box{position:relative;background:var(--surface);border:1px solid var(--line-2);border-radius:18px;width:min(980px,100%);max-height:calc(100vh - 40px);overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+.box{position:relative;background:var(--surface);border:1px solid var(--line-2);border-radius:18px;width:min(980px,100%);max-height:calc(calc(var(--vh,1vh)*100) - 40px);overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.6)}
 .viewer{display:grid;grid-template-columns:1.5fr 1fr}
 .v-media{position:relative;background:var(--screen);display:grid;place-items:center;min-height:300px}
-.v-media img{width:100%;height:100%;object-fit:contain;max-height:70vh;display:block}
+.v-media img{width:100%;height:100%;object-fit:contain;max-height:calc(var(--vh,1vh)*70);display:block}
 .v-media .li-play{opacity:1;background:none}
 .v-info{padding:22px;display:grid;gap:14px;align-content:start}
 .v-info h3{font-size:16px;padding-right:30px}
@@ -3066,6 +3066,21 @@ function makeRefMode(cfg) {
     $$('.rm-imgs .plus', root).forEach((pl, i) => { pl.lastChild.textContent = 'Референс'; });
     $('.rm-media .sub-l span', root).textContent = 'Песня или фрагмент';
     $('.rm-media .media-hint', root).textContent = 'любой длины: каждая сцена берёт свой кусок по порядку';
+    // the pictures of this section go to the agent in one press (no screenshots), the agent writes the scenes for them
+    const toAg = document.createElement('button'); toAg.type = 'button'; toAg.className = 'btn'; toAg.style.marginTop = '10px';
+    toAg.textContent = 'Написать сцены в «Агенте» по этим картинкам'; toAg.title = 'Откроет «Агента» с этими референсами в чате: опишите историю, он разобьёт её на сцены, а кнопка вставит их сюда';
+    c1.append(toAg);
+    toAg.onclick = async () => {
+      const files = $$('label.ref.filled', imgsEl).map(r => r._file).filter(Boolean);
+      try {
+        for (const f of files) {
+          if (AG.att.some(a => a.file && a.file.name === f.name && a.file.size === f.size)) continue;
+          await agAttachFile(f);
+        }
+        $('#agTarget [data-t="long"]').click(); goTo('agent');
+        toast(files.length ? `В чат агента добавлено картинок: ${files.length}. Опишите историю по сценам.` : 'Откройте «Агента» и опишите историю по сценам.');
+      } catch { toast('Не удалось передать картинки агенту'); }
+    };
     const box = $('.lm-scenes', root);
     const snap = v => { v = Math.max(5, Math.round(v * 24)); return v + (5 - v % 17 + 17) % 17; };
     const accs = () => {  // frames of the finished video after each scene (same arithmetic as the server)
@@ -3105,9 +3120,12 @@ function makeRefMode(cfg) {
         const b = $('.sc-do', c); b.disabled = i > ready; b.textContent = done ? 'Переделать' : 'Сделать эту сцену';
       });
       const r = $('.lm-reset', root); if (r) r.hidden = !parts || !ready;
+      onScenes();
       if (root._save && !root._restoring) root._save();
     }
     root._ready = readyUpTo; root._sig = sig;
+    root._next = () => { const n = $$('.sc', root).length; return Math.min(n - 1, root._target != null ? root._target : readyUpTo()); };
+    S.len = () => { if (root._mode !== 'parts') return total(); const r = $$('.sc input[type=range]', root)[root._next()]; return r ? +r.value : total(); };
     root._src = null;
     const lastFrameFile = async file => {   // the last picture of a video file from the computer
       const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = URL.createObjectURL(file);
@@ -3248,7 +3266,6 @@ function makeRefMode(cfg) {
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 12) { toast('Не больше 12 сцен'); return; } addScene('', 10); };
     queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done
     root._addScene = addScene;
-    S.len = () => total();
     const mus = document.createElement('div'); mus.className = 'card';
     root._snd = 'none';
     mus.innerHTML = `<div class="card-h"><h3><span class="n">2</span>Звук</h3></div>
@@ -3319,7 +3336,7 @@ function makeRefMode(cfg) {
 
   const prev = previewPanel($('.rm-preview', root), S, {
     extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' || cfg.scenes ? 'Шаги' : 'Схема',
-    extra: () => cfg.scenes ? `8 · Pika · сцен: ${$$('.sc', root).length}` : cfg.mode === 'actor' ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
+    extra: () => cfg.scenes ? (root._mode === 'parts' ? `8 · Pika · сцена ${root._next() + 1} из ${$$('.sc', root).length}` : `8 · Pika · сцен: ${$$('.sc', root).length}`) : cfg.mode === 'actor' ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
     passes: () => cfg.scenes ? $$('.sc', root).map(() => 8) : cfg.mode === 'actor' ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],
     get twoPass() { return cfg.mode === 'action' && !S.faithful; },
     target: () => $('.ref img', imgsEl),
@@ -3782,10 +3799,11 @@ async function sendPrompt(blk, to) {
       if (mm) { cur = { sec: +mm[2], text: [] }; list.push(cur); } else if (cur) cur.text.push(line); else if (line.trim()) { cur = { sec: 10, text: [line] }; list.push(cur); }
     }
     L2.root._setScenes(list.map(x => ({ prompt: x.text.join('\n').trim(), sec: x.sec })).filter(x => x.prompt));
-    if (files.length) {
-      $$('.ref.filled .x', L2.root).forEach(x => x.click());
-      const slots = $$('.ref input', L2.root);
-      for (let i = 0; i < Math.min(files.length, slots.length); i++) await setDropFile(slots[i], files[i]);
+    for (const f of files) {   // existing references (e.g. the last frame of the video being continued) stay; new pictures take the free slots
+      const have = $$('label.ref.filled', L2.root).some(r => r._file && r._file.name === f.name && r._file.size === f.size);
+      const free = $$('label.ref:not(.filled) input', L2.root)[0];
+      if (have || !free) continue;
+      await setDropFile(free, f);
     }
   } else {
     const box = to === 'lipsync' ? refsEl : RM[to].root;
@@ -4492,7 +4510,7 @@ function useMenu(it) {
   const st = document.createElement('style');
   st.textContent = '#libTray{position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:30;display:flex;align-items:center}#libTray[hidden]{display:none}'
     + '.lt-tab{writing-mode:vertical-rl;padding:12px 6px;border-radius:10px 0 0 10px;background:var(--card,#222);border:1px solid var(--line-2);border-right:0;color:var(--text);font-size:12px;font-weight:700;cursor:pointer}'
-    + '.lt-body{width:130px;max-height:70vh;overflow:auto;padding:8px;display:grid;gap:8px;background:var(--bg-2);border:1px solid var(--line-2);border-radius:12px 0 0 12px}'
+    + '.lt-body{width:130px;max-height:calc(var(--vh,1vh)*70);overflow:auto;padding:8px;display:grid;gap:8px;background:var(--bg-2);border:1px solid var(--line-2);border-radius:12px 0 0 12px}'
     + '.lt-body img,.lt-body video{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;display:block}';
   document.head.append(st);
   const body = $('.lt-body', tray);
@@ -4943,7 +4961,7 @@ try { const rw = +localStorage.getItem('h3-cw-rw'); if (rw >= 300) $('#cwBody').
 const cwMine = () => LIB.filter(x => x.mode === 'custom' && (x.wf ? x.wf === CW.id : x.sub === CW.rep.name)).sort((a, b) => b.date - a.date);
 function cwFit(w, h) {  // the window takes the shape of the picture, never taller than 68% of the screen
   const f = $('#cwFrame'); if (!f || !w || !h) return;
-  f.style.aspectRatio = `${w} / ${h}`; f.style.width = `min(100%, ${(68 * w / h).toFixed(1)}vh)`; f.style.minHeight = '0'; f.style.margin = '0 auto';
+  f.style.aspectRatio = `${w} / ${h}`; f.style.width = `min(100%, calc(var(--vh,1vh)*${(68 * w / h).toFixed(1)}))`; f.style.minHeight = '0'; f.style.margin = '0 auto';
 }
 function cwShow(it) {
   const f = $('#cwFrame'); if (!f || !it) return;
@@ -5145,10 +5163,14 @@ if (API) {
 /* interface zoom and library card size (buttons and Ctrl + mouse wheel) */
 const UI_Z = { ui: 1, lib: 230 };
 try { UI_Z.ui = +localStorage.getItem('h3-ui-zoom') || 1; UI_Z.lib = +localStorage.getItem('h3-lib-size') || 230; } catch {}
+// with a zoomed page the browser's vh units stay those of the real window: windows stopped above the bottom edge. --vh is 1/100 of the visible height in page units.
+function setVh() { document.documentElement.style.setProperty('--vh', (innerHeight / (UI_Z.ui || 1) / 100) + 'px'); }
+addEventListener('resize', setVh);
 function applyZoom() {
   UI_Z.ui = Math.min(1.5, Math.max(0.6, Math.round(UI_Z.ui * 20) / 20));
   UI_Z.lib = Math.min(420, Math.max(110, Math.round(UI_Z.lib / 10) * 10));
   document.documentElement.style.zoom = UI_Z.ui;
+  setVh();
   $('#lib').style.setProperty('--lib-min', UI_Z.lib + 'px');
   $('#uiPct').textContent = Math.round(UI_Z.ui * 100) + '%';
   try { localStorage.setItem('h3-ui-zoom', UI_Z.ui); localStorage.setItem('h3-lib-size', UI_Z.lib); } catch {}

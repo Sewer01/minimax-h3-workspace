@@ -2940,14 +2940,14 @@ $('#vwCopy').onclick = () => {
 $('#vwZoom').onclick = () => { const it = byId(openId); if (it && it.url) zoomOpen(it.url); };
 $('#vwImg').onclick = () => { const it = byId(openId); if (it && it.kind === 'image' && it.url) zoomOpen(it.url); };
 $('#vwDel').onclick = () => askDelete([openId]);
-$('#vwContinue').onclick = async () => {
-  const it = byId(openId); if (!it || !it.long) return; closeViewer();
+async function continueLong(it) {
   const L2 = RM.long.root;
   if (L2._run !== it.long.run && !(await L2._openRun(it.long.run))) { toast('Проект этого ролика не сохранился в программе. Начните новый и добавьте те же картинки героя.'); goTo('long'); return; }
   goTo('long');
   if (L2._mode === 'parts' && L2._ready() >= $$('.sc', L2).length && $$('.sc', L2).length < 12) L2._addScene('', 10);
   toast('Проект открыт: те же картинки и сцены. Опишите следующую сцену и нажмите «Сделать эту сцену».');
-};
+}
+$('#vwContinue').onclick = () => { const it = byId(openId); if (!it || !it.long) return; closeViewer(); continueLong(it); };
 $('#vwSeed').onclick = () => {
   const it = byId(openId); if (!it || it.seed == null) return;
   const st = it.mode === 'video' ? V : it.mode === 'lipsync' ? L : RM[it.mode]?.S; if (!st) return;
@@ -4397,7 +4397,7 @@ async function libToFile(it) {
 }
 
 /* ---------- Library -> workflow: "Use in…" button and the side tray to drag from ---------- */
-const USE_TARGETS = [['video', 'Image-to-Video'], ['lipsync', 'Lipsync / клип'], ['refs', 'Референсы'], ['actor', 'Актёрская игра'], ['action', 'Экшн-сцены'], ['qwen', 'Правка картинки'], ['agent', 'Агент (в чат)']];
+const USE_TARGETS = [['video', 'Image-to-Video'], ['lipsync', 'Lipsync / клип'], ['refs', 'Референсы'], ['actor', 'Актёрская игра'], ['action', 'Экшн-сцены'], ['long', 'Длинное видео'], ['qwen', 'Правка картинки'], ['agent', 'Агент (в чат)']];
 function freeSlot(view) {
   const root = $('#view-' + view); if (!root) return null;
   const s = $$('label.drop:not(.disabled):not(.filled), label.ref:not(.filled)', root)[0];
@@ -4419,12 +4419,15 @@ function useMenu(it) {
   if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'useMenu'; document.body.append(m); }
   m.hidden = false;
   m.innerHTML = '<div class="box" style="padding:20px;max-width:360px"><div class="card-h"><h3>Куда отправить?</h3><button class="btn" data-x type="button">Закрыть</button></div><div style="display:grid;gap:8px">'
-    + USE_TARGETS.filter(t => !$(`.nav[data-view="${t[0]}"]`)?.disabled).map(t => `<button class="btn" data-v="${t[0]}" type="button">${t[1]}</button>`).join('') + '</div>'
-    + (it.kind === 'image' ? '' : '<div class="hint" style="margin-top:10px">Из видео берётся последний кадр.</div>') + '</div>';
+    + (it.long && it.long.run ? '<button class="btn pri" data-v="__continue" type="button">Длинное видео: продолжить это видео</button>' : '')
+    + USE_TARGETS.filter(t => !$(`.nav[data-view="${t[0]}"]`)?.disabled).map(t => `<button class="btn" data-v="${t[0]}" type="button">${t[1]}${t[0] === 'long' && it.kind !== 'image' ? ': кадр как герой' : ''}</button>`).join('') + '</div>'
+    + (it.kind === 'image' ? '' : '<div class="hint" style="margin-top:10px">Из видео берётся последний кадр. Продолжить ролик можно только если он сделан в «Длинном видео» (в этой версии и новее).</div>') + '</div>';
   m.onclick = async e => {
     if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; }
     const b = e.target.closest('[data-v]'); if (!b) return;
-    m.hidden = true; await useInWorkflow(it, b.dataset.v);
+    m.hidden = true;
+    if (b.dataset.v === '__continue') { if (openId) closeViewer(); await continueLong(it); return; }
+    await useInWorkflow(it, b.dataset.v);
   };
 }
 // the tray: the latest library pictures, drag one onto any picture slot

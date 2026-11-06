@@ -2754,7 +2754,7 @@ function qHandle(m) {
     j.state = 'running'; j.stage = m.stage; j.step = m.step; j.max = m.max; j.t0 = j.t0 || performance.now();
   } else if (m.type === 'done') {
     j.state = 'done'; j.took = j.t0 ? (performance.now() - j.t0) / 1000 : 0;
-    (m.items || [m.item]).forEach(it => { if (!LIB.some(x => x.id === it.id)) addToLib(normItem(it), new Date(it.date)); });
+    (m.items || [m.item]).forEach(it => { if (!LIB.some(x => x.id === it.id)) addToLib(normItem(it), new Date(it.date)); if (it.long && typeof RM !== 'undefined' && RM.long && RM.long.root._partDone) RM.long.root._partDone(normItem(it)); });
     if (j.detached) toast(`Готово: ${MODE_NAME[j.mode] || 'видео'} — оно в Библиотеке`);
   } else if (m.type === 'error') { j.state = 'error'; j.msg = m.message; if (j.detached) toast('Задание не получилось: ' + m.message); }
   else if (m.type === 'interrupted') j.state = 'stopped';
@@ -3057,6 +3057,7 @@ function makeRefMode(cfg) {
       <div class="note lm-src" hidden style="margin-bottom:10px"><span><b>Продолжаем готовое видео:</b> <span class="lm-srcname"></span>. Первая сцена продолжит его конец, как будто это была прошлая сцена.</span> <button class="btn lm-srcx" type="button" style="padding:2px 9px;margin-left:8px">Убрать</button></div>
       <div class="lm-scenes"></div>
       <button class="btn" type="button" id="lmAdd" style="margin-top:10px">+ Добавить сцену</button>
+      <button class="btn pri lm-chain" type="button" style="margin-top:10px" title="Сцены считаются одна за другой сами: следующая запускается, когда предыдущая готова. Каждая сохраняется в Библиотеку отдельным клипом.">Сделать все сцены подряд</button>
       <label class="btn" style="margin-top:10px;cursor:pointer" title="Видео, сделанное в другом месте: возьмём его последние кадры, и первая сцена продолжит их">Продолжить своё видео с компьютера…<input type="file" accept="video/*" class="lm-srcfile" hidden></label>
       <div class="ta-foot"><div class="tokens rm-tokens"></div><span class="hint">нажмите, чтобы вставить в сцену</span></div>
       <div class="note" style="margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg><span>Сцены идут одна за другой, каждая продолжает прошлую: герой, место и звук переходят дальше. В каждой сцене опишите героя, что он делает и как движется камера. Длину сцены задаёт ползунок. Текст сцены можно составить в разделе «Агент».</span></div>`;
@@ -3115,15 +3116,31 @@ function makeRefMode(cfg) {
         $('.sc-act', c).hidden = !parts;
         const done = c._done && c._done.sig === sig(c) && i < ready;
         const stale = c._done && !done;
-        $('.sc-state', c).textContent = done ? '✓ готова, клип в Библиотеке' : stale ? 'изменена: переделайте (следующие тоже)' : i > ready ? `сначала сделайте сцену ${ready + 1}` : '';
+        $('.sc-state', c).textContent = done ? '✓ готова, клип в Библиотеке' : stale ? 'изменена: переделайте (следующие тоже)' : i > ready ? `ждёт сцену ${ready + 1}: эта продолжает её конец` : '';
         $('.sc-state', c).style.color = done ? 'var(--ok, #7bd88f)' : stale ? 'var(--pink)' : '';
-        const b = $('.sc-do', c); b.disabled = i > ready; b.textContent = done ? 'Переделать' : 'Сделать эту сцену';
+        const b = $('.sc-do', c); b.disabled = false; b.style.opacity = i > ready ? 0.55 : ''; b.textContent = done ? 'Переделать' : 'Сделать эту сцену';
       });
       const r = $('.lm-reset', root); if (r) r.hidden = !parts || !ready;
+      const ch = $('.lm-chain', root); if (ch) ch.hidden = !parts;
       onScenes();
       if (root._save && !root._restoring) root._save();
     }
     root._ready = readyUpTo; root._sig = sig;
+    root._chainPart = null;   // scene number started by "make all scenes in a row": only its result starts the next one
+    const chainNext = () => {
+      const all = $$('.sc', root), k = readyUpTo();
+      if (root._chainEnd != null && k > root._chainEnd) { root._chainPart = null; root._chainEnd = null; return; }
+      if (k >= all.length) { root._chainPart = null; toast('Все сцены готовы. Клипы лежат в Библиотеке: склейте их в «Монтаже».'); return; }
+      if (!all[k].querySelector('textarea').value.trim()) { root._chainPart = null; toast(`Сцена ${k + 1} пустая: опишите её, и нажмите «Сделать все сцены подряд» снова.`); return; }
+      root._chainPart = k; root._target = k; $('.go', $('.rm-preview', root)).click();
+    };
+    root._chainNext = chainNext;
+    $('.lm-chain', root).onclick = () => {
+      if (root._mode !== 'parts') return;
+      root._chainEnd = null;
+      if (readyUpTo() >= $$('.sc', root).length) { toast('Все сцены уже сделаны. Чтобы переделать одну, нажмите «Переделать» в её карточке.'); return; }
+      chainNext();
+    };
     root._next = () => { const n = $$('.sc', root).length; return Math.min(n - 1, root._target != null ? root._target : readyUpTo()); };
     S.len = () => { if (root._mode !== 'parts') return total(); const r = $$('.sc input[type=range]', root)[root._next()]; return r ? +r.value : total(); };
     root._src = null;
@@ -3162,14 +3179,18 @@ function makeRefMode(cfg) {
     };
     root._partDone = item => {
       const lg = item && item.long; if (!lg || lg.run !== root._run) return;
+      if (root._doneIds && root._doneIds.has(item.id)) return;   // the same result can arrive twice (panel and queue)
+      (root._doneIds = root._doneIds || new Set()).add(item.id);
       if (lg.all) {   // the whole video at once: every scene is done, the last one can be continued
         $$('.sc', root).forEach(c => { c._done = { sig: root._sig(c), url: item.url, id: item.id }; });
         refreshStates(); toast('Ролик готов. Чтобы продлить его, добавьте сцену и нажмите «Сделать эту сцену» (режим «По частям»).'); return;
       }
-      const c = $$('.sc', root)[lg.part]; if (!c || !root._pending || root._pending.k !== lg.part) return;
-      c._done = { sig: root._pending.sig, url: item.url, id: item.id };
+      const c = $$('.sc', root)[lg.part]; if (!c) return;
+      c._done = { sig: (root._sent && root._sent[lg.part]) || root._sig(c), url: item.url, id: item.id };
       $$('.sc', root).slice(lg.part + 1).forEach(x => { x._done = null; });   // later scenes continued from the old one
-      refreshStates(); toast(`Сцена ${lg.part + 1} готова` + (lg.part + 1 < lg.n ? '. Можно делать следующую.' : '. Все сцены готовы: склейте клипы из Библиотеки в любом видеоредакторе.'));
+      refreshStates();
+      if (root._chainPart === lg.part) { toast(`Сцена ${lg.part + 1} готова. Запускаю следующую…`); setTimeout(root._chainNext, 800); return; }
+      toast(`Сцена ${lg.part + 1} готова` + (lg.part + 1 < lg.n ? '. Можно делать следующую.' : '. Все сцены готовы: склейте клипы в «Монтаже».'));
     };
     const MODE_HINT = { parts: 'Каждая сцена считается отдельно и сохраняется в Библиотеку своим клипом. Можно посмотреть первую, потом сделать следующую, а неудачную переделать, не трогая остальные. Клипы встают встык без повторов: склейте их в любом видеоредакторе.', all: 'Все сцены считаются подряд и склеиваются в один файл. Удобно, когда уверены в тексте, но если что-то не получится, ждать придётся заново целиком.' };
     const setMode = v => { root._mode = v; $$('.lm-mode button', root).forEach(b => b.classList.toggle('on', b.dataset.m === v)); $('.lm-mode-hint', root).textContent = MODE_HINT[v]; refreshStates(); };
@@ -3256,7 +3277,15 @@ function makeRefMode(cfg) {
       $('.sc-imgx', c).onclick = () => { c._file = null; fin.value = ''; $('.sc-name', c).textContent = ''; $('.sc-imgx', c).hidden = true; };
       $('textarea', c).value = txt; box.append(c);
       c.insertAdjacentHTML('beforeend', `<div class="sc-act" style="display:flex;gap:10px;align-items:center;margin-top:8px"><button class="btn sc-do" type="button">Сделать эту сцену</button><span class="hint sc-state"></span></div>`);
-      $('.sc-do', c).onclick = () => { root._target = $$('.sc', root).indexOf(c); $('.go', $('.rm-preview', root)).click(); };
+      $('.sc-do', c).onclick = () => {
+        const i = $$('.sc', root).indexOf(c), ready = readyUpTo();
+        const active = QUEUE.some(j => j.mode === 'long' && (j.state === 'queued' || j.state === 'running'));
+        if (i > ready) {   // it continues the end of the previous scene, which is not there yet
+          if (active && root._pending && i === root._pending.k + 1) { root._chainPart = root._pending.k; root._chainEnd = i; toast(`Сцена ${i + 1} запустится сама, когда будет готова сцена ${i}.`); }
+          else toast(`Сначала сделайте сцену ${ready + 1}: сцена ${i + 1} продолжает её конец. Или нажмите «Сделать все сцены подряд».`);
+          return;
+        }
+        root._chainPart = null; root._target = i; $('.go', $('.rm-preview', root)).click(); };
       $('textarea', c).addEventListener('input', () => refreshStates());
       $('textarea', c).addEventListener('focus', e => { root._ta = e.target; });
       $('input[type=range]', c).oninput = recount; $('.x', c).onclick = () => { c.remove(); recount(); };
@@ -3361,6 +3390,7 @@ function makeRefMode(cfg) {
           fd.append('part', k); fd.append('run', root._run);
           if (root._src) { fd.append('src_project', '1'); if (k === 0) { if (root._src.id) fd.append('src_item', root._src.id); else if (root._src.file) fd.append('srcvid', root._src.file); } }
           root._pending = { k, sig: root._sig(all[k]) };
+          (root._sent = root._sent || {})[k] = root._pending.sig;
         }
         if (cfg.scenes && root._mode !== 'parts') fd.append('run', root._run);
         if (cfg.scenes) { fd.append('scenes', JSON.stringify(sceneList())); $$('.sc', root).forEach((c, i) => { if (c._file) fd.append('simg' + i, c._file); }); fd.append('start', $('.lm-start', root).value || '0'); fd.append('vocals', root._snd === 'own' && $('.lm-vocals', root).checked ? '1' : '0'); }

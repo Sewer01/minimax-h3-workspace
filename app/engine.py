@@ -131,6 +131,16 @@ class Cancelled(Exception):
     pass
 
 
+HF_MIRROR = ""   # host of a Hugging Face mirror when the user switched it on (for slow connections)
+
+
+def mirrored(url):
+    """The same file on the mirror, if the user chose one."""
+    if HF_MIRROR and url.startswith("https://huggingface.co/"):
+        return f"https://{HF_MIRROR}/" + url[len("https://huggingface.co/"):]
+    return url
+
+
 class Installer:
     """Runs the install steps and reports progress through `emit(dict)`."""
 
@@ -150,6 +160,7 @@ class Installer:
 
     async def download(self, url, dest, sid, label, size_hint=0):
         """Resumable download to dest (via dest.part)."""
+        url = mirrored(url)
         dest = Path(dest)
         if dest.exists():
             return

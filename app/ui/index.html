@@ -559,6 +559,19 @@ details[open] summary::before{content:'－ '}
 .lib-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
 .lib-bar .sp{flex:1}
 .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--lib-min,230px),1fr));gap:14px}
+.mt-lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;max-height:300px;overflow:auto}
+.mt-card{position:relative;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:pointer;text-align:left}
+.mt-card video,.mt-item video{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;background:#000}
+.mt-card:hover{border-color:var(--pink)}
+.mt-card small{display:block;padding:4px 6px;color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt-len{position:absolute;right:5px;top:5px;background:rgba(0,0,0,.65);color:#fff;border-radius:6px;padding:1px 6px;font-size:11px}
+.mt-plus{position:absolute;left:5px;top:5px;background:var(--pink);color:#fff;border-radius:50%;width:20px;height:20px;display:grid;place-items:center;font-size:14px;line-height:1}
+.mt-strip{display:flex;flex-wrap:wrap;gap:10px;min-height:60px;padding:4px 0}
+.mt-item{position:relative;width:170px;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:grab}
+.mt-item.over{outline:2px solid var(--pink)}
+.mt-item .mt-n{position:absolute;left:5px;top:5px;background:var(--pink);color:#fff;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700}
+.mt-item .mt-b{display:flex;justify-content:space-between;gap:4px;padding:5px}
+.mt-item .mt-b button{background:var(--surface-2);border-radius:7px;padding:2px 9px;font-size:12px}
 .zoom-btns{display:inline-flex;gap:4px;align-items:center}
 .zoom-btns .btn{padding:6px 10px;min-width:34px}
 .zoom-btns small{color:var(--dim);font-size:11px;min-width:38px;text-align:center}
@@ -673,6 +686,10 @@ details[open] summary::before{content:'－ '}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h0M15 9.5h0"/></svg>
       Актёрская игра
     </button>
+    <button class="nav" data-view="long">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="9" height="12" rx="2"/><rect x="13" y="6" width="9" height="12" rx="2"/></svg>
+      Длинное видео
+    </button>
     <button class="nav" data-view="action">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
       Экшн-сцены
@@ -700,6 +717,10 @@ details[open] summary::before{content:'－ '}
     <button class="nav" data-view="library">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/><path d="m10 13 4 2.5-4 2.5z" fill="currentColor"/></svg>
       Библиотека <span class="badge" id="libBadge">0</span>
+    </button>
+    <button class="nav" data-view="montage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="6" height="14" rx="1.5"/><rect x="9" y="5" width="6" height="14" rx="1.5"/><rect x="16" y="5" width="6" height="14" rx="1.5"/></svg>
+      Монтаж
     </button>
     <button class="nav" data-view="models">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="m3 13 9 5 9-5M3 18l9 5 9-5" opacity=".5"/></svg>
@@ -867,6 +888,8 @@ details[open] summary::before{content:'－ '}
     <section class="view" id="view-refs"></section>
     <section class="view" id="view-actor"></section>
     <section class="view" id="view-action"></section>
+    <section class="view" id="view-long"></section>
+    <section class="view" id="view-montage"></section>
     <section class="view" id="view-krea"></section>
     <section class="view" id="view-qwen"></section>
 
@@ -961,6 +984,7 @@ details[open] summary::before{content:'－ '}
               <button data-t="refs">Референсы<small>картинки, видео, аудио</small></button>
               <button data-t="actor">Актёрская игра<small>диалог, голос, эмоции</small></button>
               <button data-t="action">Экшн-сцены<small>бой, погоня, бег</small></button>
+              <button data-t="long">Длинное видео<small>клип или ролик по сценам</small></button>
             </div>
             <div class="hint" style="margin:12px 0 6px">Картинки</div>
             <div class="seg" id="agTarget2" style="grid-template-columns:1fr 1fr;grid-auto-rows:auto">
@@ -1045,6 +1069,7 @@ details[open] summary::before{content:'－ '}
           <button class="chip" data-f="refs">Референсы</button>
           <button class="chip" data-f="actor">Актёрская игра</button>
           <button class="chip" data-f="action">Экшн</button>
+          <button class="chip" data-f="long">Длинное</button>
           <button class="chip" data-f="custom">Свои</button>
           <button class="chip" data-f="fav">★ Избранное</button>
         </div>
@@ -1120,6 +1145,7 @@ details[open] summary::before{content:'－ '}
               <button class="mcard" data-m="refs"><i></i><b>Референсы</b><span>Видео по нескольким картинкам, референс-видео и аудио</span><small></small></button>
               <button class="mcard" data-m="actor"><i></i><b>Актёрская игра</b><span>Диалоги и крупные планы: эмоции, голос по образцу</span><small></small></button>
               <button class="mcard" data-m="action"><i></i><b>Экшн-сцены</b><span>Бой, погоня, бег, прыжки</span><small></small></button>
+              <button class="mcard" data-m="long"><i></i><b>Длинное видео</b><span>Клипы и ролики по сценам: до 15 с на сцену, сцены продолжают друг друга</span><small></small></button>
               <button class="mcard" data-m="krea"><i></i><b>Картинка по тексту</b><span>Krea 2: красивые картинки по описанию (можно в коммерцию)</span><small></small></button>
               <button class="mcard" data-m="kreareal"><i></i><b>Картинка: реализм</b><span>Krea 2 для реалистичных людей и фото (в «Картинке по тексту», +15 ГБ)</span><small></small></button>
               <button class="mcard" data-m="qwen"><i></i><b>Правка картинки</b><span>Qwen: изменить свою картинку, лист персонажа</span><small></small></button>
@@ -1230,6 +1256,7 @@ details[open] summary::before{content:'－ '}
         </div>
         <div class="card">
           <div class="card-h"><h3>Модели</h3><span><span id="mdAdd"></span> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button> <button class="btn pri" id="mdFixExt" hidden>Скачать недостающие</button></span></div>
+          <label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px;cursor:pointer" title="Те же файлы, но с другого сервера. Помогает, когда Hugging Face грузит медленно или не открывается."><input type="checkbox" id="mdMirror" style="margin-top:3px"><span>Если Hugging Face грузит медленно: скачивать через зеркало <b>hf-mirror.com</b>. Файлы те же. Скачивание можно закрыть и продолжить позже, оно докачается с того же места.</span></label>
           <div class="mlist" id="mlist"></div>
         </div>
       </div>
@@ -1334,7 +1361,7 @@ function offerNewModes(s) {
   OFFER_SHOWN = true;
   const show = () => {
     if (!$('#confirm').hidden) return setTimeout(show, 3000);  // another question is open: wait
-    const name = { flux: 'Правка картинки: FLUX.2 klein (можно в коммерцию)' }[o.mode] || o.mode;
+    const name = { flux: 'Правка картинки: FLUX.2 klein (можно в коммерцию)', long: 'Длинное видео (клипы и ролики по сценам)' }[o.mode] || o.mode;
     const btn = $('#confirm [data-close]');
     const later = () => fetch('/api/mode/offered', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: o.mode }) });
     btn.addEventListener('click', later, { once: true });
@@ -2273,7 +2300,7 @@ function stop() {
 
 /* ---------- SETUP & MODELS view ---------- */
 const GB = b => b < 1e9 ? Math.round(b / 1e6) + ' МБ' : (b / 1e9).toFixed(1).replace(/\.0$/, '') + ' ГБ';
-const MODE_ORDER = ['video', 'lipsync', 'refs', 'actor', 'action', 'krea', 'kreareal', 'qwen', 'flux', 'upscale'];
+const MODE_ORDER = ['video', 'lipsync', 'refs', 'actor', 'action', 'long', 'krea', 'kreareal', 'qwen', 'flux', 'upscale'];
 // start with one mode: a full set is ~100 GB, most people need one task to begin with
 let setupInfo = null, setupOpt = 'new', setupProfile = null, setupModes = ['video'];
 const SETUP_STEPS = [['comfy', 'ComfyUI'], ['nodes', 'Ноды'], ['start', 'Запуск ComfyUI'], ['models', 'Модели']];
@@ -2469,17 +2496,18 @@ function renderModels(s) {
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
-    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', flux: 'Правка: FLUX.2', upscale: 'Увеличение' })[x]).join(', ') || 'дополнительно';
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
+    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', long: 'Длинное видео', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', flux: 'Правка: FLUX.2', upscale: 'Увеличение' })[x]).join(', ') || 'дополнительно';
+    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   MD_EXT = s.engine === 'external';
+  $('#mdMirror').checked = !!s.hf_mirror;
   MD_EXTDIR = (s.paths && s.paths.ext_models) || '';
   const need = s.models.filter(m => !m.have && m.modes.some(x => (s.modes || []).includes(x)));
   MD_NEED = need.map(m => m.role);
   $('#mdFixExt').hidden = s.engine !== 'external' || !need.length;
   $('#mdFixExt').textContent = `Скачать недостающие (${need.length}, ${GB(need.reduce((a, m) => a + m.size, 0))})`;
-  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', flux: 'Правка картинки: FLUX.2 (в коммерцию)', upscale: 'Увеличение видео и картинок' };
+  const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', long: 'Длинное видео', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', flux: 'Правка картинки: FLUX.2 (в коммерцию)', upscale: 'Увеличение видео и картинок' };
   $('#mdAdd').innerHTML = s.engine === 'managed' || s.engine === 'external' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
     `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${gb} ГБ)</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
@@ -2495,6 +2523,9 @@ function renderModels(s) {
     + (P.assistant ? `<span>Помощник (агент)</span><b>${esc(P.assistant)}</b>` : '')
     + `<span>Настройки и список Библиотеки</span><b>${esc(P.data || '')} (мало места)</b>`);
 }
+$('#mdMirror').onchange = async e => {
+  try { await postJSON('/api/settings/mirror', { on: e.target.checked }); toast(e.target.checked ? 'Скачивание через зеркало hf-mirror.com включено' : 'Зеркало выключено, скачиваем с Hugging Face'); loadStatus(); } catch (err) { toast(err.message); }
+};
 $('#mdFix').onclick = async () => {
   if (!setupInfo) setupInfo = await (await fetch('/api/setup/info')).json();
   const c = setupInfo.config;
@@ -2642,7 +2673,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 });
 
 /* ---------- LIBRARY ---------- */
-const MODE_NAME = { custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Увеличение' };
+const MODE_NAME = { montage: 'Монтаж', custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн', long: 'Длинное видео', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Увеличение' };
 const LIB = [];
 const IMG_PANELS = [];  // refresh functions of the picture result windows
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
@@ -2980,7 +3011,155 @@ function makeRefMode(cfg) {
     }
   };
   if (vidsEl) mkSlots(vidsEl, 3, 'video/*', ICON_VID, 'Видео');
-  mkSlots(audsEl, 3, 'audio/*', ICON_AUD, 'Аудио');
+  mkSlots(audsEl, cfg.scenes ? 1 : 3, 'audio/*', ICON_AUD, cfg.scenes ? 'Музыка' : 'Аудио');
+  let onScenes = () => {};
+  const promptEl = () => $('.rm-prompt', root) || root._ta || $('.sc textarea', root);
+  const sceneList = () => $$('.sc', root).map(c => ({ prompt: $('textarea', c).value.trim(), sec: +$('input[type=range]', c).value }));
+  if (cfg.scenes) {
+    const card = $('.rm-prompt', root).closest('.card');
+    card.innerHTML = `<div class="card-h"><h3><span class="n">3</span>Сцены</h3><span class="counter lm-total"></span></div>
+      <div class="seg lm-mode" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><button type="button" data-m="parts">По частям<small>сцена за сценой, каждая сохраняется отдельно</small></button><button type="button" data-m="all">Весь ролик сразу<small>один готовый файл, ждать дольше</small></button></div>
+      <div class="hint lm-mode-hint" style="margin-bottom:10px"></div>
+      <div class="lm-scenes"></div>
+      <button class="btn" type="button" id="lmAdd" style="margin-top:10px">+ Добавить сцену</button>
+      <div class="ta-foot"><div class="tokens rm-tokens"></div><span class="hint">нажмите, чтобы вставить в сцену</span></div>
+      <div class="note" style="margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg><span>Сцены идут одна за другой, каждая продолжает прошлую: герой, место и звук переходят дальше. В каждой сцене опишите героя, что он делает и как движется камера. Длину сцены задаёт ползунок. Текст сцены можно составить в разделе «Агент».</span></div>`;
+    const c1 = $('.rm-imgs', root).closest('.card');
+    $('h3', c1).innerHTML = '<span class="n">1</span>Герой и место';
+    $('.rm-count', root).hidden = true;
+    $$('.rm-imgs .plus', root).forEach((pl, i) => { pl.lastChild.textContent = ['Герой', 'Место', 'Предмет'][i] || 'Референс'; });
+    $('.rm-media .sub-l span', root).textContent = 'Песня или фрагмент';
+    $('.rm-media .media-hint', root).textContent = 'любой длины: каждая сцена берёт свой кусок по порядку';
+    const box = $('.lm-scenes', root);
+    const snap = v => { v = Math.max(5, Math.round(v * 24)); return v + (5 - v % 17 + 17) % 17; };
+    const accs = () => {  // frames of the finished video after each scene (same arithmetic as the server)
+      const out = []; let acc = 0;
+      $$('.sc input[type=range]', root).forEach((r, k) => { const seg = snap(+r.value); if (!k) acc = seg; else { const t = snap((seg + snap(1)) / 24), ov = snap((t - seg) / 24); acc += t - ov; } out.push(acc); });
+      return out;
+    };
+    const total = () => { const a = accs(); return a.length ? a[a.length - 1] / 24 : 0; };
+    const mmss = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+    const recount = () => {
+      const all = $$('.sc', root), a = accs(), own = root._snd === 'own';
+      const st = Math.max(0, parseFloat($('.lm-start', root)?.value) || 0);
+      all.forEach((c, i) => {
+        $('b', c).textContent = `Сцена ${i + 1}`; $('.x', c).hidden = all.length < 2; $('output', c).textContent = $('input[type=range]', c).value + ' с';
+        const from = i ? a[i - 1] / 24 : 0, to = a[i] / 24;
+        $('.sc-win', c).textContent = own ? `кусок аудио ${mmss(st + from)}–${mmss(st + to)}` : '';
+      });
+      const t = total(); $('.lm-total', root).textContent = `≈ ${Math.round(t)} с в итоге`; S.dur = Math.round(t);
+      const dur = root._adur;
+      const w = $('.lm-warn', root); if (w) { w.hidden = !(own && dur && st + t > dur + 0.5); w.textContent = `Аудио короче, чем нужно: ролик на ${Math.round(t)} с, а от выбранного места в треке осталось ${Math.max(0, Math.round(dur - st))} с. Сократите сцены или начните трек раньше.`; }
+      changed(); onScenes(); refreshStates();
+    };
+    root._recount = recount;
+    root._mode = 'parts'; root._run = Math.random().toString(36).slice(2, 12);
+    const sig = c => JSON.stringify([$('textarea', c).value.trim(), $('input[type=range]', c).value, c._file ? c._file.name : '']);
+    function readyUpTo() {   // how many scenes from the start are done and unchanged
+      let n = 0; for (const c of $$('.sc', root)) { if (c._done && c._done.sig === sig(c)) n++; else break; } return n;
+    }
+    function refreshStates() {
+      const parts = root._mode === 'parts', ready = readyUpTo();
+      $$('.sc', root).forEach((c, i) => {
+        $('.sc-act', c).hidden = !parts;
+        const done = c._done && c._done.sig === sig(c) && i < ready;
+        const stale = c._done && !done;
+        $('.sc-state', c).textContent = done ? '✓ готова, клип в Библиотеке' : stale ? 'изменена: переделайте (следующие тоже)' : i > ready ? `сначала сделайте сцену ${ready + 1}` : '';
+        $('.sc-state', c).style.color = done ? 'var(--ok, #7bd88f)' : stale ? 'var(--pink)' : '';
+        const b = $('.sc-do', c); b.disabled = i > ready; b.textContent = done ? 'Переделать' : 'Сделать эту сцену';
+      });
+      const r = $('.lm-reset', root); if (r) r.hidden = !parts || !ready;
+    }
+    root._ready = readyUpTo; root._sig = sig;
+    root._setScenes = list => {   // from the agent: replace all scenes
+      if (!list.length) return;
+      $$('.sc', root).forEach(c => c.remove());
+      list.slice(0, 12).forEach(x => addScene(x.prompt, Math.min(15, Math.max(3, Math.round(x.sec) || 10))));
+      root._run = Math.random().toString(36).slice(2, 12); recount(); refreshStates();
+    };
+    root._partDone = item => {
+      const lg = item && item.long; if (!lg || lg.run !== root._run) return;
+      const c = $$('.sc', root)[lg.part]; if (!c || !root._pending || root._pending.k !== lg.part) return;
+      c._done = { sig: root._pending.sig, url: item.url };
+      $$('.sc', root).slice(lg.part + 1).forEach(x => { x._done = null; });   // later scenes continued from the old one
+      refreshStates(); toast(`Сцена ${lg.part + 1} готова` + (lg.part + 1 < lg.n ? '. Можно делать следующую.' : '. Все сцены готовы: склейте клипы из Библиотеки в любом видеоредакторе.'));
+    };
+    const MODE_HINT = { parts: 'Каждая сцена считается отдельно и сохраняется в Библиотеку своим клипом. Можно посмотреть первую, потом сделать следующую, а неудачную переделать, не трогая остальные. Клипы встают встык без повторов: склейте их в любом видеоредакторе.', all: 'Все сцены считаются подряд и склеиваются в один файл. Удобно, когда уверены в тексте, но если что-то не получится, ждать придётся заново целиком.' };
+    const setMode = v => { root._mode = v; $$('.lm-mode button', root).forEach(b => b.classList.toggle('on', b.dataset.m === v)); $('.lm-mode-hint', root).textContent = MODE_HINT[v]; refreshStates(); };
+    $('.lm-mode', root).onclick = e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); };
+    queueMicrotask(() => setMode('parts'));
+    const rst = document.createElement('button'); rst.className = 'btn lm-reset'; rst.type = 'button'; rst.hidden = true; rst.textContent = 'Начать заново';
+    rst.title = 'Забыть сделанные сцены. Нужно, если меняете картинки героя, размер или звук: следующие сцены не должны продолжать старые.';
+    rst.onclick = () => { root._run = Math.random().toString(36).slice(2, 12); $$('.sc', root).forEach(c => { c._done = null; }); refreshStates(); toast('Начинаем сначала'); };
+    $('#lmAdd', root).after(rst);
+    const addScene = (txt = '', sec = 10) => {
+      const c = document.createElement('div'); c.className = 'sc'; c.style.cssText = 'margin:0 0 10px;padding:12px;border:1px solid var(--line);border-radius:12px';
+      c.innerHTML = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><b></b><input type="range" min="3" max="15" step="1" value="${sec}" style="flex:1"><output class="hint" style="min-width:34px"></output><span class="hint sc-win"></span><button class="x btn" type="button" title="Убрать сцену" style="padding:2px 9px">✕</button></div><textarea placeholder="Что происходит в этой сцене…" style="min-height:90px"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><label class="btn sc-img" style="padding:4px 10px;font-size:12.5px;cursor:pointer" title="Необязательно: реквизит, новая одежда или новое место только для этой сцены. В тексте это следующая картинка после общих: если общих 2, то &lt;Picture 3&gt;">+ Картинка для этой сцены<input type="file" accept="image/*" hidden></label><span class="hint sc-name"></span><button class="btn sc-imgx" type="button" hidden style="padding:2px 8px">✕</button></div>`;
+      const fin = $('.sc-img input', c);
+      fin.onchange = () => { c._file = fin.files[0] || null; $('.sc-name', c).textContent = c._file ? c._file.name : ''; $('.sc-imgx', c).hidden = !c._file; };
+      $('.sc-imgx', c).onclick = () => { c._file = null; fin.value = ''; $('.sc-name', c).textContent = ''; $('.sc-imgx', c).hidden = true; };
+      $('textarea', c).value = txt; box.append(c);
+      c.insertAdjacentHTML('beforeend', `<div class="sc-act" style="display:flex;gap:10px;align-items:center;margin-top:8px"><button class="btn sc-do" type="button">Сделать эту сцену</button><span class="hint sc-state"></span></div>`);
+      $('.sc-do', c).onclick = () => { root._target = $$('.sc', root).indexOf(c); $('.go', $('.rm-preview', root)).click(); };
+      $('textarea', c).addEventListener('input', () => refreshStates());
+      $('textarea', c).addEventListener('focus', e => { root._ta = e.target; });
+      $('input[type=range]', c).oninput = recount; $('.x', c).onclick = () => { c.remove(); recount(); };
+      fin.addEventListener('change', () => refreshStates());
+      recount();
+    };
+    $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 12) { toast('Не больше 12 сцен'); return; } addScene('', 10); };
+    queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done
+    root._addScene = addScene;
+    S.len = () => total();
+    const mus = document.createElement('div'); mus.className = 'card';
+    root._snd = 'none';
+    mus.innerHTML = `<div class="card-h"><h3><span class="n">2</span>Звук</h3></div>
+      <div class="seg lm-snd" style="grid-template-columns:1fr 1fr"><button type="button" data-s="none">Без аудио<small>обычное видео: звук придумает модель</small></button><button type="button" data-s="own">Своё аудио<small>песня, клип или чистый голос</small></button></div>
+      <div class="hint lm-snd-hint" style="margin:8px 0"></div>
+      <div class="lm-own" hidden>
+        <div class="mus-slot"></div>
+        <div class="note warn lm-warn" hidden style="margin:8px 0"><span></span></div>
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px"><label>Начать с <input class="lm-start" inputmode="numeric" value="0" style="width:60px"> секунды</label>
+          <button class="btn" type="button" id="lmVoice" title="Оставить в аудио только голос, без музыки (как в Lipsync)">Отделить голос от музыки</button><button class="btn" type="button" id="lmVoiceBack" hidden>Вернуть исходное аудио</button></div>
+        <label style="display:flex;gap:6px;align-items:center;margin-top:10px" title="Видео подстраивается под голос, а в готовом ролике играет музыка целиком"><input type="checkbox" class="lm-vocals"> Музыку в ролике оставить, но модель слушает только голос (точнее губы)</label>
+      </div>`;
+    $('.mus-slot', mus).append($('.rm-media', root));
+    c1.after(mus);
+    const HINT = { none: 'Выберите это для обычного ролика. Что говорят герои и какая музыка играет за кадром, напишите в описании сцен.', own: 'Видео подстроится под аудио: каждая сцена получает свой кусок по порядку (он подписан в карточке сцены). Звук итогового ролика — ваше аудио.' };
+    const setSnd = v => {
+      root._snd = v; $$('.lm-snd button', root).forEach(b => b.classList.toggle('on', b.dataset.s === v));
+      $('.lm-own', root).hidden = v !== 'own'; $('.lm-snd-hint', root).textContent = HINT[v]; recount();
+    };
+    $('.lm-snd', root).onclick = e => { const b = e.target.closest('button'); if (b) setSnd(b.dataset.s); };
+    $('.lm-start', root).oninput = () => recount();
+    const slot = $('.rm-auds .slot', root);
+    new MutationObserver(() => {   // keep the real length of the chosen audio
+      const f = slot._file; root._adur = f ? (slot._dur || 0) : 0; if (f && !slot._orig) { slot._orig = null; } recount();
+    }).observe(slot, { attributes: true, subtree: true, childList: true, characterData: true });
+    $('#lmVoice', root).onclick = async () => {
+      if (!slot._file) { toast('Сначала загрузите аудио'); return; }
+      const b = $('#lmVoice', root), old = b.textContent; b.disabled = true; b.textContent = 'Отделяем голос…';
+      try {
+        const info = await (await fetch('/api/audio/info')).json();
+        if (!info.available) throw new Error('Недоступно: ' + info.reason);
+        const fd = new FormData(); fd.append('file', slot._file, slot._file.name);
+        const r = await fetch('/api/audio/separate', { method: 'POST', body: fd });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Не удалось отделить голос');
+        const blob = await r.blob();
+        slot._orig = slot._orig || slot._file;
+        const nf = new File([blob], slot._orig.name.replace(/\.[^.]+$/, '') + '_голос.flac', { type: blob.type || 'audio/flac' });
+        slot._file = nf; $('span', slot).textContent = nf.name; $('#lmVoiceBack', root).hidden = false;
+        $('.lm-vocals', root).checked = false;
+        toast('Голос отделён: в ролике будет только он, без музыки. Не понравилось — «Вернуть исходное аудио».');
+      } catch (err) { toast(err.message); }
+      b.textContent = old; b.disabled = false;
+    };
+    $('#lmVoiceBack', root).onclick = () => {
+      if (!slot._orig) return; slot._file = slot._orig; slot._orig = null; $('span', slot).textContent = slot._file.name; $('#lmVoiceBack', root).hidden = true; toast('Исходное аудио возвращено');
+    };
+    queueMicrotask(() => setSnd('none'));
+  }
   const files = sel => $$(sel, root).filter(x => x._file);
   function changed() {
     const imgs = $$('.ref.filled', imgsEl);
@@ -2990,42 +3169,54 @@ function makeRefMode(cfg) {
     $('.rm-count', root).textContent = `${total} / 12`;
     $('.rm-count', root).style.color = total > 12 ? 'var(--pink)' : '';
     $('.rm-tokens', root).innerHTML = imgs.map((_, i) => `<button class="token" type="button">&lt;Picture ${i + 1}&gt;</button>`).join('') || '<span class="hint">добавьте картинки — появятся метки</span>';
-    const tooLong = [...files('.rm-vids .slot'), ...files('.rm-auds .slot')].some(s => s._dur > 15);
+    const tooLong = !cfg.scenes && [...files('.rm-vids .slot'), ...files('.rm-auds .slot')].some(s => s._dur > 15);
     if (tooLong) toast('Референс-видео и аудио — до 15 секунд');
   }
   $('.rm-tokens', root).onclick = e => {
     const t = e.target.closest('.token'); if (!t) return;
-    const ta = $('.rm-prompt', root), p = ta.selectionStart, txt = t.textContent + ' ';
+    const ta = promptEl(), p = ta.selectionStart, txt = t.textContent + ' ';
     ta.value = ta.value.slice(0, p) + txt + ta.value.slice(ta.selectionEnd); ta.focus(); ta.selectionStart = ta.selectionEnd = p + txt.length;
   };
   changed();
 
   const prev = previewPanel($('.rm-preview', root), S, {
-    extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' ? 'Шаги' : 'Схема',
-    extra: () => cfg.mode === 'actor' ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
-    passes: () => cfg.mode === 'actor' ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],
+    extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' || cfg.scenes ? 'Шаги' : 'Схема',
+    extra: () => cfg.scenes ? `8 · Pika · сцен: ${$$('.sc', root).length}` : cfg.mode === 'actor' ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
+    passes: () => cfg.scenes ? $$('.sc', root).map(() => 8) : cfg.mode === 'actor' ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],
     get twoPass() { return cfg.mode === 'action' && !S.faithful; },
     target: () => $('.ref img', imgsEl),
-    meta: () => ({ mode: cfg.mode, prompt: $('.rm-prompt', root).value.trim(), sub: '' }),
-    onDone: item => addToLib(item),
+    meta: () => ({ mode: cfg.mode, prompt: promptEl().value.trim(), sub: '' }),
+    onDone: item => { addToLib(item); if (cfg.scenes && root._partDone) root._partDone(item); },
     validate: () => !$$('.ref.filled', imgsEl).length && !(vidsEl && files('.rm-vids .slot').length) ? 'Добавьте хотя бы одну референс-картинку'
       : $$('.ref.filled', imgsEl).length + (vidsEl ? files('.rm-vids .slot').length : 0) + files('.rm-auds .slot').length > 12 ? 'Всего не больше 12 референсов'
-      : !$('.rm-prompt', root).value.trim() ? 'Напишите промпт' : '',
+      : cfg.scenes ? (root._snd === 'own' && !files('.rm-auds .slot').length ? 'Загрузите аудио или выберите «Без аудио»' : sceneList().some(x => !x.prompt) ? 'Заполните описание каждой сцены или уберите лишнюю' : '') : !promptEl().value.trim() ? 'Напишите промпт' : '',
     real: {
       url: '/api/generate/' + cfg.mode,
       form: () => {
         const fd = new FormData();
-        fd.append('prompt', $('.rm-prompt', root).value.trim());
+        fd.append('prompt', promptEl().value.trim());
         sizeForm(S, fd); fd.append('aspect', S.aspect); fd.append('quality', S.q); fd.append('duration', S.dur);
         fd.append('steps', S.steps); fd.append('ref_size', S.refSize); if (cfg.mode === 'refs') fd.append('accel', S.accel);
-        loraForm(S, fd); seedForm(S, fd);
+        if (cfg.scenes && root._mode === 'parts') {
+          const all = $$('.sc', root);
+          let k = root._target; root._target = null;
+          if (k == null) k = root._ready();
+          if (k >= all.length) throw new Error('Все сцены уже сделаны. Чтобы переделать одну, нажмите «Переделать» в её карточке.');
+          if (k > root._ready()) throw new Error(`Сначала сделайте сцену ${root._ready() + 1}: следующая продолжает её конец.`);
+          fd.append('part', k); fd.append('run', root._run);
+          root._pending = { k, sig: root._sig(all[k]) };
+        }
+        if (cfg.scenes) { fd.append('scenes', JSON.stringify(sceneList())); $$('.sc', root).forEach((c, i) => { if (c._file) fd.append('simg' + i, c._file); }); fd.append('start', $('.lm-start', root).value || '0'); fd.append('vocals', root._snd === 'own' && $('.lm-vocals', root).checked ? '1' : '0'); }
+        else loraForm(S, fd);
+        seedForm(S, fd);
         $$('.ref', imgsEl).filter(r => r._file).forEach((r, i) => fd.append('img' + i, r._file));
         if (vidsEl) files('.rm-vids .slot').forEach((s, i) => fd.append('vid' + i, s._file));
-        files('.rm-auds .slot').forEach((s, i) => fd.append('aud' + i, s._file));
+        (cfg.scenes && root._snd !== 'own' ? [] : files('.rm-auds .slot')).forEach((s, i) => fd.append('aud' + i, s._file));
         return fd;
       },
     },
   });
+  onScenes = () => prev();
   const STEPS_HINT = {
     4: 'Быстро, но без запаса: в речи могут теряться слова. Для простых сцен — разговор, ходьба, предмет в руках.',
     6: 'Золотая середина: разговор на камеру, ходьба, медленные движения.',
@@ -3043,12 +3234,13 @@ function makeRefMode(cfg) {
       <div class="seg rm-rs" style="grid-template-columns:1fr 1fr"><button data-r="match">Быстро<small>картинки уменьшаются</small></button><button data-r="max">Максимум<small>лучшее сходство</small></button></div>
       <div class="hint rm-rs-hint"></div></div>
     <div class="rm-loras"></div>`
+    : cfg.scenes ? `<div class="row"><div class="row-l">Как работает</div><div class="hint" style="font-size:12.5px;line-height:1.5">Singularity Ref2V + Pika H3 Flex Turbo, 8 шагов на сцену. Первая секунда следующей сцены берётся из конца прошлой, поэтому нет резких склеек. Чем больше сцен и выше качество, тем дольше: ролик в 40 с на видеокарте с 16 ГБ может считаться полчаса и больше. Качество лучше выбрать сразу: кнопка «Увеличить» под готовым роликом есть, но увеличение очень долгое, и чем длиннее ролик, тем дольше (у длинных могут быть часы).</div></div>`
     : cfg.mode === 'actor' ? `<div class="row"><div class="row-l">Как работает</div><div class="hint" style="font-size:12.5px;line-height:1.5">Один проход, 10 шагов — настройки из вашего workflow «Direct AI Actor» (ER-SDE, разреженное внимание). Первая картинка — стартовый кадр. Голос берётся из загруженного аудио только как тембр, а слова — те, что вы напишете в промпте в &lt;d&gt;[Язык] …&lt;/d&gt;.</div></div>
     <div class="rm-loras"></div>`
     : `<div class="row"><div class="row-l">Как запускается</div><div class="status-box rm-act"><span class="hint">Проверяем ComfyUI…</span></div></div>
     <div class="rm-loras"></div>`;
   const upd = paramsCard($('.rm-params', root), S, {
-    n: 3, duration: true, extraRow,
+    n: cfg.scenes ? 4 : 3, duration: !cfg.scenes, extraRow,
     onChange: () => {
       prev();
       $$('.rm-steps button', root).forEach(b => b.classList.toggle('on', +b.dataset.s === S.steps));
@@ -3095,7 +3287,7 @@ function makeRefMode(cfg) {
     $(`.nav[data-view="action"]`).addEventListener('click', check);
     check();
   }
-  return { root, S, upd, voice: () => files('.rm-auds .slot').length, prompt: () => $('.rm-prompt', root), imgSlots: () => $$('.ref input', imgsEl) };
+  return { root, S, upd, voice: () => files('.rm-auds .slot').length, prompt: () => promptEl(), imgSlots: () => $$('.ref input', imgsEl) };
 }
 const RM = {
   refs: makeRefMode({
@@ -3109,6 +3301,12 @@ const RM = {
     sub: 'Диалоги и крупные планы: актёрская игра, эмоции и голос по образцу — лучше всего для реализма',
     refHint: 'Первая картинка — стартовый кадр видео (его композиция сохранится). Аудио — образец голоса: из него берётся только тембр и манера, а слова произносятся новые, из вашего промпта. Нужны два голоса — запишите оба в одно аудио. Промпт удобно писать в разделе «Агент» (цель «Актёрская игра»).',
     placeholder: '@image1 - keyframe, first frame of the target video… Лучше всего писать в «Агенте»: он знает формат этого режима',
+  }),
+  long: makeRefMode({
+    mode: 'long', title: 'Длинное видео', pill: 'Сцены подряд · Pika', dur: 20, maxImages: 3, videos: false, scenes: true,
+    sub: 'Клипы и ролики по сценам: каждая сцена до 15 секунд и продолжает прошлую. Можно с музыкой, можно без',
+    refHint: 'До 3 картинок: герой, место, предмет. Они подаются в каждую сцену, поэтому лицо и место не «плывут». В тексте сцены ссылайтесь на них как &lt;Picture 1&gt;.',
+    placeholder: '',
   }),
   action: makeRefMode({
     mode: 'action', title: 'Экшн-сцены', pill: 'Hybrid · 8 + 4 шага', dur: 8, maxImages: 6, videos: false,
@@ -3142,7 +3340,7 @@ $('#agFile').onchange = async e => {
 };
 $('#agEmpty').onclick = e => { const s = e.target.closest('span'); if (s) { $('#agIn').value = s.textContent.replace(/[«»]/g, '').replace(/ \+ фото героинь$/, ''); $('#agIn').focus(); } };
 $('#agIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#agSend').click(); } });
-const AG_NAMES = { video: 'Генерацию видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрскую игру', action: 'Экшн-сцены', krea: 'Картинку по тексту', qwen: 'Правку картинки', sheet: 'Картинку по тексту', sheet6: 'Картинку по тексту', fluxt: 'Картинку по тексту', qwent: 'Картинку по тексту', story: 'Картинку по тексту' };
+const AG_NAMES = { long: 'сцены длинного видео', video: 'Генерацию видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрскую игру', action: 'Экшн-сцены', krea: 'Картинку по тексту', qwen: 'Правку картинки', sheet: 'Картинку по тексту', sheet6: 'Картинку по тексту', fluxt: 'Картинку по тексту', qwent: 'Картинку по тексту', story: 'Картинку по тексту' };
 const AG_IMG = ['krea', 'qwen', 'sheet', 'sheet6', 'fluxt', 'qwent', 'story'];
 AG.storyModel = 'krea'; AG.storyFrames = true;
 const agTargetClick = e => {
@@ -3166,6 +3364,8 @@ function agCtx() {
          qwent: 'Опишите картинку словами: агент напишет промпт для Qwen 2.1. Негатив впишите отдельным полем в разделе. Картинки в чате — только образцы настроения.',
          sheet: `Опишите персонажа: агент напишет промпт листа из 4 панелей. Картинок в чате: ${n}.`,
          sheet6: `Опишите персонажа: агент напишет промпт листа из 6 панелей (в полный рост спереди, в три четверти, сбоку, сзади + два портрета). Картинок в чате: ${n}.` })[AG.target]
+    : AG.target === 'long'
+    ? `Опишите историю по сценам («сначала… потом… в конце…») и скажите, с песней ролик или без. Агент разобьёт её на сцены и подпишет длину каждой. Картинки в чате: ${n} — станут референсами героя и места (Picture 1, 2…).`
     : AG.target === 'video'
     ? `Длительность ${V.dur} с (как в «Генерации видео»). Картинки в чате: ${n} — 1-я станет первым кадром, 2-я последним.`
     : AG.target === 'lipsync'
@@ -3184,7 +3384,7 @@ function renderAssistant(el, m) {
     const text = m.edits?.[i] ?? p.replace(/\n$/, '');
     html += `<div class="pblock"><pre${closed ? ` contenteditable="plaintext-only" spellcheck="false" data-b="${i}" title="Текст можно править прямо здесь"` : ''}>${esc(text)}</pre>${closed ? `<div class="pb-act">
       <button class="btn pri" data-send="${AG.target}">В ${AG_NAMES[AG.target]}</button>
-      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Image-to-Video</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="action">Экшн-сцены</option><option value="krea">Картинка по тексту</option><option value="qwen">Правка картинки</option></select>
+      <select class="pb-other"><option value="">Отправить в…</option><option value="video">Image-to-Video</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="action">Экшн-сцены</option><option value="long">Длинное видео (сцены)</option><option value="krea">Картинка по тексту</option><option value="qwen">Правка картинки</option></select>
       <button class="btn" data-copy>Копировать</button><button class="btn" data-paste title="Вставить скопированный текст на место выделенного (или в конец)">Вставить</button><small class="pb-n">${text.length} симв.</small></div>` : ''}</div>`;
   });
   if (m.status && !m.content) html += `<div class="st">${esc(m.status)}</div>`;
@@ -3323,6 +3523,7 @@ async function agSend() {
   AG.busy = true; $('#agSend').textContent = 'Стоп'; AG.ctrl = new AbortController();
   const ctx = { model: AG.storyFrames && AG.storyModel === 'krea' ? 'flux' : AG.storyModel, frames: AG.target === 'story' && AG.storyFrames, duration: AG_IMG.includes(AG.target) ? null : AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
   if (AG.target === 'actor') ctx.voice = RM.actor.voice() ? 1 : 0;
+  if (AG.target === 'long') ctx.long = { sound: RM.long.root._snd, secs: $$('.sc input[type=range]', RM.long.root).map(r => +r.value) };
   try {
     const r = await fetch('/api/agent/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AG.ctrl.signal,
@@ -3430,6 +3631,18 @@ async function sendPrompt(blk, to) {
     $('#vPrompt').value = prompt; $('#vPrompt').oninput({ target: $('#vPrompt') });
     if (files[0]) { $('#dFirst .x')?.click(); await setDropFile($('#dFirst input'), files[0]); }
     if (files[1]) await setDropFile($('#dLast input'), files[1]);
+  } else if (to === 'long') {
+    const L2 = RM.long, list = []; let cur = null;
+    for (const line of prompt.split('\n')) {
+      const mm = line.match(/^\s*SCENE\s*(\d+)\s*\|\s*(\d+(?:\.\d+)?)\s*$/i);
+      if (mm) { cur = { sec: +mm[2], text: [] }; list.push(cur); } else if (cur) cur.text.push(line); else if (line.trim()) { cur = { sec: 10, text: [line] }; list.push(cur); }
+    }
+    L2.root._setScenes(list.map(x => ({ prompt: x.text.join('\n').trim(), sec: x.sec })).filter(x => x.prompt));
+    if (files.length) {
+      $$('.ref.filled .x', L2.root).forEach(x => x.click());
+      const slots = $$('.ref input', L2.root);
+      for (let i = 0; i < Math.min(files.length, slots.length); i++) await setDropFile(slots[i], files[i]);
+    }
   } else {
     const box = to === 'lipsync' ? refsEl : RM[to].root;
     (to === 'lipsync' ? $('#lPrompt') : RM[to].prompt()).value = prompt;
@@ -3443,7 +3656,7 @@ async function sendPrompt(blk, to) {
   const au = [...AG.msgs].reverse().find(m => m.audioFile)?.audioFile;
   if (to === 'lipsync' && au) await setDropFile($('#aFile'), au);
   goTo(to);
-  const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', actor: '«Актёрскую игру»', action: '«Экшн-сцены»', krea: '«Картинку по тексту»', qwen: '«Правку картинки»' }[to];
+  const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', actor: '«Актёрскую игру»', action: '«Экшн-сцены»', long: '«Длинное видео»', krea: '«Картинку по тексту»', qwen: '«Правку картинки»' }[to];
   toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' && to !== 'krea' ? ' вместе с картинками' : '') + (to === 'lipsync' ? (au ? ' и аудио — выделите нужный фрагмент' : ' — добавьте аудио') : ''));
 }
 // the finished prompt can be edited in place; the edit is kept when the chat is redrawn
@@ -3708,6 +3921,8 @@ $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx
 // download page / file name of a model
 $('#mlist').addEventListener('click', async e => {
   const dn = e.target.closest('[data-dlnow]'); if (dn) { mdStart([dn.dataset.dlnow]); return; }
+  const cu = e.target.closest('[data-copyurl]');
+  if (cu) { const u = cu.dataset.copyurl; navigator.clipboard?.writeText(u).then(() => toast('Ссылка скопирована: вставьте её в менеджер загрузок'), () => toast(u)); return; }
   const d = e.target.closest('[data-dlmodel]'), c = e.target.closest('[data-copyname]'), f = e.target.closest('.mf');
   if (d) { try { await postJSON('/api/models/open', { role: d.dataset.dlmodel }); toast('Страница скачивания открыта в браузере'); } catch (err) { toast(err.message); } return; }
   const name = c ? c.dataset.copyname : f ? f.textContent : ''; if (!name) return;
@@ -4741,6 +4956,72 @@ window.addEventListener('wheel', e => {
   applyZoom();
 }, { passive: false });
 applyZoom();
+
+/* ---------- MONTAGE: join library clips in a chosen order (ComfyUI does the work, no ffmpeg) ---------- */
+(function mountMontage() {
+  const root = $('#view-montage'), MT = { ids: [], drag: null, busy: false };
+  root.innerHTML = `
+    <div class="head"><div><h1>Монтаж</h1><p>Склейте клипы из Библиотеки в один ролик: добавьте их по порядку, при необходимости поменяйте местами и нажмите «Склеить»</p></div></div>
+    <div class="grid"><div class="col">
+      <div class="card"><div class="card-h"><h3><span class="n">1</span>Клипы из Библиотеки</h3><span class="hint">нажмите на клип, чтобы добавить</span></div><div class="mt-lib"></div></div>
+      <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок склейки</h3><span class="counter mt-total"></span></div>
+        <div class="mt-strip"></div>
+        <div class="hint mt-hint" style="margin-top:8px">Порядок можно менять: перетащите клип или нажмите стрелки под ним. Клипы разного размера приводятся к размеру первого.</div></div>
+    </div><div class="preview">
+      <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>готовый ролик появится здесь</div><video class="result mt-res" controls loop playsinline hidden></video></div></div>
+      <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
+      <div class="status mt-status"></div>
+    </div></div>`;
+  const lenTxt = it => it.len ? it.len.toFixed(1).replace('.0', '') + ' с' : '';
+  function render() {
+    MT.ids = MT.ids.filter(id => byId(id) && !byId(id).missing);
+    const vids = LIB.filter(it => it.kind !== 'image' && !it.missing && it.url);
+    $('.mt-lib', root).innerHTML = vids.length ? vids.map(it => `<button type="button" class="mt-card" data-id="${it.id}" title="${esc(it.prompt || '')}"><video src="${it.url}#t=0.5" preload="metadata" muted playsinline></video><span class="mt-plus">+</span><span class="mt-len">${lenTxt(it)}</span><small>${esc(it.prompt || MODE_NAME[it.mode] || '')}</small></button>`).join('')
+      : '<div class="hint">В Библиотеке пока нет видео. Сначала сгенерируйте клипы.</div>';
+    $('.mt-strip', root).innerHTML = MT.ids.length ? MT.ids.map((id, i) => { const it = byId(id); return `<div class="mt-item" draggable="true" data-i="${i}"><video src="${it.url}#t=0.5" preload="metadata" muted playsinline></video><span class="mt-n">${i + 1}</span><span class="mt-len">${lenTxt(it)}</span><div class="mt-b"><button type="button" data-mv="-1" title="Влево">◀</button><button type="button" data-rm title="Убрать">✕</button><button type="button" data-mv="1" title="Вправо">▶</button></div></div>`; }).join('')
+      : '<div class="hint">Пока пусто: нажмите на клипы сверху.</div>';
+    const total = MT.ids.reduce((a, id) => a + (byId(id).len || 0), 0);
+    $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
+  }
+  const move = (i, j) => { if (j < 0 || j >= MT.ids.length) return; const [x] = MT.ids.splice(i, 1); MT.ids.splice(j, 0, x); render(); };
+  root.addEventListener('click', e => {
+    const c = e.target.closest('.mt-card'); if (c) { MT.ids.push(c.dataset.id); render(); return; }
+    const it = e.target.closest('.mt-item'); if (!it) return; const i = +it.dataset.i;
+    if (e.target.closest('[data-rm]')) { MT.ids.splice(i, 1); render(); }
+    const mv = e.target.closest('[data-mv]'); if (mv) move(i, i + +mv.dataset.mv);
+  });
+  root.addEventListener('dragstart', e => { const it = e.target.closest('.mt-item'); if (!it) return; MT.drag = +it.dataset.i; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'mt'); });
+  root.addEventListener('dragover', e => { const it = e.target.closest('.mt-item'); if (it && MT.drag != null) { e.preventDefault(); $$('.mt-item', root).forEach(x => x.classList.toggle('over', x === it)); } });
+  root.addEventListener('drop', e => { const it = e.target.closest('.mt-item'); if (!it || MT.drag == null) return; e.preventDefault(); const from = MT.drag; MT.drag = null; move(from, +it.dataset.i); });
+  root.addEventListener('dragend', () => { MT.drag = null; $$('.mt-item', root).forEach(x => x.classList.remove('over')); });
+
+  $('.mt-go', root).onclick = async () => {
+    const st = $('.mt-status', root);
+    if (MT.busy) return;
+    if (MT.ids.length < 2) { st.textContent = 'Добавьте хотя бы два клипа'; return; }
+    MT.busy = true; $('.mt-go', root).disabled = true; st.textContent = 'Отправляем клипы в ComfyUI…';
+    try {
+      const fd = new FormData(); fd.append('ids', JSON.stringify(MT.ids));
+      const r = await fetch('/api/montage', { method: 'POST', body: fd });
+      const txt = await r.text(); let res; try { res = JSON.parse(txt); } catch { res = { error: txt }; }
+      if (!r.ok) throw new Error(res.error || r.statusText);
+      qAdd(res.prompt_id, 'montage', `Монтаж: ${MT.ids.length} клипов`);
+      st.textContent = 'Склеиваем…';
+      onPrompt(res.prompt_id, ev => {
+        if (ev.prompt_id !== res.prompt_id) return;
+        if (ev.type === 'done') {
+          offPrompt(res.prompt_id); MT.busy = false; $('.mt-go', root).disabled = false;
+          const v = $('.mt-res', root); v.src = ev.item.url; v.hidden = false; v.muted = true; v.play().catch(() => {}); $('.mt-empty', root).hidden = true;
+          st.innerHTML = 'Готово: ролик в Библиотеке. <button class="btn pri" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>';
+          $('#mtUp', root).onclick = () => openUpscale(byId(ev.item.id) || normItem(ev.item));
+        } else if (ev.type === 'error') { offPrompt(res.prompt_id); MT.busy = false; $('.mt-go', root).disabled = false; st.textContent = 'Ошибка ComfyUI: ' + ev.message; }
+        else if (ev.type === 'interrupted') { offPrompt(res.prompt_id); MT.busy = false; $('.mt-go', root).disabled = false; st.textContent = 'Остановлено'; }
+      });
+    } catch (err) { MT.busy = false; $('.mt-go', root).disabled = false; st.textContent = 'Ошибка: ' + err.message; }
+  };
+  IMG_PANELS.push(render);
+  render();
+})();
 </script>
 </body>
 </html>

@@ -50,7 +50,7 @@ DEFAULT_SKILL_SETTINGS = {
 IMAGE_SKILLS = {"krea": "krea-2", "fluxt": "flux2-klein", "qwent": "qwen-image-2-1-director-prompt",
                 "qwen": "qwen-image-2-1-director-prompt", "sheet": "karta-personazha", "sheet6": "karta-personazha",
                 "story": "storyboard"}
-AGENT_TARGETS = ("video", "lipsync", "refs", "actor", "action") + tuple(IMAGE_SKILLS)
+AGENT_TARGETS = ("video", "lipsync", "refs", "actor", "action", "long") + tuple(IMAGE_SKILLS)
 # long extra reference files that would not fit next to the rest into the model's context
 SKIP_REFS = {"platform-adapters.md", "long-form-writing.md"}
 
@@ -284,6 +284,40 @@ def system_prompt(skills_text, target, ctx):
             "- Если к чату приложена картинка персонажа, опираясь на неё, опиши его внешность (DNA) подробно: лист рисуется "
             "с нуля по тексту. Если лист нужен именно по готовой картинке, одной строкой подскажи раздел «Правка картинки» → "
             "«Лист персонажа» → 6 панелей: там это делается по самой картинке и точнее.")
+    elif target == "long":
+        lg = ctx.get("long") or {}
+        sound = lg.get("sound")
+        secs = lg.get("secs") or []
+        snd = ("ЗВУК: пользователь загрузит свою песню или голос, видео подстроится под них. Слова песни в текст НЕ пиши, "
+               "модель их слышит. Пиши только игру: пение, эмоции, движения и камеру в ритм. Если пользователь назвал части песни "
+               "(куплет, припев, проигрыш), раздели сцены по ним, иначе делай сцены по 10 секунд."
+               if sound == "own" else
+               "ЗВУК: своего аудио нет, модель сама делает звук по тексту. Реплики героев пиши в <d>[Язык] ...</d> на языке "
+               "пользователя, и одной короткой фразой в конце сцены напиши фоновый звук и музыку за кадром."
+               if sound == "none" else
+               "ЗВУК: если пользователь не сказал, с песней ролик или без, спроси одним вопросом. С песней слова песни в текст "
+               "не пиши (модель их слышит), без песни реплики героев пиши в <d>[Язык] ...</d>.")
+        mode_rules = (
+            "Режим приложения: ДЛИННОЕ ВИДЕО (сцены идут одна за другой, Singularity Ref2V + Pika). Ролик состоит из сцен, "
+            "длина сцены от 3 до 15 секунд (по умолчанию 10), сцен не больше 12"
+            + (f"; сейчас в разделе {len(secs)} сцен: {', '.join(str(int(x)) for x in secs)} с" if secs else "")
+            + ". Если пользователь не назвал число сцен, предложи его сам по описанию (обычно 2-6).\n"
+            "ГЛАВНОЕ: каждая следующая сцена продолжает прошлую, но модель видит только последнюю секунду прошлой сцены и "
+            "референс-картинки. Текст соседних сцен она НЕ видит. Поэтому:\n"
+            "- в КАЖДОЙ сцене коротко заново назови героя и место, ссылаясь на картинки как <Picture 1>, <Picture 2> "
+            f"(приложено картинок: {n_img}); внешность подробно не расписывай, её даёт картинка;\n"
+            "- одно главное действие на сцену, не пять;\n"
+            "- камера отдельной фразой (наезд, облёт, отъезд), свет и настроение одной фразой;\n"
+            "- начало сцены продолжает конец прошлой: на стыке не меняй место, одежду и позу резко, смену места делай плавной;\n"
+            f"- {snd}\n"
+            "ФОРМАТ ОТВЕТА: ровно ОДИН блок prompt. Внутри сцены по порядку, каждая начинается отдельной строкой "
+            "`SCENE N | S`, где N номер сцены, S длина в секундах (целое 3-15), а дальше один абзац обычного английского "
+            "текста. БЕЗ полей `integrated_multimodal_description`, `[Shot 1]`, таймкодов и `overall_soundscape`: приложение "
+            "добавит обёртку само. Пример:\n"
+            "SCENE 1 | 10\nA knight <Picture 1> stands in the ruined throne room <Picture 2>, slowly raising a glowing guitar. "
+            "Camera pushes in from wide to medium shot. Red glow, drifting ash.\n\n"
+            "SCENE 2 | 10\nThe knight <Picture 1> in the ruined throne room <Picture 2> starts playing fiercely, head tilted back. "
+            "Camera circles him at chest height. Flickering ghostly light on the walls.")
     elif target in ("refs", "action"):
         mode_rules = (
             ("Режим приложения: ЭКШН-СЦЕНЫ (Hybrid FL2VA/Ref2VA, сэмплинг 8 шагов в низком разрешении + 4 в высоком): "

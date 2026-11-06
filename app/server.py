@@ -96,6 +96,7 @@ ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 HOME = Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT
 UI_DIR = ROOT / "ui"
 DATA_DIR = Path(os.environ.get("H3STUDIO_DATA", HOME / "data"))
+LONG_DIR = DATA_DIR / "long"   # saved scene states of the long video made scene by scene
 LIBRARY_FILE = DATA_DIR / "library.json"
 QUEUE_FILE = DATA_DIR / "queue.json"
 WORKFLOWS_DIR = DATA_DIR / "workflows"
@@ -201,7 +202,17 @@ class App:
 
     # ---------- ComfyUI connection ----------
 
+    def apply_mirror(self):
+        engine.HF_MIRROR = "hf-mirror.com" if self.config.get("hf_mirror") else ""
+
+    async def h_mirror(self, req):
+        on = bool((await req.json()).get("on"))
+        self.config.update(hf_mirror=on)
+        self.apply_mirror()
+        return web.json_response({"ok": True, "on": on})
+
     async def start(self, _app):
+        self.apply_mirror()
         self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=_ssl_context()))
         if self.config.get("engine") == "managed" and self.config.get("setup_done") and not self.comfy_override:
             self.start_managed()
@@ -266,7 +277,7 @@ class App:
             if hit:
                 found.add(role)
         # modes added after a set-up was made: with your own ComfyUI they switch on by themselves when the files are there
-        self.auto_modes = {m for m in ("krea", "kreareal", "qwen", "flux", "upscale") if self.config.get("engine") == "external"
+        self.auto_modes = {m for m in ("krea", "kreareal", "qwen", "flux", "upscale", "long") if self.config.get("engine") == "external"
                            and all(r in found for r in catalog.MODE_ROLES[m])}
         needed = catalog.roles_for(self.modes())
         missing = [entries[r] for r in needed if r in entries and r not in found]
@@ -387,6 +398,21 @@ class App:
         files = [f for _, f in tagged]
         node_of = {id(f): nid for nid, f in tagged}
         videos = [f for f in files if f["filename"].lower().endswith((".mp4", ".webm", ".mkv", ".mov"))]
+        videos = [f for f in videos if f.get("type", "output") == "output"] or videos  # not the previews of loaded clips
+        lg = (job.get("meta") or {}).get("long")
+        if lg:  # a scene of the long video: keep the tail of its latent for the next scene
+            lat = next((f for f in files if f["filename"].lower().endswith(".latent")), None)
+            if lat and videos:
+                try:
+                    async with self.session.get(self.comfy + "/view", params={
+                            "filename": lat["filename"], "subfolder": lat.get("subfolder", ""), "type": lat.get("type", "output")}) as r:
+                        body = await r.read()
+                    if r.status == 200 and body:
+                        d = LONG_DIR / lg["run"]
+                        d.mkdir(parents=True, exist_ok=True)
+                        (d / f"state_{lg['part']}.latent").write_bytes(body)
+                except Exception as e:
+                    self.note_error(f"Не удалось сохранить состояние сцены: {e}")
         images = [f for f in files if f["filename"].lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
                   and f.get("type", "output") == "output"]
         if not videos and not images:
@@ -442,6 +468,17 @@ class App:
             return None
         return self.output_dir / item["file"].get("subfolder", "") / item["file"]["filename"]
 
+    async def upload_state(self, path, name):
+        """Put a saved scene state (.latent) into ComfyUI's input folder, where its LoadLatent node looks for it."""
+        data = aiohttp.FormData()
+        data.add_field("image", path.read_bytes(), filename=name, content_type="application/octet-stream")
+        data.add_field("type", "input")
+        data.add_field("overwrite", "true")
+        status, res = await self.comfy_json("POST", "/upload/image", data=data)
+        if status != 200:
+            raise web.HTTPBadGateway(text="Не удалось передать состояние сцены в ComfyUI")
+        return res["name"]
+
     async def upload_input(self, field, rh=None):
         """Put an image/audio/video file into ComfyUI's input/h3studio folder (or upload it to RunningHub)."""
         data = aiohttp.FormData()
@@ -476,7 +513,7 @@ class App:
         models = [{"role": role, "title": catalog.ROLE_TITLES[role], "name": self.model_names[role],
                    "category": catalog.VARIANTS[role][variant]["category"],
                    "folder": catalog.VARIANTS[role][variant]["category"], "marks": catalog.marks_text(role),
-                   "file": catalog.VARIANTS[role][variant]["file"], "url": catalog.VARIANTS[role][variant]["url"],
+                   "file": catalog.VARIANTS[role][variant]["file"], "url": engine.mirrored(catalog.VARIANTS[role][variant]["url"]),
                    "size": catalog.VARIANTS[role][variant]["size"], "have": role not in missing,
                    "needed": role in needed, "picked": role in (self.config.get("model_pick") or {}),
                    "modes": [m for m, roles in catalog.MODE_ROLES.items() if role in roles],
@@ -488,7 +525,7 @@ class App:
         add_modes = {m: round(catalog.plan_size(choice, self.modes() + [m]) - catalog.plan_size(choice, self.modes()))
                      for m in catalog.MODE_ROLES if m not in self.modes()}
         return web.json_response({
-            **base, "online": True, "modes": self.modes(), "add_modes": add_modes,
+            **base, "online": True, "modes": self.modes(), "add_modes": add_modes, "hf_mirror": bool(self.config.get("hf_mirror")),
             "offer_modes": [{"mode": m, "gb": add_modes[m]} for m in catalog.OFFER_MODES
                             if m in add_modes and m not in (self.config.get("offered_modes") or [])],
             "gpu": gpu_name(dev.get("name", "")),
@@ -607,6 +644,7 @@ class App:
         if role not in catalog.VARIANTS:
             raise web.HTTPBadRequest(text="Неизвестная модель")
         url = catalog.VARIANTS[role][self.choice().get(role) or next(iter(catalog.VARIANTS[role]))]["url"]
+        url = engine.mirrored(url)
         webbrowser.open(url)
         return web.json_response({"ok": True, "url": url})
 
@@ -1514,6 +1552,104 @@ class App:
             "mode": "refs", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed, "steps": steps, "ref_size": ref_size})
 
+    async def h_generate_long(self, req):
+        await self.need_models("long")
+        form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "aud0") + tuple(f"simg{i}" for i in range(12)))
+        try:
+            scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10))) for x in json.loads(form.get("scenes") or "[]")]
+        except (ValueError, TypeError, AttributeError):
+            scenes = []
+        scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), files.get(f"simg{i}")) for i, (p, sec) in enumerate(scenes) if p][:12]
+        if not scenes:
+            raise web.HTTPBadRequest(text="Напишите хотя бы одну сцену")
+        images = [files[f"img{i}"] for i in range(3) if f"img{i}" in files]
+        audio = files.get("aud0")
+        try:
+            start = max(0.0, float(form.get("start") or 0))
+        except ValueError:
+            start = 0.0
+        vocals = None
+        if audio and form.get("vocals") == "1":
+            if "vocal_model" in {m["role"] for m in self.missing} or "vocal_model" not in self.model_names:
+                raise web.HTTPBadRequest(text="Для «Только вокал» нужна модель MelBand. Скачайте её в разделе «Модели».")
+            vocals = self.model_names["vocal_model"]
+        if "pika_lora" in {m["role"] for m in self.missing}:
+            raise web.HTTPBadRequest(text="Файл Pika (pika_h3_flex_turbo_8step_hd_ref2va) не найден. Скачайте его в разделе «Модели».")
+        width, height = wf.resolution(aspect, quality, form)
+        scenes = [(wf.lipsync_prompt(p, len(images) + (1 if extra else 0)), sec, extra) for p, sec, extra in scenes]
+        part = form.get("part", "")
+        if part.isdigit():  # one scene at a time: scene k continues from the saved tail of scene k-1
+            k = int(part)
+            run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]
+            if not run or k >= len(scenes):
+                raise web.HTTPBadRequest(text="Неверный номер сцены")
+            state = None
+            if k:
+                src = LONG_DIR / run / f"state_{k - 1}.latent"
+                if not src.exists():
+                    raise web.HTTPBadRequest(text=f"Сначала сделайте сцену {k}: следующая продолжает её конец.")
+                state = await self.upload_state(src, f"h3s_long_{run}_{k - 1}.latent")
+            graph, stages = wf.long_part_graph(self.model_names, scenes, k, width, height, seed, images, audio, start,
+                                               self.model_names["pika_lora"], self.custom_loras(), "match", vocals, state)
+            plan = wf.long_plan([sc[1] for sc in scenes])
+            sub = f"сцена {k + 1} из {len(scenes)}" + (" · музыка" if audio else " · звук от модели")
+            return await self.queue(graph, stages, {
+                "mode": "long", "sub": sub, "prompt": scenes[k][0], "aspect": aspect, "q": quality,
+                "len": round((plan[k]["total"] - plan[k]["ov"]) / wf.FPS, 1), "res": f"{width}×{height}", "seed": seed,
+                "long": {"run": run, "part": k, "n": len(scenes)}})
+        graph, stages = wf.long_graph(self.model_names, scenes, width, height, seed, images, audio, start,
+                                      self.model_names["pika_lora"], self.custom_loras(), "match", vocals)
+        total = wf.long_plan([sc[1] for sc in scenes])[-1]["acc"] / wf.FPS
+        sub = f"{len(scenes)} сцен · {len(images)} карт." + (", музыка" if audio else ", звук от модели")
+        return await self.queue(graph, stages, {
+            "mode": "long", "sub": sub, "prompt": "\n\n".join(sc[0] for sc in scenes), "aspect": aspect, "q": quality,
+            "len": round(total, 1), "res": f"{width}×{height}", "seed": seed})
+
+    async def item_bytes(self, item):
+        """The file of a library item: from disk, or from ComfyUI when its output folder is not known to the app."""
+        p = self.file_path(item)
+        if p and p.exists():
+            return await asyncio.to_thread(p.read_bytes)
+        f = item["file"]
+        async with self.session.get(self.comfy + "/view", params={
+                "filename": f["filename"], "subfolder": f.get("subfolder", ""), "type": f.get("type", "output")}) as r:
+            if r.status != 200:
+                raise web.HTTPBadRequest(text="Не удалось найти один из клипов: он удалён с диска?")
+            return await r.read()
+
+    async def h_montage(self, req):
+        """Join library clips in the given order with ComfyUI (no ffmpeg in the app)."""
+        form = {}
+        async for field in await req.multipart():
+            form[field.name] = await field.text()
+        try:
+            ids = [i for i in json.loads(form.get("ids") or "[]") if isinstance(i, str)][:30]
+        except ValueError:
+            ids = []
+        items = [self.library.get(i) for i in ids]
+        if len(items) < 2 or any(not it or it.get("kind") == "image" for it in items):
+            raise web.HTTPBadRequest(text="Добавьте хотя бы два видео")
+        if self.rh():
+            raise web.HTTPBadRequest(text="Монтаж работает только с локальным ComfyUI, не с облаком.")
+        names, sizes = [], []
+        for it in items:
+            data = await self.item_bytes(it)
+            name = f"h3s_m_{uuid.uuid4().hex[:10]}.{it.get('ext') or 'mp4'}"
+            fd = aiohttp.FormData()
+            fd.add_field("image", data, filename=name, content_type="video/mp4")
+            fd.add_field("type", "input")
+            status, res = await self.comfy_json("POST", "/upload/image", data=fd)
+            if status != 200:
+                raise web.HTTPBadGateway(text="Не удалось передать клип в ComfyUI")
+            names.append(res["name"])
+            mm = re.match(r"\s*(\d+)\D+(\d+)", it.get("res") or "")
+            sizes.append((int(mm.group(1)), int(mm.group(2))) if mm else None)
+        graph, stages = wf.montage_graph(names, sizes)
+        total = sum(float(it.get("len") or 0) for it in items)
+        return await self.queue(graph, stages, {
+            "mode": "montage", "sub": f"{len(items)} клипов", "prompt": "", "aspect": items[0].get("aspect", ""), "q": "",
+            "len": round(total, 1), "res": items[0].get("res", ""), "seed": 0}, last_output=True)
+
     async def h_generate_actor(self, req):
         await self.need_models("actor")
         form, prompt, aspect, quality, seed, images, videos, audios, seconds = await self.read_ref_form(req, 3)
@@ -2056,6 +2192,7 @@ def build_app(comfy_override=None):
         web.post("/api/setup/external", state.h_setup_external),
         web.post("/api/setup/install", state.h_setup_install),
         web.post("/api/mode/add", state.h_mode_add),
+        web.post("/api/settings/mirror", state.h_mirror),
         web.post("/api/mode/offered", state.h_mode_offered),
         web.post("/api/setup/cancel", state.h_setup_cancel),
         web.post("/api/open-driver-page", state.h_open_driver),
@@ -2091,6 +2228,8 @@ def build_app(comfy_override=None):
         web.post("/api/loras/custom", state.h_loras_custom_set),
         web.post("/api/generate/refs", state.h_generate_refs),
         web.post("/api/generate/actor", state.h_generate_actor),
+        web.post("/api/generate/long", state.h_generate_long),
+        web.post("/api/montage", state.h_montage),
         web.post("/api/generate/action", state.h_generate_action),
         web.get("/api/action/info", state.h_action_info),
         web.get("/api/cloud", state.h_cloud_get),

@@ -261,7 +261,7 @@ ROLE_TITLES = {
 
 MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "action": "Экшн-сцены",
                "krea": "Картинка по тексту", "kreareal": "Картинка: реализм", "qwen": "Правка картинки", "flux": "Правка картинки: FLUX.2 (можно в коммерцию)",
-               "upscale": "Увеличение видео и картинок"}
+               "upscale": "Увеличение видео и картинок", "long": "Длинное видео"}
 
 # Which roles each mode needs.
 MODE_ROLES = {
@@ -271,6 +271,8 @@ MODE_ROLES = {
     # same models as references: dialogue scenes with a voice sample, acting-first prompts
     "actor": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora"],
     "action": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
+    # long video / clips: scenes that continue each other (Singularity Ref2V + Pika LoRA, same files as References)
+    "long": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "pika_lora"],
     "krea": ["krea_unet", "krea_clip", "krea_vae"],
     "kreareal": ["kreareal_unet", "kreareal_lora", "krea_clip", "krea_vae"],
     "qwen": ["qwen_unet", "qwen_clip", "qwen_vae"],
@@ -284,6 +286,7 @@ MODE_OPTIONAL = {
     "refs": ["pika_lora", "realism_lora", "motion_repair_lora"],
     "actor": ["realism_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
+    "long": ["vocal_model"],
 }
 ALL_ROLES = list(VARIANTS)
 
@@ -377,4 +380,4 @@ def model_entry(role, variant):
 
 
 # modes that appeared after the first release: the app offers them once after an update
-OFFER_MODES = ["flux"]
+OFFER_MODES = ["flux", "long"]

@@ -280,6 +280,17 @@ def long_plan(scene_seconds, overlap=LONG_OVERLAP):
     return plan
 
 
+def _with_preview(g, model, preview):
+    """KJNodes' Model Preview Override: an ANIMATED live preview (a few frames of the video latent per step), like in the
+    ComfyUI workflow. Without it ComfyUI shows only the first frame. `preview` is None when that node is not installed."""
+    if not preview:
+        return model
+    g["14"] = {"class_type": "ModelPreviewOverrideKJ", "inputs": {
+        "model": model, "max_resolution": 512, "jpeg_quality": 75, "suppress_default_preview": False,
+        "preview_frames": 12, "preview_fps": 8, "tiny_vae": preview.get("tiny_vae", "none")}}
+    return ["14", 0]
+
+
 def _long_base(m, pika, extra_loras):
     """Model chain shared by the long-video graphs: Singularity Ref2V + memory savers + Pika (or the quality route)."""
     g = {
@@ -302,7 +313,7 @@ def _long_base(m, pika, extra_loras):
     return g, model, sched, sampler_name, steps
 
 
-def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pika=None, extra_loras=(), ref_size="match", vocals=None):
+def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pika=None, extra_loras=(), ref_size="match", vocals=None, preview=None):
     """Scenes [(prompt, seconds), ...] rendered one after another; every next scene continues the last second of the
     previous one (latent cut + noise mask), with the same reference pictures, and optionally follows a music track.
 
@@ -310,6 +321,7 @@ def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pi
     for every scene (voices and music are written in the prompts).
     """
     g, model, sched, sampler_name, steps = _long_base(m, pika, extra_loras)
+    model = _with_preview(g, model, preview)
     g["9"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": sampler_name}}
     g["10"] = {"class_type": "BasicScheduler", "inputs": {"model": model, "scheduler": sched, "steps": steps, "denoise": 1.0}}
     heard = ["11", 0]  # what the model hears; the finished video always carries the full track
@@ -329,6 +341,7 @@ def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pi
         return str(nid[0])
 
     prev_lat = prev_img = prev_aud = None
+    scene_of = {}
     for i, (sc, p) in enumerate(zip(scenes, plan)):
         prompt = sc[0]
         extra = sc[2] if len(sc) > 2 else None  # optional picture for this scene only (prop, new clothes, new place)
@@ -384,6 +397,7 @@ def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pi
             prev_aud = all_aud
             stages[aud] = "decode"
         stages.update({ref: "encode", smp: "sample", img: "decode"})
+        scene_of[smp] = i
         prev_lat, prev_img = [smp, 1], all_img
     if audio:
         final_a = add("TrimAudioDuration", audio=["11", 0], start_index=float(start), duration=round(plan[-1]["acc"] / FPS, 3))
@@ -393,6 +407,7 @@ def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pi
     vid = add("CreateVideo", images=prev_img, audio=final_a, fps=float(FPS), bit_depth="auto", color_space="sRGB", codec="none")
     save = add("SaveVideo", video=[vid, 0], filename_prefix="H3Workspace/long", format="auto", **{"format.codec": "auto"})
     stages.update({vid: "save", save: "save"})
+    stages["__scenes__"] = {"n": len(scenes), "map": scene_of}   # progress text "scene 2 of 4"
     return g, stages
 
 
@@ -400,11 +415,12 @@ LONG_STATE_TOKENS = 17   # latent tokens of the last second(s) of a scene that t
 
 
 def long_part_graph(m, scenes, k, width, height, seed, images, audio=None, start=0.0, pika=None, extra_loras=(),
-                    ref_size="match", vocals=None, state=None):
+                    ref_size="match", vocals=None, state=None, preview=None):
     """Scene number `k` (0-based) of the long video as its own job. Scene 0 starts fresh; scene k > 0 continues from the saved
     latent tail of scene k-1 (`state`, a .latent file in ComfyUI's input folder). The clip it saves has the overlap with the
     previous scene cut off, so the clips join end to end. Also saves the tail of its own latent for scene k+1."""
     g, model, sched, sampler_name, steps = _long_base(m, pika, extra_loras)
+    model = _with_preview(g, model, preview)
     g["9"] = {"class_type": "KSamplerSelect", "inputs": {"sampler_name": sampler_name}}
     g["10"] = {"class_type": "BasicScheduler", "inputs": {"model": model, "scheduler": sched, "steps": steps, "denoise": 1.0}}
     heard = ["11", 0]
@@ -479,6 +495,7 @@ def long_part_graph(m, scenes, k, width, height, seed, images, audio=None, start
     tail = add("LatentCut", samples=[sep2, 0], dim="t", index=-LONG_STATE_TOKENS, amount=LONG_STATE_TOKENS)
     keep = add("SaveLatent", samples=[tail, 0], filename_prefix="H3Workspace/long_state")
     stages.update({ref: "encode", smp: "sample", img: "decode", vid: "save", save: "save", sep2: "save", tail: "save", keep: "save"})
+    stages["__scenes__"] = {"n": len(scenes), "map": {smp: k}}
     return g, stages
 
 

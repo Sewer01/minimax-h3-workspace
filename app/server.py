@@ -355,6 +355,12 @@ class App:
 
     async def on_comfy_event(self, msg):
         t, d = msg.get("type"), msg.get("data") or {}
+        if t == "kj_preview_override":   # animated live preview of KJNodes (no prompt id in it: it belongs to the running job)
+            run = next((j for j in self.jobs.values() if j["state"] == "running"), None)
+            if run and d.get("image"):
+                await self.broadcast({"type": "preview_anim", "prompt_id": run["prompt_id"], "image": d["image"],
+                                      "mime": d.get("mime") or "image/jpeg", "step": d.get("step"), "total": d.get("total")})
+            return
         job = self.jobs.get(d.get("prompt_id"))
         if not job:
             return
@@ -365,11 +371,11 @@ class App:
         elif t == "executing" and d.get("node"):
             stage = job["stages"].get(d["node"])
             if stage:
-                await self.send_stage(job, stage)
+                await self.send_stage(job, stage, node=d["node"])
         elif t == "progress":
             stage = job["stages"].get(str(d.get("node")), job.get("stage"))
             if stage in ("sample", "sample2"):
-                await self.send_stage(job, stage, d.get("value"), d.get("max"))
+                await self.send_stage(job, stage, d.get("value"), d.get("max"), node=str(d.get("node")))
         elif t == "execution_success":
             await self.finish_job(job)
         elif t == "execution_error":
@@ -383,10 +389,15 @@ class App:
             await self.broadcast({"type": "interrupted", "prompt_id": pid})
             self.jobs.pop(pid, None)
 
-    async def send_stage(self, job, stage, step=None, total=None):
+    async def send_stage(self, job, stage, step=None, total=None, node=None):
         job["stage"] = stage
-        await self.broadcast({"type": "stage", "prompt_id": job["prompt_id"],
-                              "stage": stage, "step": step, "max": total})
+        msg = {"type": "stage", "prompt_id": job["prompt_id"], "stage": stage, "step": step, "max": total}
+        sc = job.get("scenes")
+        if sc and node is not None and str(node) in sc.get("map", {}):
+            job["scene_now"] = sc["map"][str(node)] + 1
+        if sc and job.get("scene_now"):
+            msg.update(scene=job["scene_now"], scenes=sc["n"])
+        await self.broadcast(msg)
 
     async def finish_job(self, job):
         pid = job["prompt_id"]
@@ -1143,6 +1154,7 @@ class App:
         return form, files, prompt, aspect, quality, seed
 
     async def queue(self, graph, stages, meta, last_output=False, titles=None):
+        scenes = stages.pop("__scenes__", None)   # which sampler is which scene (long video), for the progress text
         rh = self.rh()
         if rh:
             return await self.queue_cloud(rh, graph, stages, meta)
@@ -1154,7 +1166,7 @@ class App:
             return web.json_response({"error": comfy_error_text(res)}, status=400)
         pid = res["prompt_id"]
         self.jobs[pid] = {"prompt_id": pid, "state": "queued", "stages": stages, "stage": None, "meta": meta, "last_output": last_output, "titles": titles or {},
-                          "graph": graph}
+                          "graph": graph, "scenes": scenes}
         return web.json_response({"prompt_id": pid, "seed": meta["seed"], "queue_number": res.get("number")})
 
     async def need_models(self, mode):
@@ -1339,6 +1351,7 @@ class App:
         prompt = form.get("prompt", "").strip()
         if not prompt:
             raise web.HTTPBadRequest(text="Напишите промпт")
+        lab = {"label": form["batch_label"][:20]} if form.get("batch_label") else {}  # "3 из 8" for a series from a prompt list
         aspect = form.get("aspect", "16:9")
         if aspect not in wf.KREA_SIZES:
             raise web.HTTPBadRequest(text="Неизвестный формат")
@@ -1352,24 +1365,24 @@ class App:
             graph, stages = wf.flux_t2i_graph(self.model_names, prompt, width, height, seed)
             return await self.queue(graph, stages, {
                 "mode": "krea", "sub": "Картинка (FLUX.2)", "prompt": prompt, "aspect": aspect, "q": "1K",
-                "len": 0.0, "res": f"{width}×{height}", "seed": seed})
+                "len": 0.0, "res": f"{width}×{height}", "seed": seed, **lab})
         if engine == "qwen":
             await self.need_models("qwen")
             graph, stages = wf.qwen_t2i_graph(self.model_names, prompt, form.get("negative", "").strip()[:600], width, height, seed)
             return await self.queue(graph, stages, {
                 "mode": "krea", "sub": "Картинка (Qwen 2.1)", "prompt": prompt, "aspect": aspect, "q": "1K",
-                "len": 0.0, "res": f"{width}×{height}", "seed": seed})
+                "len": 0.0, "res": f"{width}×{height}", "seed": seed, **lab})
         if form.get("style") == "real":
             await self.need_models("kreareal")
             scale = wf.KREA_REAL_SCALES.get(form.get("scale", "2k"), 1.5)
             graph, stages = wf.krea_real_graph(self.model_names, prompt, width, height, seed, scale)
             return await self.queue(graph, stages, {
                 "mode": "krea", "sub": "Картинка: реализм", "prompt": prompt, "aspect": aspect, "q": "4K" if scale > 2 else "2K",
-                "len": 0.0, "res": f"{int(width * scale)}×{int(height * scale)}", "seed": seed})
+                "len": 0.0, "res": f"{int(width * scale)}×{int(height * scale)}", "seed": seed, **lab})
         graph, stages = wf.krea_graph(self.model_names, prompt, width, height, seed)
         return await self.queue(graph, stages, {
             "mode": "krea", "sub": "Картинка по тексту", "prompt": prompt, "aspect": aspect, "q": "1K",
-            "len": 0.0, "res": f"{width}×{height}", "seed": seed})
+            "len": 0.0, "res": f"{width}×{height}", "seed": seed, **lab})
 
     async def h_generate_qwen(self, req):
         form, image, seed = await self.read_image_form(req)
@@ -1552,6 +1565,24 @@ class App:
             "mode": "refs", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed, "steps": steps, "ref_size": ref_size})
 
+    async def preview_opts(self):
+        """Settings for the animated live preview, or None when ComfyUI has no KJNodes' Model Preview Override."""
+        try:
+            status, oi = await self.comfy_json("GET", "/object_info/ModelPreviewOverrideKJ")
+        except Exception:
+            return None
+        node = (oi or {}).get("ModelPreviewOverrideKJ") if status == 200 else None
+        if not node:
+            return None
+        tiny = "none"
+        try:
+            spec = node["input"].get("optional", {}).get("tiny_vae") or []
+            options = (spec[1] or {}).get("options") if len(spec) > 1 and isinstance(spec[1], dict) else spec[0]
+            tiny = next((o for o in options or [] if o.replace("\\", "/").split("/")[-1].startswith("taeh3")), "none")
+        except Exception:
+            pass
+        return {"tiny_vae": tiny}
+
     async def h_generate_long(self, req):
         await self.need_models("long")
         form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "aud0") + tuple(f"simg{i}" for i in range(12)))
@@ -1590,7 +1621,8 @@ class App:
                     raise web.HTTPBadRequest(text=f"Сначала сделайте сцену {k}: следующая продолжает её конец.")
                 state = await self.upload_state(src, f"h3s_long_{run}_{k - 1}.latent")
             graph, stages = wf.long_part_graph(self.model_names, scenes, k, width, height, seed, images, audio, start,
-                                               self.model_names["pika_lora"], self.custom_loras(), "match", vocals, state)
+                                               self.model_names["pika_lora"], self.custom_loras(), "match", vocals, state,
+                                               await self.preview_opts())
             plan = wf.long_plan([sc[1] for sc in scenes])
             sub = f"сцена {k + 1} из {len(scenes)}" + (" · музыка" if audio else " · звук от модели")
             return await self.queue(graph, stages, {
@@ -1598,7 +1630,7 @@ class App:
                 "len": round((plan[k]["total"] - plan[k]["ov"]) / wf.FPS, 1), "res": f"{width}×{height}", "seed": seed,
                 "long": {"run": run, "part": k, "n": len(scenes)}})
         graph, stages = wf.long_graph(self.model_names, scenes, width, height, seed, images, audio, start,
-                                      self.model_names["pika_lora"], self.custom_loras(), "match", vocals)
+                                      self.model_names["pika_lora"], self.custom_loras(), "match", vocals, await self.preview_opts())
         total = wf.long_plan([sc[1] for sc in scenes])[-1]["acc"] / wf.FPS
         sub = f"{len(scenes)} сцен · {len(images)} карт." + (", музыка" if audio else ", звук от модели")
         return await self.queue(graph, stages, {

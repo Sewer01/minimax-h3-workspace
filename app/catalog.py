@@ -374,3 +374,7 @@ def choose_models(hw, profile=None):
 
 def model_entry(role, variant):
     return dict(VARIANTS[role][variant], role=role, variant=variant, title=ROLE_TITLES[role])
+
+
+# modes that appeared after the first release: the app offers them once after an update
+OFFER_MODES = ["flux"]

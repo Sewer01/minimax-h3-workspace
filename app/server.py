@@ -46,6 +46,18 @@ def split_frames(text):
     return frames
 
 
+def _ssl_context():
+    # Windows store + the bundled certifi list: helps PCs with an outdated root-certificate store
+    import ssl
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+        ctx.load_verify_locations(cafile=certifi.where())
+    except Exception:
+        pass
+    return ctx
+
+
 class JobStore(dict):
     """prompt_id -> job; every change is written to disk so a closed program or a power cut does not lose the queue."""
 
@@ -190,7 +202,7 @@ class App:
     # ---------- ComfyUI connection ----------
 
     async def start(self, _app):
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=_ssl_context()))
         if self.config.get("engine") == "managed" and self.config.get("setup_done") and not self.comfy_override:
             self.start_managed()
         self.ws_task = asyncio.create_task(self.comfy_ws_loop())
@@ -477,6 +489,8 @@ class App:
                      for m in catalog.MODE_ROLES if m not in self.modes()}
         return web.json_response({
             **base, "online": True, "modes": self.modes(), "add_modes": add_modes,
+            "offer_modes": [{"mode": m, "gb": add_modes[m]} for m in catalog.OFFER_MODES
+                            if m in add_modes and m not in (self.config.get("offered_modes") or [])],
             "gpu": gpu_name(dev.get("name", "")),
             "vram_total": dev.get("vram_total"), "vram_free": dev.get("vram_free"),
             "comfy_version": stats["system"].get("comfyui_version"),
@@ -742,6 +756,21 @@ class App:
             nodes = []
         return web.json_response({"ok": True, "version": stats["system"].get("comfyui_version"),
                                   "missing": [m["file"] for m in missing], "nodes_missing": nodes})
+
+    async def h_mode_offered(self, req):
+        mode = (await req.json()).get("mode")
+        self.config.update(offered_modes=sorted(set(self.config.get("offered_modes") or []) | {mode}))
+        return web.json_response({"ok": True})
+
+    async def h_mode_add(self, req):
+        """Own ComfyUI: switch on a mode added after the set-up, so its model files show up in Models (with download buttons)."""
+        mode = (await req.json()).get("mode")
+        if mode not in catalog.MODE_ROLES:
+            return web.json_response({"error": "Неизвестный режим"}, status=400)
+        modes = sorted(set(self.modes()) | {mode}, key=list(catalog.MODE_ROLES).index)
+        self.config.update(modes=modes)
+        await self.resolve_models()
+        return web.json_response({"ok": True})
 
     async def h_setup_install(self, req):
         if self.installer:
@@ -2026,6 +2055,8 @@ def build_app(comfy_override=None):
         web.get("/api/setup/info", state.h_setup_info),
         web.post("/api/setup/external", state.h_setup_external),
         web.post("/api/setup/install", state.h_setup_install),
+        web.post("/api/mode/add", state.h_mode_add),
+        web.post("/api/mode/offered", state.h_mode_offered),
         web.post("/api/setup/cancel", state.h_setup_cancel),
         web.post("/api/open-driver-page", state.h_open_driver),
         web.post("/api/clipboard", state.h_clipboard),

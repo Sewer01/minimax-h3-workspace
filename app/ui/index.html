@@ -558,7 +558,12 @@ details[open] summary::before{content:'－ '}
 .v-media video{width:100%;max-height:70vh;display:block;background:#000}
 .lib-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
 .lib-bar .sp{flex:1}
-.lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--lib-min,230px),1fr));gap:14px}
+.zoom-btns{display:inline-flex;gap:4px;align-items:center}
+.zoom-btns .btn{padding:6px 10px;min-width:34px}
+.zoom-btns small{color:var(--dim);font-size:11px;min-width:38px;text-align:center}
+.sk-list[hidden]{display:none}
+#skToggle{cursor:pointer}
 .li{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;transition:.15s}
 .li:hover{border-color:var(--line-2);transform:translateY(-2px)}
 .li.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
@@ -638,6 +643,7 @@ details[open] summary::before{content:'－ '}
       Отчёт для разработчика
     </button>
     <button class="sup-btn" id="supBtn" type="button" title="Программа бесплатная. Если она вам помогла, можно поддержать автора: откроется страница оплаты в браузере. Ничего вводить в самой программе не нужно.">♥ Поддержать проект</button>
+    <div class="zoom-btns" id="uiZoom" title="Размер интерфейса (или Ctrl + колесо мыши)" style="margin:0 0 8px 4px"><button class="btn" id="uiSm" type="button">А−</button><small id="uiPct">100%</small><button class="btn" id="uiLg" type="button">А+</button></div>
     <div class="themes" id="themes" title="Тема оформления">
       <button data-t="" style="background:#e8264f" title="Бордо"></button>
       <button data-t="light" style="background:#f3f4f6" title="Светлая"></button>
@@ -975,10 +981,10 @@ details[open] summary::before{content:'－ '}
             <small class="hint" id="agCtx" style="display:block;margin-top:8px"></small>
           </div>
           <div class="card">
-            <div class="card-h"><h3>Скиллы</h3>
+            <div class="card-h"><h3 id="skToggle" title="Показать или скрыть список">Скиллы <small id="skCnt" class="hint"></small> <span id="skArr">▸</span></h3>
               <label class="btn" title="Выберите папку скилла (с файлом SKILL.md)">Загрузить<input type="file" id="skUp" webkitdirectory multiple hidden></label>
             </div>
-            <div id="skList" class="sk-list"></div>
+            <div id="skList" class="sk-list" hidden></div>
             <small class="hint">«Авто» — скилл подключается, когда в сообщении есть одно из слов.</small>
           </div>
         </div>
@@ -1046,6 +1052,7 @@ details[open] summary::before{content:'－ '}
         <span class="counter" id="selCount" hidden></span>
         <button class="btn" id="bulkSave" hidden>Сохранить выбранные</button>
         <button class="btn danger" id="bulkDel" hidden>Удалить выбранные</button>
+        <span class="zoom-btns" title="Размер значков (или Ctrl + колесо мыши)"><button class="btn" id="libSm" type="button">−</button><button class="btn" id="libLg" type="button">+</button></span>
         <button class="btn" id="selToggle">Выбрать</button>
       </div>
       <div class="lib" id="lib"></div>
@@ -1320,6 +1327,34 @@ async function askSavedQueue() {
     });
   } catch {}
 }
+let OFFER_SHOWN = false;
+function offerNewModes(s) {
+  const o = (s.offer_modes || [])[0];
+  if (OFFER_SHOWN || !o) return;
+  OFFER_SHOWN = true;
+  const show = () => {
+    if (!$('#confirm').hidden) return setTimeout(show, 3000);  // another question is open: wait
+    const name = { flux: 'Правка картинки: FLUX.2 klein (можно в коммерцию)' }[o.mode] || o.mode;
+    const btn = $('#confirm [data-close]');
+    const later = () => fetch('/api/mode/offered', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: o.mode }) });
+    btn.addEventListener('click', later, { once: true });
+    confirmBox('Новый режим', `В обновлении появился режим «${name}». Чтобы он заработал, нужно скачать модели (около ${o.gb} ГБ). Добавить сейчас? Скачивание можно закрыть и продолжить позже, оно докачается с того же места.`, 'Добавить', async () => {
+      btn.removeEventListener('click', later); await later();
+      try {
+        if (s.engine === 'external') {
+          await postJSON('/api/mode/add', { mode: o.mode }); await loadStatus(); goTo('models');
+          if (MD_NEED.length) mdStart(MD_NEED);
+        } else {
+          if (!setupInfo) setupInfo = await (await fetch('/api/setup/info')).json();
+          const c = setupInfo.config;
+          await postJSON('/api/setup/install', { install_dir: c.install_dir, models_dir: c.models_dir || '', add_mode: o.mode });
+          showSetupPane('progress'); setStep(2); resetProgress();
+        }
+      } catch (err) { toast(err.message); }
+    });
+  };
+  setTimeout(show, 2000);
+}
 async function loadStatus() {
   try {
     const s = await (await fetch('/api/status')).json();
@@ -1328,6 +1363,7 @@ async function loadStatus() {
     if (!s.online) return;
     askSavedQueue();
     renderModels(s);
+    offerNewModes(s);
   } catch { setEngine(false); }
 }
 
@@ -2424,6 +2460,7 @@ async function afterSetup() {
 
 /* status after setup */
 let MD_ENGINE = '', MD_EXTDIR = '', MD_NEED = [];
+let MD_EXT = false;
 function renderModels(s) {
   if (!s.models) return;
   MD_ENGINE = s.engine;
@@ -2436,13 +2473,14 @@ function renderModels(s) {
     return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
+  MD_EXT = s.engine === 'external';
   MD_EXTDIR = (s.paths && s.paths.ext_models) || '';
   const need = s.models.filter(m => !m.have && m.modes.some(x => (s.modes || []).includes(x)));
   MD_NEED = need.map(m => m.role);
   $('#mdFixExt').hidden = s.engine !== 'external' || !need.length;
   $('#mdFixExt').textContent = `Скачать недостающие (${need.length}, ${GB(need.reduce((a, m) => a + m.size, 0))})`;
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', flux: 'Правка картинки: FLUX.2 (в коммерцию)', upscale: 'Увеличение видео и картинок' };
-  $('#mdAdd').innerHTML = s.engine === 'managed' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
+  $('#mdAdd').innerHTML = s.engine === 'managed' || s.engine === 'external' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
     `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${gb} ГБ)</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
     const off = s.modes && !s.modes.includes(n.dataset.view);
@@ -2467,6 +2505,10 @@ $('#mdFix').onclick = async () => {
 };
 $('#mdAdd').onclick = async e => {
   const b = e.target.closest('[data-add]'); if (!b) return;
+  if (b.closest('#mdAdd') && MD_EXT) {
+    try { await postJSON('/api/mode/add', { mode: b.dataset.add }); toast('Режим добавлен: файлы моделей — в списке ниже'); loadStatus(); } catch (err) { toast(err.message); }
+    return;
+  }
   if (!setupInfo) setupInfo = await (await fetch('/api/setup/info')).json();
   const c = setupInfo.config;
   try {
@@ -3582,6 +3624,7 @@ function onAgentSetup(ev) {
 const SK_MODES = { always: 'Всегда', auto: 'Авто', off: 'Выкл' };
 const AG_SK_IMG = { 'storyboard': 'Раскадровка', 'krea-2': 'Картинка по тексту', 'flux2-klein': 'Картинка: FLUX.2 klein', 'qwen-image-2-1-director-prompt': 'Правка картинки', 'karta-personazha': 'Лист персонажа' };
 function renderSkills(list) {
+  $('#skCnt').textContent = `(${list.length})`;
   $('#skList').innerHTML = list.map(s => `<div class="sk" data-id="${esc(s.id)}">
     <div class="sk-top"><b title="${esc(s.name)}">${esc(s.name)}</b>
       ${AG_SK_IMG[s.id] ? `<span class="hint" title="Подключается сама, когда выбрана кнопка «${AG_SK_IMG[s.id]}» в «Промпт для»">${AG_SK_IMG[s.id]}</span>` : `<select>${Object.entries(SK_MODES).map(([k, v]) => `<option value="${k}" ${k === s.mode ? 'selected' : ''}>${v}</option>`).join('')}</select>`}
@@ -3590,6 +3633,9 @@ function renderSkills(list) {
     ${s.mode === 'auto' && !AG_SK_IMG[s.id] ? `<input value="${esc(s.keywords.join(', '))}" placeholder="слова через запятую">` : ''}
     <small class="hint">${s.refs.length ? `+ справочники: ${s.refs.length}` : ''}</small></div>`).join('');
 }
+function skShow(on) { $('#skList').hidden = !on; $('#skArr').textContent = on ? '▾' : '▸'; try { localStorage.setItem('h3-sk-open', on ? '1' : ''); } catch {} }
+$('#skToggle').onclick = () => skShow($('#skList').hidden);
+try { skShow(localStorage.getItem('h3-sk-open') === '1'); } catch {}
 $('#skList').addEventListener('change', async e => {
   const card = e.target.closest('.sk'); if (!card) return;
   const body = e.target.tagName === 'SELECT' ? { mode: e.target.value } : { keywords: e.target.value.split(',') };
@@ -4670,6 +4716,31 @@ if (API) {
     apply(b.dataset.t); try { localStorage.setItem(KEY, b.dataset.t); } catch {}
   });
 })();
+
+/* interface zoom and library card size (buttons and Ctrl + mouse wheel) */
+const UI_Z = { ui: 1, lib: 230 };
+try { UI_Z.ui = +localStorage.getItem('h3-ui-zoom') || 1; UI_Z.lib = +localStorage.getItem('h3-lib-size') || 230; } catch {}
+function applyZoom() {
+  UI_Z.ui = Math.min(1.5, Math.max(0.6, Math.round(UI_Z.ui * 20) / 20));
+  UI_Z.lib = Math.min(420, Math.max(110, Math.round(UI_Z.lib / 10) * 10));
+  document.documentElement.style.zoom = UI_Z.ui;
+  $('#lib').style.setProperty('--lib-min', UI_Z.lib + 'px');
+  $('#uiPct').textContent = Math.round(UI_Z.ui * 100) + '%';
+  try { localStorage.setItem('h3-ui-zoom', UI_Z.ui); localStorage.setItem('h3-lib-size', UI_Z.lib); } catch {}
+}
+$('#uiSm').onclick = () => { UI_Z.ui -= 0.1; applyZoom(); };
+$('#uiLg').onclick = () => { UI_Z.ui += 0.1; applyZoom(); };
+$('#uiPct').onclick = () => { UI_Z.ui = 1; applyZoom(); };
+$('#libSm').onclick = () => { UI_Z.lib -= 30; applyZoom(); };
+$('#libLg').onclick = () => { UI_Z.lib += 30; applyZoom(); };
+window.addEventListener('wheel', e => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  const up = e.deltaY < 0;
+  if (e.target.closest && e.target.closest('#view-library')) UI_Z.lib += up ? 20 : -20; else UI_Z.ui += up ? 0.05 : -0.05;
+  applyZoom();
+}, { passive: false });
+applyZoom();
 </script>
 </body>
 </html>

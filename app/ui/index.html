@@ -3109,17 +3109,19 @@ function makeRefMode(cfg) {
     };
     root._recount = recount;
     root._mode = 'parts'; root._run = Math.random().toString(36).slice(2, 12);
-    const sig = c => JSON.stringify([$('textarea', c).value.trim(), $('input[type=range]', c).value, c._file ? c._file.name : '']);
+    const sig = c => JSON.stringify([+$('input[type=range]', c).value]);
+    const secOf = sg => { try { const a = JSON.parse(sg); return a.length === 1 ? a[0] : a[1]; } catch { return null; } };   // old saved projects had [text, seconds, file]
+    const sigOk = c => !!c._done && String(secOf(c._done.sig)) === String(+$('input[type=range]', c).value);
     function readyUpTo() {   // how many scenes from the start are done and unchanged
-      let n = 0; for (const c of $$('.sc', root)) { if (c._done && c._done.sig === sig(c)) n++; else break; } return n;
+      let n = 0; for (const c of $$('.sc', root)) { if (sigOk(c)) n++; else break; } return n;
     }
     function refreshStates() {
       const parts = root._mode === 'parts', ready = readyUpTo();
       $$('.sc', root).forEach((c, i) => {
         $('.sc-act', c).hidden = !parts;
-        const done = c._done && c._done.sig === sig(c) && i < ready;
+        const done = sigOk(c) && i < ready;
         const stale = c._done && !done;
-        $('.sc-state', c).textContent = done ? '✓ готова, клип в Библиотеке' : stale ? 'изменена: переделайте (следующие тоже)' : i > ready ? `ждёт сцену ${ready + 1}: эта продолжает её конец` : '';
+        $('.sc-state', c).textContent = done ? '✓ готова, клип в Библиотеке' + (c._done.text != null && c._done.text.trim() !== $('textarea', c).value.trim() ? ' · текст изменён после генерации, клип прежний' : '') : stale ? 'длина изменена: переделайте (следующие тоже)' : i > ready ? `ждёт сцену ${ready + 1}: эта продолжает её конец` : '';
         $('.sc-state', c).style.color = done ? 'var(--ok, #7bd88f)' : stale ? 'var(--pink)' : '';
         const b = $('.sc-do', c); b.disabled = false; b.style.opacity = i > ready ? 0.55 : ''; b.textContent = done ? 'Переделать' : 'Сделать эту сцену';
         const rg = $('.sc-redogo', c); if (rg) rg.hidden = !(done && parts && i < $$('.sc', root).length - 1);
@@ -3186,11 +3188,11 @@ function makeRefMode(cfg) {
       if (root._doneIds && root._doneIds.has(item.id)) return;   // the same result can arrive twice (panel and queue)
       (root._doneIds = root._doneIds || new Set()).add(item.id);
       if (lg.all) {   // the whole video at once: every scene is done, the last one can be continued
-        $$('.sc', root).forEach(c => { c._done = { sig: root._sig(c), url: item.url, id: item.id }; });
+        $$('.sc', root).forEach(c => { c._done = { sig: root._sig(c), url: item.url, id: item.id, text: $('textarea', c).value }; });
         refreshStates(); toast('Ролик готов. Чтобы продлить его, добавьте сцену и нажмите «Сделать эту сцену» (режим «По частям»).'); return;
       }
       const c = $$('.sc', root)[lg.part]; if (!c) return;
-      c._done = { sig: (root._sent && root._sent[lg.part]) || root._sig(c), url: item.url, id: item.id };
+      c._done = { sig: (root._sent && root._sent[lg.part]) || root._sig(c), url: item.url, id: item.id, text: root._sentText && root._sentText[lg.part] != null ? root._sentText[lg.part] : $('textarea', c).value };
       $$('.sc', root).slice(lg.part + 1).forEach(x => { x._done = null; });   // later scenes continued from the old one
       refreshStates();
       if (root._chainPart === lg.part) { toast(`Сцена ${lg.part + 1} готова. Запускаю следующую…`); setTimeout(root._chainNext, 800); return; }
@@ -3212,7 +3214,7 @@ function makeRefMode(cfg) {
         const proj = { run, t: Date.now(), mode: root._mode, snd: root._snd, start: $('.lm-start', root).value, vocals: $('.lm-vocals', root).checked,
           aspect: S.aspect, q: S.q, cw: S.cw || 0, ch: S.ch || 0, src: root._src ? { id: root._src.id || '', name: root._src.name } : null,
           scenes: $$('.sc', root).map(c => ({ prompt: $('textarea', c).value, sec: +$('input[type=range]', c).value, img: c._file ? c._file.name : '',
-            done: c._done ? { sig: c._done.sig, url: c._done.url, id: c._done.id } : null })) };
+            done: c._done ? { sig: c._done.sig, url: c._done.url, id: c._done.id, text: c._done.text } : null })) };
         const all = loadAll(); all[run] = proj;
         Object.keys(all).sort((a, b) => all[b].t - all[a].t).slice(8).forEach(k => delete all[k]);   // the 8 latest projects
         localStorage.setItem(PKEY, JSON.stringify(all)); localStorage.setItem('h3-long-last', run);
@@ -3248,7 +3250,7 @@ function makeRefMode(cfg) {
       for (const [i, x] of p.scenes.entries()) if (x.img) await putInto($('.sc-img input', cards[i]), await getRef('simg' + i));
       if (p.src) { const sf = p.src.id ? null : await memFile('get', `long/${run}/src`); root._setSrc(p.src.id ? { id: p.src.id, name: p.src.name } : sf instanceof File ? { file: sf, name: p.src.name } : null, false); }
       else root._setSrc(null, false);
-      p.scenes.forEach((x, i) => { cards[i]._done = x.done && byId(x.done.id) ? { sig: x.done.sig, url: x.done.url, id: x.done.id } : null; });
+      p.scenes.forEach((x, i) => { cards[i]._done = x.done && byId(x.done.id) ? { sig: x.done.sig, url: x.done.url, id: x.done.id, text: x.done.text } : null; });
       // the continuation point of the last finished scene must still be on the disk
       const ready = readyUpTo();
       if (ready) {
@@ -3395,7 +3397,7 @@ function makeRefMode(cfg) {
           fd.append('part', k); fd.append('run', root._run);
           if (root._src) { fd.append('src_project', '1'); if (k === 0) { if (root._src.id) fd.append('src_item', root._src.id); else if (root._src.file) fd.append('srcvid', root._src.file); } }
           root._pending = { k, sig: root._sig(all[k]) };
-          (root._sent = root._sent || {})[k] = root._pending.sig;
+          (root._sent = root._sent || {})[k] = root._pending.sig; (root._sentText = root._sentText || {})[k] = $('textarea', all[k]).value;
         }
         if (cfg.scenes && root._mode !== 'parts') fd.append('run', root._run);
         if (cfg.scenes) { fd.append('scenes', JSON.stringify(sceneList())); $$('.sc', root).forEach((c, i) => { if (c._file) fd.append('simg' + i, c._file); }); fd.append('start', $('.lm-start', root).value || '0'); fd.append('vocals', root._snd === 'own' && $('.lm-vocals', root).checked ? '1' : '0'); }

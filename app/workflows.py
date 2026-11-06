@@ -832,7 +832,7 @@ UPSCALE_SCALES = {"1.5": 1.5, "2": 2.0}
 UPSCALE_SEC_PER_MP_FRAME = 3.24  # measured on an RTX 4060 Ti 16 GB: 5 s of 1056x608 -> 1584x912 took ~10 minutes
 
 
-def upscale_image_graph(m, image, scale, seed):
+def upscale_image_graph(m, image, scale, seed, soften=0.0):
     """The same SeedVR2 one-step enlarge for a single picture."""
     g = {
         "1": {"class_type": "LoadImage", "inputs": {"image": image}},
@@ -854,6 +854,10 @@ def upscale_image_graph(m, image, scale, seed):
     }
     stages = {"1": "load", "5": "load", "6": "load", "3": "encode", "4": "encode", "7": "encode", "8": "encode",
               "9": "sample", "10": "decode", "11": "decode", "12": "save"}
+    if soften:  # soft result: SeedVR2 mixed with the plain enlarged picture (less "digital" sharpness)
+        g["13"] = {"class_type": "ImageBlend", "inputs": {"image1": ["11", 0], "image2": ["3", 0], "blend_factor": soften, "blend_mode": "normal"}}
+        g["12"]["inputs"]["images"] = ["13", 0]
+        stages["13"] = "decode"
     return g, stages
 
 

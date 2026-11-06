@@ -1204,13 +1204,17 @@ class App:
 
     async def h_upscale(self, req):
         """Improve the quality of a finished video or picture from the library (SeedVR2), the sound stays."""
+        peek = await req.json()
+        soft = peek.get("method") == "soft2k"  # "up to 2K", soft (pictures only)
         await self.need_models("upscale")
         if self.rh():
             raise web.HTTPBadRequest(text="Увеличение работает только на своём ComfyUI (не в облаке RunningHub).")
-        body = await req.json()
+        body = peek
         item = self.library.get(body.get("id", ""))
         if not item:
             raise web.HTTPBadRequest(text="Файл не найден")
+        if soft and item.get("kind") != "image":
+            raise web.HTTPBadRequest(text="«До 2К» работает для картинок. Для видео выберите «Увеличить в 1,5 или 2 раза».")
         path = self.file_path(item)
         content = None
         if path and path.exists():
@@ -1246,6 +1250,16 @@ class App:
             res = f"{round(w * scale / 2) * 2}×{round(h * scale / 2) * 2}"
         except ValueError:
             res = ""
+        if soft:  # long side 2048, SeedVR2 mixed half with the plain enlarge
+            try:
+                w0, h0 = (int(x) for x in str(item.get("res", "")).split("×"))
+            except ValueError:
+                raise web.HTTPBadRequest(text="Не знаю размер картинки, увеличить до 2К не получится.")
+            scale = max(1.0, 2048 / max(w0, h0))
+            graph, stages = wf.upscale_image_graph(self.model_names, video, scale, seed, soften=0.5)
+            return await self.queue(graph, stages, {
+                "mode": "upscale", "sub": "До 2К, мягко", "prompt": item.get("prompt", "") or "Увеличение до 2К",
+                "aspect": item.get("aspect", ""), "q": "2K", "len": 0.0, "res": f"{round(w0 * scale / 2) * 2}×{round(h0 * scale / 2) * 2}", "seed": seed, "src": item["id"]})
         graph, stages = (wf.upscale_image_graph if pic else wf.upscale_graph)(self.model_names, video, scale, seed)
         return await self.queue(graph, stages, {
             "mode": "upscale", "sub": f"Увеличение ×{body.get('scale', '1.5')}", "prompt": item.get("prompt", "") or "Увеличение",

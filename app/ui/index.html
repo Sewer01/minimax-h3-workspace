@@ -1486,9 +1486,9 @@ function paramsCard(el, st, opts) {
   return upd;
 }
 const SZ_ROW = `<div class="row sz-row"><div class="row-l">Свой размер <span class="hint">(необязательно)</span></div>
-  <div class="path on" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input class="sz-w" inputmode="numeric" placeholder="ширина" style="width:90px"> <span>×</span> <input class="sz-h" inputmode="numeric" placeholder="высота" style="width:90px"> <button class="btn sz-reset" type="button" hidden style="padding:6px 12px;font-size:12.5px">Сбросить</button></div>
+  <div class="path on" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn sz-p" data-p="0" type="button" title="Обычный размер (около 1 МП): быстро, как эскиз" style="padding:6px 12px;font-size:12.5px">Эскиз</button><button class="btn sz-p" data-p="2k" type="button" title="Сразу 2К: по длинной стороне 2048" style="padding:6px 12px;font-size:12.5px">2К</button><input class="sz-w" inputmode="numeric" placeholder="ширина" style="width:90px"> <span>×</span> <input class="sz-h" inputmode="numeric" placeholder="высота" style="width:90px"> <button class="btn sz-reset" type="button" hidden style="padding:6px 12px;font-size:12.5px">Сбросить</button></div>
   <div class="hint sz-hint">Размер подстраивается под шаг модели, кратно 32: например, 1920×1080 станет 1920×1088. Пусто — размер по формату выше.</div></div>`;
-function szWire(el, st, onChange) {
+function szWire(el, st, onChange, getBase) {
   const iw = $('.sz-w', el), ih = $('.sz-h', el), hint = $('.sz-hint', el), rs = $('.sz-reset', el);
   const def = hint.textContent;
   const apply = () => {
@@ -1503,6 +1503,12 @@ function szWire(el, st, onChange) {
     onChange();
   };
   iw.onchange = ih.onchange = apply;
+  $$('.sz-p', el).forEach(b => b.onclick = () => {
+    if (b.dataset.p === '0') { iw.value = ih.value = ''; apply(); return; }
+    const [bw, bh] = (getBase && getBase()) || [1376, 768], k = 2048 / Math.max(bw, bh);
+    iw.value = Math.round(bw * k / 32) * 32; ih.value = Math.round(bh * k / 32) * 32; apply();
+    if (st.engine === 'krea') toast('Krea 2 лучше всего работает около 1 МП: для неё надёжнее эскиз и потом «Увеличить до 2К» в Библиотеке');
+  });
   rs.onclick = () => { iw.value = ih.value = ''; apply(); };
 }
 function sizeForm(st, fd) { if (st.cw && st.ch) { fd.append('width', st.cw); fd.append('height', st.ch); } }
@@ -3722,9 +3728,11 @@ async function openUpscale(it) {
     + (it.kind === 'image'
       ? `<div class="note"><span>Картинка станет крупнее и чётче (с деталями). Это занимает от десятков секунд до нескольких минут. Задание пойдёт в очередь, а готовая картинка появится в Библиотеке отдельным файлом, исходная останется.</span></div>`
       : `<div class="note"><span>Видео станет крупнее и чётче, звук останется прежним. Это долго: от нескольких минут до часа на видео. Задание пойдёт в очередь, вы можете заниматься другим, а готовое видео появится в Библиотеке отдельным файлом. Если ждать не хочется — просто закройте это окно.</span></div>`)
-    + (have ? `<div style="display:grid;gap:10px;margin-top:14px">${opt(1.5, 'Увеличить в 1,5 раза')}${opt(2, 'Увеличить в 2 раза')}</div>`
-      : `<div class="hint" style="margin:14px 0">Для этого нужна модель SeedVR2 (около 4 ГБ). ${st.engine === 'managed' ? 'Нажмите, чтобы скачать, и вернитесь сюда.' : 'Если файлов seedvr2_3b_int8_convrot и seedvr2_ema_vae_fp16 нет в вашем ComfyUI, положите их в его папки моделей.'}</div>`
-        + (st.engine === 'managed' ? '<button class="btn pri" data-dl type="button">Скачать модель</button>' : '')) + '</div>';
+    + (have && it.kind === 'image' ? (() => { const k2 = w ? Math.max(1, 2048 / Math.max(w, h)) : 1.5; const tw = w ? Math.round(w * k2 / 2) * 2 : 0, th = w ? Math.round(h * k2 / 2) * 2 : 0;
+        return `<div style="display:grid;gap:10px;margin-top:14px"><button class="btn pri up-s" data-k="2k" data-m="soft2k" type="button">До 2К, мягко${tw ? ` · ${tw}×${th}` : ''}<small style="display:block;opacity:.8">добавляет чёткость, но без «цифровой» резкости; быстро</small></button></div>`; })() : '')
+    + (have ? `<div style="display:grid;gap:10px;margin-top:14px">${opt(1.5, (it.kind === 'image' ? 'Чётче (SeedVR2): ' : '') + 'Увеличить в 1,5 раза')}${opt(2, (it.kind === 'image' ? 'Чётче (SeedVR2): ' : '') + 'Увеличить в 2 раза')}</div>`
+      : (`<div class="hint" style="margin:14px 0">Для этого нужна модель SeedVR2 (около 4 ГБ). ${st.engine === 'managed' ? 'Нажмите, чтобы скачать, и вернитесь сюда.' : 'Если файлов seedvr2_3b_int8_convrot и seedvr2_ema_vae_fp16 нет в вашем ComfyUI, положите их в его папки моделей.'}</div>`
+        + (st.engine === 'managed' ? '<button class="btn pri" data-dl type="button">Скачать модель</button>' : ''))) + '</div>';
   m.onclick = async e => {
     if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; }
     if (e.target.closest('[data-dl]')) {
@@ -3736,7 +3744,7 @@ async function openUpscale(it) {
     }
     const b = e.target.closest('.up-s'); if (!b) return;
     try {
-      const r = await postJSON('/api/upscale', { id: it.id, scale: b.dataset.k });
+      const r = await postJSON('/api/upscale', { id: it.id, scale: b.dataset.k, method: b.dataset.m || '' });
       qAdd(r.prompt_id, 'upscale', it.prompt || 'Увеличение');
       m.hidden = true; closeViewer(); toast(`Задание в очереди: готовая ${it.kind === 'image' ? 'картинка' : 'видео'} появится в Библиотеке`); goTo('queue');
     } catch (err) { toast(err.message); }
@@ -4311,7 +4319,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     } catch {}
   });
   $('.kr-asp', root).onclick = e => { const c = e.target.closest('.chip'); if (c) { S.aspect = c.dataset.a; S.cw = S.ch = 0; $('.sz-w', root).value = $('.sz-h', root).value = ''; $('.sz-reset', root).hidden = true; upd(); } };
-  szWire(root, S, () => upd());
+  szWire(root, S, () => upd(), () => IMG_SIZES[S.aspect]);
   $('.kr-prompt', root).oninput = e => $('.kr-count', root).textContent = e.target.value.length + ' символов';
   imgSeedWire(root, S); upd();
   IMG.krea = { fill: it => { if (it.engine) S.engine = it.engine; else if (it.sub === 'Картинка (FLUX.2)') S.engine = 'flux'; else if (it.sub === 'Картинка (Qwen 2.1)') S.engine = 'qwen'; else S.engine = 'krea'; $('.kr-prompt', root).value = it.prompt || ''; $('.kr-prompt', root).oninput({ target: $('.kr-prompt', root) }); if (IMG_SIZES[it.aspect]) S.aspect = it.aspect; upd(); } };
@@ -4359,7 +4367,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   const drop = $('#qwDrop');
   wireDrop(drop, () => {});
   const drop2 = $('#qwDrop2'), drop3 = $('#qwDrop3');
-  szWire($('.qw-szwrap', root), S, () => upd());
+  szWire($('.qw-szwrap', root), S, () => upd(), () => IMG_SIZES[S.aspect] || [1376, 768]);
   wireDrop(drop2, () => {}); wireDrop(drop3, () => {});
   const P = imgPanel($('.qw-prev', root), {
     mode: 'qwen', url: '/api/generate/qwen',

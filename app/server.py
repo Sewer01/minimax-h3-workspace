@@ -495,12 +495,15 @@ class App:
         data = aiohttp.FormData()
         name = f"h3s_{uuid.uuid4().hex[:8]}{Path(field.filename or 'img.png').suffix or '.png'}"
         content_type = field.headers.get("Content-Type", "application/octet-stream")
+        raw = await field.read()
+        if getattr(self, "_capture", None) is not None:
+            self._capture[field.name] = (Path(field.filename or "x.png").suffix.lower() or ".png", raw)
         if rh:
             try:
-                return await rh.upload(name, await field.read(), content_type)
+                return await rh.upload(name, raw, content_type)
             except cloud.CloudError as e:
                 raise web.HTTPBadGateway(text=str(e))
-        data.add_field("image", await field.read(), filename=name, content_type=content_type)
+        data.add_field("image", raw, filename=name, content_type=content_type)
         data.add_field("subfolder", "h3studio")
         data.add_field("type", "input")
         status, res = await self.comfy_json("POST", "/upload/image", data=data)
@@ -1633,9 +1636,62 @@ class App:
             pass
         return {"tiny_vae": tiny}
 
+    def keep_long_refs(self, run, captured):
+        """The reference pictures (and the sound) of a long video project, next to its saved scene states."""
+        if not run:
+            return
+        d = LONG_DIR / run / "refs"
+        d.mkdir(parents=True, exist_ok=True)
+        for key, (ext, raw) in captured.items():
+            if key.startswith(("img", "aud", "simg")) and len(raw) < 80_000_000:
+                for old in d.glob(key + ".*"):
+                    old.unlink(missing_ok=True)
+                (d / (key + ext)).write_bytes(raw)
+
+    async def h_long_project(self, req):
+        """The project of a long video (scenes, settings) is kept on disk too, so it survives anything that happens to the browser storage."""
+        if req.method == "POST":
+            body = await req.json()
+            run = re.sub(r"[^A-Za-z0-9]", "", str(body.get("run", "")))[:32]
+            if not run or not isinstance(body.get("project"), dict):
+                raise web.HTTPBadRequest(text="bad project")
+            d = LONG_DIR / run
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "project.json").write_text(json.dumps(body["project"], ensure_ascii=False), encoding="utf-8")
+            return web.json_response({"ok": True})
+        run = re.sub(r"[^A-Za-z0-9]", "", req.query.get("run", ""))[:32]
+        if not run and req.query.get("last"):   # the most recently saved project
+            files = sorted(LONG_DIR.glob("*/project.json"), key=lambda f: f.stat().st_mtime, reverse=True) if LONG_DIR.is_dir() else []
+            run = files[0].parent.name if files else ""
+        f = LONG_DIR / run / "project.json" if run else None
+        if not f or not f.exists():
+            return web.json_response({})
+        refs = sorted(p.name for p in (LONG_DIR / run / "refs").glob("*")) if (LONG_DIR / run / "refs").is_dir() else []
+        return web.json_response({"run": run, "project": json.loads(f.read_text(encoding="utf-8")), "refs": refs})
+
+    async def h_long_ref(self, req):
+        run = re.sub(r"[^A-Za-z0-9]", "", req.match_info["run"])[:32]
+        name = Path(req.match_info["name"]).name
+        f = LONG_DIR / run / "refs" / name
+        if not f.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(f)
+
     async def h_generate_long(self, req):
         await self.need_models("long")
-        form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "aud0", "srcvid") + tuple(f"simg{i}" for i in range(12)))
+        self._capture = {}
+        try:
+            return await self.generate_long(req)
+        finally:
+            captured, self._capture = self._capture or {}, None
+            run = getattr(self, "_long_run", None)
+            if run:
+                self.keep_long_refs(run, captured)
+                self._long_run = None
+
+    async def generate_long(self, req):
+        form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "img3", "img4", "aud0", "srcvid") + tuple(f"simg{i}" for i in range(12)))
+        self._long_run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]   # the references are kept even if the request is refused later
         try:
             scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10))) for x in json.loads(form.get("scenes") or "[]")]
         except (ValueError, TypeError, AttributeError):
@@ -1643,7 +1699,7 @@ class App:
         scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), files.get(f"simg{i}")) for i, (p, sec) in enumerate(scenes) if p][:12]
         if not scenes:
             raise web.HTTPBadRequest(text="Напишите хотя бы одну сцену")
-        images = [files[f"img{i}"] for i in range(3) if f"img{i}" in files]
+        images = [files[f"img{i}"] for i in range(5) if f"img{i}" in files]
         audio = files.get("aud0")
         try:
             start = max(0.0, float(form.get("start") or 0))
@@ -1662,6 +1718,7 @@ class App:
         if part.isdigit():  # one scene at a time: scene k continues from the saved tail of scene k-1
             k = int(part)
             run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]
+            self._long_run = run
             if not run or k >= len(scenes):
                 raise web.HTTPBadRequest(text="Неверный номер сцены")
             state, cont = None, None
@@ -1684,6 +1741,7 @@ class App:
         graph, stages = wf.long_graph(self.model_names, scenes, width, height, seed, images, audio, start,
                                       self.model_names["pika_lora"], self.custom_loras(), "match", vocals, await self.preview_opts())
         run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]
+        self._long_run = run
         total = wf.long_plan([sc[1] for sc in scenes])[-1]["acc"] / wf.FPS
         sub = f"{len(scenes)} сцен · {len(images)} карт." + (", музыка" if audio else ", звук от модели")
         meta = {"mode": "long", "sub": sub, "prompt": "\n\n".join(sc[0] for sc in scenes), "aspect": aspect, "q": quality,
@@ -2325,6 +2383,9 @@ def build_app(comfy_override=None):
         web.post("/api/generate/long", state.h_generate_long),
         web.post("/api/montage", state.h_montage),
         web.get("/api/long/state", state.h_long_state),
+        web.get("/api/long/project", state.h_long_project),
+        web.post("/api/long/project", state.h_long_project),
+        web.get("/api/long/ref/{run}/{name}", state.h_long_ref),
         web.post("/api/generate/action", state.h_generate_action),
         web.get("/api/action/info", state.h_action_info),
         web.get("/api/cloud", state.h_cloud_get),

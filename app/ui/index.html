@@ -2947,7 +2947,7 @@ async function continueLong(it) {
     L2._setSrc({ id: it.id, name: (it.prompt || it.sub || 'видео из Библиотеки').slice(0, 50) });
     await useInWorkflow(it, 'long');   // the last picture of the video becomes the hero
     goTo('long');
-    toast('Продолжаем это видео. Последний кадр встал как герой: добавьте место и других героев, опишите следующую сцену и нажмите «Сделать эту сцену».');
+    toast('Продолжаем это видео. Последний кадр встал первым референсом: добавьте другие референсы (персонаж, локацию…), опишите следующую сцену и нажмите «Сделать эту сцену».');
     return;
   }
   goTo('long');
@@ -3061,9 +3061,9 @@ function makeRefMode(cfg) {
       <div class="ta-foot"><div class="tokens rm-tokens"></div><span class="hint">нажмите, чтобы вставить в сцену</span></div>
       <div class="note" style="margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h0M11 12h1v5h1"/></svg><span>Сцены идут одна за другой, каждая продолжает прошлую: герой, место и звук переходят дальше. В каждой сцене опишите героя, что он делает и как движется камера. Длину сцены задаёт ползунок. Текст сцены можно составить в разделе «Агент».</span></div>`;
     const c1 = $('.rm-imgs', root).closest('.card');
-    $('h3', c1).innerHTML = '<span class="n">1</span>Герой и место';
+    $('h3', c1).innerHTML = '<span class="n">1</span>Референсы';
     $('.rm-count', root).hidden = true;
-    $$('.rm-imgs .plus', root).forEach((pl, i) => { pl.lastChild.textContent = ['Герой', 'Место', 'Предмет'][i] || 'Референс'; });
+    $$('.rm-imgs .plus', root).forEach((pl, i) => { pl.lastChild.textContent = 'Референс'; });
     $('.rm-media .sub-l span', root).textContent = 'Песня или фрагмент';
     $('.rm-media .media-hint', root).textContent = 'любой длины: каждая сцена берёт свой кусок по порядку';
     const box = $('.lm-scenes', root);
@@ -3133,7 +3133,7 @@ function makeRefMode(cfg) {
         const frame = await lastFrameFile(f);
         root._setSrc({ file: f, name: f.name });
         $$('.ref:not(.filled) input', imgsEl)[0] && await putInto($$('.ref:not(.filled) input', imgsEl)[0], frame);
-        toast('Видео загружено: последний кадр встал как герой, добавьте остальные картинки и опишите сцену.');
+        toast('Видео загружено: последний кадр встал первым референсом, добавьте остальные картинки и опишите сцену.');
       } catch (err) { toast(err.message); }
     };
     root._setScenes = list => {   // from the agent: replace all scenes
@@ -3173,6 +3173,7 @@ function makeRefMode(cfg) {
         const all = loadAll(); all[run] = proj;
         Object.keys(all).sort((a, b) => all[b].t - all[a].t).slice(8).forEach(k => delete all[k]);   // the 8 latest projects
         localStorage.setItem(PKEY, JSON.stringify(all)); localStorage.setItem('h3-long-last', run);
+        fetch('/api/long/project', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run, project: proj }) }).catch(() => {});
         $$('.ref', imgsEl).forEach((r, i) => putFile(`long/${run}/img${i}`, r._file));
         putFile(`long/${run}/aud0`, slotA ? slotA._file : null);
         putFile(`long/${run}/src`, root._src && root._src.file ? root._src.file : null);
@@ -3182,18 +3183,26 @@ function makeRefMode(cfg) {
     root._save = () => { clearTimeout(saveT); saveT = setTimeout(saveNow, 700); };
     const putInto = async (input, f) => { if (!input || !(f instanceof File)) return; const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files; input.dispatchEvent(new Event('change')); };
     root._openRun = async run => {   // load a saved project (from the library: continue this video)
-      const p = loadAll()[run]; if (!p) return false;
+      let p = loadAll()[run], onDisk = null;
+      try { onDisk = await (await fetch('/api/long/project?run=' + run)).json(); } catch {}
+      if (!p && onDisk && onDisk.project) p = onDisk.project;
+      if (!p) return false;
+      const getRef = async key => {   // a picture of the project: the browser's memory, else the copy kept by the program
+        const f = await memFile('get', `long/${run}/${key}`); if (f instanceof File) return f;
+        const nm = ((onDisk && onDisk.refs) || []).find(x => x.startsWith(key + '.')); if (!nm) return null;
+        try { const r = await fetch(`/api/long/ref/${run}/${nm}`); if (!r.ok) return null; return new File([await r.blob()], nm, { type: r.headers.get('content-type') || 'image/png' }); } catch { return null; }
+      };
       root._run = run; root._restoring = true;
       Object.assign(S, { aspect: p.aspect || S.aspect, q: p.q || S.q, cw: p.cw || 0, ch: p.ch || 0 });
       $$('.ref .x', imgsEl).forEach(x => x.click());
-      for (let i = 0; i < 3; i++) await putInto($$('.ref input', imgsEl)[i], await memFile('get', `long/${run}/img${i}`));
+      for (let i = 0; i < 5; i++) await putInto($$('.ref input', imgsEl)[i], await getRef('img' + i));
       const slotA = $('.rm-auds .slot', root); $('.x', slotA)?.click();
-      const aud = await memFile('get', `long/${run}/aud0`); if (aud instanceof File) await putInto($('input', slotA), aud);
+      const aud = await getRef('aud0'); if (aud instanceof File) await putInto($('input', slotA), aud);
       setSnd(p.snd || 'none'); $('.lm-start', root).value = p.start || '0'; $('.lm-vocals', root).checked = !!p.vocals;
       $$('.sc', root).forEach(c => c.remove());
       for (const x of p.scenes) addScene(x.prompt, x.sec);
       const cards = $$('.sc', root);
-      for (const [i, x] of p.scenes.entries()) if (x.img) await putInto($('.sc-img input', cards[i]), await memFile('get', `long/${run}/simg${i}`));
+      for (const [i, x] of p.scenes.entries()) if (x.img) await putInto($('.sc-img input', cards[i]), await getRef('simg' + i));
       if (p.src) { const sf = p.src.id ? null : await memFile('get', `long/${run}/src`); root._setSrc(p.src.id ? { id: p.src.id, name: p.src.name } : sf instanceof File ? { file: sf, name: p.src.name } : null, false); }
       else root._setSrc(null, false);
       p.scenes.forEach((x, i) => { cards[i]._done = x.done && byId(x.done.id) ? { sig: x.done.sig, url: x.done.url, id: x.done.id } : null; });
@@ -3208,7 +3217,11 @@ function makeRefMode(cfg) {
     };
     root._restoring = true;   // nothing is saved until the last project has been put back
     setTimeout(async () => {
-      try { const last = localStorage.getItem('h3-long-last'); if (last) await root._openRun(last); } catch {}
+      try {
+        let last = localStorage.getItem('h3-long-last');
+        if (!last) { const r = await (await fetch('/api/long/project?last=1')).json(); last = r.run || ''; }
+        if (last) await root._openRun(last);
+      } catch {}
       root._restoring = false; root._save();
     }, 2500);
 
@@ -3430,9 +3443,9 @@ const RM = {
     placeholder: '@image1 - keyframe, first frame of the target video… Лучше всего писать в «Агенте»: он знает формат этого режима',
   }),
   long: makeRefMode({
-    mode: 'long', title: 'Длинное видео', pill: 'Сцены подряд · Pika', dur: 20, maxImages: 3, videos: false, scenes: true,
+    mode: 'long', title: 'Длинное видео', pill: 'Сцены подряд · Pika', dur: 20, maxImages: 5, videos: false, scenes: true,
     sub: 'Клипы и ролики по сценам: каждая сцена до 15 секунд и продолжает прошлую. Можно с музыкой, можно без',
-    refHint: 'До 3 картинок: герой, место, предмет. Они подаются в каждую сцену, поэтому лицо и место не «плывут». В тексте сцены ссылайтесь на них как &lt;Picture 1&gt;.',
+    refHint: 'До 5 картинок-референсов: персонаж, локация, предмет, одежда, стиль — всё, что должно сохраняться. Они подаются в каждую сцену, поэтому лицо и место не «плывут». В тексте сцены ссылайтесь на них как &lt;Picture 1&gt;, &lt;Picture 2&gt;… Чем больше референсов, тем тяжелее и дольше считается сцена.',
     placeholder: '',
   }),
   action: makeRefMode({
@@ -4461,7 +4474,7 @@ function useMenu(it) {
   m.hidden = false;
   m.innerHTML = '<div class="box" style="padding:20px;max-width:360px"><div class="card-h"><h3>Куда отправить?</h3><button class="btn" data-x type="button">Закрыть</button></div><div style="display:grid;gap:8px">'
     + (it.kind !== 'image' && it.url && !it.missing ? '<button class="btn pri" data-v="__continue" type="button">Длинное видео: продолжить это видео</button>' : '')
-    + USE_TARGETS.filter(t => !$(`.nav[data-view="${t[0]}"]`)?.disabled).map(t => `<button class="btn" data-v="${t[0]}" type="button">${t[1]}${t[0] === 'long' && it.kind !== 'image' ? ': кадр как герой' : ''}</button>`).join('') + '</div>'
+    + USE_TARGETS.filter(t => !$(`.nav[data-view="${t[0]}"]`)?.disabled).map(t => `<button class="btn" data-v="${t[0]}" type="button">${t[1]}${t[0] === 'long' && it.kind !== 'image' ? ': кадр как референс' : ''}</button>`).join('') + '</div>'
     + (it.kind === 'image' ? '' : '<div class="hint" style="margin-top:10px">Из видео берётся последний кадр. «Продолжить это видео» берёт последние секунды клипа, и новая сцена продолжает их.</div>') + '</div>';
   m.onclick = async e => {
     if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; }

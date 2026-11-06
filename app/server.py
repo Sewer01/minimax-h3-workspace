@@ -36,6 +36,8 @@ import report
 import speech
 import updater
 from version import APP_VERSION
+
+SUPPORT_URL = "https://pay.cloudtips.ru/p/0e4d4824"
 import workflows as wf
 
 # frozen builds keep code inside the bundle but user data next to the exe
@@ -806,6 +808,11 @@ class App:
         if not q:
             raise web.HTTPBadRequest(text="Пустой запрос")
         webbrowser.open("https://www.google.com/search?q=" + urllib.parse.quote_plus(q))
+        return web.json_response({"ok": True})
+
+    async def h_support(self, _req):
+        """Open the author's donation page (a fixed address, never taken from the request)."""
+        webbrowser.open(SUPPORT_URL)
         return web.json_response({"ok": True})
 
     async def h_clipboard(self, _req):
@@ -1898,6 +1905,7 @@ def build_app(comfy_override=None):
         web.post("/api/setup/cancel", state.h_setup_cancel),
         web.post("/api/open-driver-page", state.h_open_driver),
         web.post("/api/clipboard", state.h_clipboard),
+        web.post("/api/support", state.h_support),
         web.post("/api/search-web", state.h_search_web),
         web.post("/api/report", state.h_report),
         web.post("/api/setup/reset", state.h_setup_reset),

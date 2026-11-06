@@ -186,6 +186,8 @@ button{cursor:pointer;border:0;background:none}
 .rep-btn svg{width:16px;height:16px}
 .rep-btn:hover{color:var(--text);border-color:var(--accent)}
 .rep-btn[disabled]{opacity:.6;cursor:default}
+.sup-btn{display:block;margin:-4px 0 12px;padding:4px 10px;width:100%;text-align:center;font-size:12px;color:var(--muted);font-weight:600;border-radius:9px;flex:none}
+.sup-btn:hover{color:var(--text)}
 @media (max-height:760px){.side-foot{gap:6px;padding:10px 12px}.side-foot .stat{font-size:11.5px}}
 
 /* main */
@@ -631,6 +633,7 @@ details[open] summary::before{content:'－ '}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
       Отчёт для разработчика
     </button>
+    <button class="sup-btn" id="supBtn" type="button" title="Программа бесплатная. Если она вам помогла, можно поддержать автора: откроется страница оплаты в браузере. Ничего вводить в самой программе не нужно.">♥ Поддержать проект</button>
     <div class="themes" id="themes" title="Тема оформления">
       <button data-t="" style="background:#e8264f" title="Бордо"></button>
       <button data-t="light" style="background:#f3f4f6" title="Светлая"></button>
@@ -2563,6 +2566,7 @@ const TOASTS = [];
 const noteMsg = s => { TOASTS.push(new Date().toLocaleTimeString('ru') + ' ' + String(s).slice(0, 300)); if (TOASTS.length > 20) TOASTS.shift(); };
 window.addEventListener('error', e => noteMsg('Ошибка скрипта: ' + e.message + ' (' + (e.filename || '').split('/').pop() + ':' + e.lineno + ')'));
 window.addEventListener('unhandledrejection', e => noteMsg('Ошибка: ' + (e.reason && e.reason.message || e.reason)));
+$('#supBtn').onclick = () => fetch('/api/support', { method: 'POST' }).then(() => toast('Открываю страницу поддержки в браузере'), () => {});
 $('#repBtn').onclick = async () => {
   const b = $('#repBtn'); b.disabled = true;
   try {

@@ -28,7 +28,33 @@ LLM_VARIANTS = {
     "gemma4-e4b": {"title": "Gemma 4 E4B (лёгкая)", "repo": "ggml-org/gemma-4-E4B-it-GGUF",
                    "model": "gemma-4-E4B-it-Q4_0.gguf", "model_size": 4.59e9,
                    "mmproj": "mmproj-gemma-4-E4B-it-Q8_0.gguf", "mmproj_size": 0.56e9, "ctx": 32768},
+    # the same Gemma 4 without refusals (abliterated, Huihui): the file names of the picture part are the same in both repos,
+    # so each one is saved under its own name ("mmproj_as")
+    "gemma4-12b-unc": {"title": "Gemma 4 12B без цензуры", "uncensored": True, "min_vram": 12,
+                       "repo": "huihui-ai/Huihui-gemma-4-12B-it-qat-q4_0-unquantized-abliterated-GGUF",
+                       "model": "Huihui-gemma-4-12B-it-qat-q4_0-unquantized-abliterated-Q4_K.gguf", "model_size": 7.381e9,
+                       "mmproj": "mmproj-model-bf16.gguf", "mmproj_as": "mmproj-gemma4-12b-unc-bf16.gguf",
+                       "mmproj_size": 0.175e9, "ctx": 49152},
+    "gemma4-e4b-unc": {"title": "Gemma 4 E4B без цензуры (лёгкая)", "uncensored": True,
+                       "repo": "huihui-ai/Huihui-gemma-4-E4B-it-qat-q4_0-unquantized-abliterated-GGUF",
+                       "model": "Huihui-gemma-4-E4B-it-qat-q4_0-unquantized-abliterated-Q4_K.gguf", "model_size": 5.302e9,
+                       "mmproj": "mmproj-model-bf16.gguf", "mmproj_as": "mmproj-gemma4-e4b-unc-bf16.gguf",
+                       "mmproj_size": 0.992e9, "ctx": 32768},
+    # Qwen3-VL 8B (Apache 2.0) and its abliterated version
+    "qwen3vl-8b": {"title": "Qwen3-VL 8B", "min_vram": 8,
+                   "repo": "Qwen/Qwen3-VL-8B-Instruct-GGUF", "model": "Qwen3VL-8B-Instruct-Q4_K_M.gguf", "model_size": 5.028e9,
+                   "mmproj": "mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf", "mmproj_size": 0.752e9, "ctx": 32768},
+    "qwen3vl-8b-unc": {"title": "Qwen3-VL 8B без цензуры", "uncensored": True, "min_vram": 8,
+                       "repo": "noctrex/Huihui-Qwen3-VL-8B-Instruct-abliterated-GGUF",
+                       "model": "Huihui-Qwen3-VL-8B-Instruct-abliterated-Q4_K_M.gguf", "model_size": 5.028e9,
+                       "mmproj": "mmproj-F16.gguf", "mmproj_as": "mmproj-qwen3vl-8b-unc-F16.gguf",
+                       "mmproj_size": 1.159e9, "ctx": 32768},
 }
+
+
+def variant_files(root, v):
+    """(model path, picture-part path) where this variant keeps its files."""
+    return Path(root) / "models" / v["model"], Path(root) / "models" / v.get("mmproj_as", v["mmproj"])
 
 # Keywords that switch on the acting skill in "auto" mode (matched as word starts, any case).
 DEFAULT_SKILL_SETTINGS = {
@@ -50,7 +76,7 @@ DEFAULT_SKILL_SETTINGS = {
 IMAGE_SKILLS = {"plist": "krea-2", "krea": "krea-2", "fluxt": "flux2-klein", "qwent": "qwen-image-2-1-director-prompt",
                 "qwen": "qwen-image-2-1-director-prompt", "sheet": "karta-personazha", "sheet6": "karta-personazha",
                 "story": "storyboard"}
-AGENT_TARGETS = ("video", "lipsync", "refs", "actor", "action", "long") + tuple(IMAGE_SKILLS)
+AGENT_TARGETS = ("video", "lipsync", "refs", "actor", "swap", "action", "long") + tuple(IMAGE_SKILLS)
 # long extra reference files that would not fit next to the rest into the model's context
 SKIP_REFS = {"platform-adapters.md", "long-form-writing.md"}
 
@@ -318,6 +344,11 @@ def system_prompt(skills_text, target, ctx):
             "- в КАЖДОЙ сцене коротко заново назови героя и место, ссылаясь на референс-картинки как <Picture 1>, <Picture 2> и т.д. "
             f"(приложено картинок: {n_img}, можно до 5; пользователь сам решает, что на какой: персонаж, локация, предмет); "
             "внешность подробно не расписывай, её даёт картинка;\n"
+            "- ВАЖНО: ничего до `SCENE 1` не пиши. Первые слова КАЖДОЙ сцены (после строки `SCENE N | S`, внутри её абзаца, "
+            "и в сцене 2, 3 и далее тоже) - короткая фраза про роли картинок по словам пользователя (что на какой: персонаж, "
+            "локация, предмет, одежда), например `<Picture 1> is the character reference (keep this face exactly). <Picture 2> is "
+            "the location reference.` Пользователь теги сам не пишет, их ставишь ты; если роли не названы, угадай по описанию "
+            "и в конце одной строкой скажи, в каком порядке класть картинки;\n"
             "- одно главное действие на сцену, не пять;\n"
             "- камера отдельной фразой (наезд, облёт, отъезд), свет и настроение одной фразой;\n"
             "- начало сцены продолжает конец прошлой: на стыке не меняй место, одежду и позу резко, смену места делай плавной;\n"
@@ -327,10 +358,33 @@ def system_prompt(skills_text, target, ctx):
             "текста. БЕЗ полей `integrated_multimodal_description`, `[Shot 1]`, таймкодов и `overall_soundscape`: приложение "
             "добавит обёртку само. После последней сцены НИЧЕГО не пиши в блоке (никаких overall_soundscape, non_diegetic_music "
             "и других полей): звук описывай внутри текста сцены. Пример:\n"
-            "SCENE 1 | 10\nA knight <Picture 1> stands in the ruined throne room <Picture 2>, slowly raising a glowing guitar. "
+            "SCENE 1 | 10\n<Picture 1> is the character reference (keep this face exactly). <Picture 2> is the location reference. "
+            "A knight <Picture 1> stands in the ruined throne room <Picture 2>, slowly raising a glowing guitar. "
             "Camera pushes in from wide to medium shot. Red glow, drifting ash.\n\n"
-            "SCENE 2 | 10\nThe knight <Picture 1> in the ruined throne room <Picture 2> starts playing fiercely, head tilted back. "
+            "SCENE 2 | 10\n<Picture 1> is the character reference (keep this face exactly). <Picture 2> is the location reference. "
+            "The knight <Picture 1> in the ruined throne room <Picture 2> starts playing fiercely, head tilted back. "
             "Camera circles him at chest height. Flickering ghostly light on the walls.")
+    elif target == "swap":
+        mode_rules = (
+            "Режим приложения: ЗАМЕНА ПЕРСОНАЖА (MiniMax H3 Ref2V + LoRA замены). Пользователь загружает видео (<Video 1>), в котором "
+            "нужно заменить человека, и одну-две картинки новых героев (<Picture 1>, <Picture 2>, по порядку слотов). Модель "
+            "берёт из видео позу, движения, камеру, фон и звук, а лицо, причёску и одежду - с картинок. Текст сцены сочинять НЕ нужно.\n"
+            "- Пользователь своими словами говорит, КОГО в видео заменить (по одежде, положению, возрасту: «старик в пиджаке», "
+            "«девушка слева») и какой картинкой. Если он не уточнил и героев в кадре один - пиши «the main person».\n"
+            "- Формат ответа - один короткий английский блок prompt простыми предложениями, по одному на каждого заменяемого: "
+            "`Replace the <описание человека> in <Video 1> with the character from <Picture N>.` Если картинок две, предложений два "
+            "и у каждого своя картинка.\n"
+            "- Затем всегда добавляй хвост: `Retain the identity, attire, and style of the character(s) from the picture(s). "
+            "Preserve the camera angle, background, lighting, objects, and all other figures from the original video. Ensure the "
+            "replacement aligns with the original figure in terms of position, scale, pose, and movement. Do not add any other "
+            "figures, copies or people, and keep the background of <Video 1>. Do not display the reference images or their backgrounds.`\n"
+            "- Если в сообщении написано, что приложены кадры из видео (последние N картинок, с секундами), это кадры <Video 1>, а НЕ "
+            "картинки героев и не Picture N. Посмотри по ним, кто есть в кадре (одежда, возраст, положение, смена плана), и по этому "
+            "опиши, кого заменить. Если люди в кадре отличаются в разных секундах (смена плана), так и напиши: «в первой части … , после "
+            "смены плана на N-й секунде …». Не придумывай то, чего на кадрах нет.\n"
+            "- Если пользователь просит что-то сохранить или добавить (шарф, цвет волос), допиши это одной фразой в конце.\n"
+            "- Внешность героев с картинок словами не описывай. Не выдумывай реплики и действия: видео уже есть. Одной строкой в конце "
+            "напомни: видео - в слот видео, картинки - по порядку героев.")
     elif target in ("refs", "action"):
         mode_rules = (
             ("Режим приложения: ЭКШН-СЦЕНЫ (Hybrid FL2VA/Ref2VA, сэмплинг 8 шагов в низком разрешении + 4 в высоком): "
@@ -341,8 +395,19 @@ def system_prompt(skills_text, target, ctx):
             + f"Видео строится по референсам Omni-Reference: картинки (персонажи, локация, предметы), может быть "
             f"референс-видео (движение/камера) и референс-аудио (голос/ритм). Длительность {dur or 6} с - таймкоды "
             "шотов не выходят за неё.\n"
-            "- Перед тремя полями H3 перечисли роли референсов по правилам скилла: `@image1 - character reference (...)` "
-            "и т.д., одна роль на файл; на картинки в тексте ссылайся как <Picture N>.\n"
+            "- Пользователь своими словами говорит, что приложил и зачем (например: референс 1 - персонаж, референс 2 - одежда, "
+            "видео - взять движение камеры, аудио - звук фона). Номера считай ОТДЕЛЬНО для каждого типа в порядке перечисления: "
+            "картинки <Picture 1>, <Picture 2>…, видео <Video 1>…, аудио <Audio 1>… Пользователь теги сам не пишет - "
+            "расставляешь их ты, и они ОБЯЗАТЕЛЬНО должны быть в промпте (так их ждёт модель).\n"
+            "- Первая строка: `For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully "
+            "referenced. <Picture 2> (from [Shot 1]) is fully referenced.` - по одному предложению на КАЖДУЮ картинку (если "
+            "картинок две, предложений два, и т.д.); затем одна фраза с ролью КАЖДОГО файла, например `<Picture 1> is the character "
+            "reference (keep this face exactly). <Picture 2> is the clothing reference. <Video 1> is a camera-movement reference "
+            "only, take no faces or people from it. <Audio 1> is the background sound reference.` Одна роль на файл.\n"
+            "- Если есть и картинка с лицом, и видео: лица и внешность берутся ТОЛЬКО с картинки, видео задаёт лишь то, что "
+            "назвал пользователь (движение, камеру, место). Напиши это явно.\n"
+            "- Дальше в тексте сцены ссылайся на файлы теми же тегами (<Picture 1>, <Video 1>). Внешность героя с картинки не "
+            "описывай словами. В конце ответа одной строкой напомни пользователю, в каком порядке класть файлы в слоты.\n"
             "- Пиши примерно одну реплику на 2,5 секунды, если в сцене есть речь.")
     else:
         if n_img >= 2:
@@ -439,7 +504,7 @@ class LlamaServer:
         if self.custom:
             return Path(self.custom["model"]), Path(self.custom["mmproj"]) if self.custom.get("mmproj") else None
         v = LLM_VARIANTS[variant]
-        return self.root / "models" / v["model"], self.root / "models" / v["mmproj"]
+        return variant_files(self.root, v)
 
     def has_model(self, variant):
         m, p = self.model_paths(variant)
@@ -510,7 +575,7 @@ async def install(installer, root, variant, runtime_only=False, whisper_dir=None
         return
     v = LLM_VARIANTS[variant]
     for key, size in (("mmproj", v["mmproj_size"]), ("model", v["model_size"])):
-        dest = root / "models" / v[key]
+        dest = root / "models" / v.get(key + "_as", v[key])
         await installer.download(HF.format(repo=v["repo"], path=v[key]), dest, "agent", f'{v["title"]}: {v[key]}', size)
 
 

@@ -141,6 +141,16 @@ def mirrored(url):
     return url
 
 
+def system_proxy():
+    """The proxy a VPN/proxy program set in Windows (or HTTPS_PROXY), if any: our own requests would otherwise bypass it."""
+    try:
+        import urllib.request
+        px = urllib.request.getproxies()
+        return px.get("https") or px.get("http") or None
+    except Exception:
+        return None
+
+
 class Installer:
     """Runs the install steps and reports progress through `emit(dict)`."""
 
@@ -158,7 +168,7 @@ class Installer:
     async def step(self, sid, state, **kw):
         await self.emit({"type": "setup", "step": sid, "state": state, **kw})
 
-    async def download(self, url, dest, sid, label, size_hint=0):
+    async def download(self, url, dest, sid, label, size_hint=0, attempts=40):
         """Resumable download to dest (via dest.part)."""
         url = mirrored(url)
         dest = Path(dest)
@@ -166,11 +176,11 @@ class Installer:
             return
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
-        for attempt in range(40):  # a long outage: wait and continue from the saved .part file
+        for attempt in range(attempts):  # a long outage: wait and continue from the saved .part file
             have = part.stat().st_size if part.exists() else 0
             headers = {"Range": f"bytes={have}-"} if have else {}
             try:
-                async with self.session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(sock_read=120)) as r:
+                async with self.session.get(url, headers=headers, proxy=system_proxy(), timeout=aiohttp.ClientTimeout(sock_read=120)) as r:
                     if r.status == 416:  # already complete
                         break
                     if r.status not in (200, 206):
@@ -192,9 +202,10 @@ class Installer:
             except (Cancelled, asyncio.CancelledError):
                 raise
             except Exception as e:
-                if attempt == 39:
+                if attempt == attempts - 1:
                     raise RuntimeError(f"Не удалось скачать {label}: {e}")
-                await self.step(sid, "progress", label=f"{label} — обрыв связи, пробуем снова…")
+                why = (str(e) or type(e).__name__)[:90]
+                await self.step(sid, "progress", label=f"{label} — обрыв связи ({why}), пробуем снова…")
                 await asyncio.sleep(min(30, 3 + attempt * 3))
         part.replace(dest)
 
@@ -247,9 +258,18 @@ class Installer:
             await self.step("nodes", "progress", label=label, done=i, total=len(catalog.NODE_PACKS))
             if target.exists():
                 continue
-            url = f'https://github.com/{pack["repo"]}/archive/{pack["commit"]}.zip'
+            urls = (f'https://github.com/{pack["repo"]}/archive/{pack["commit"]}.zip',
+                    f'https://codeload.github.com/{pack["repo"]}/zip/{pack["commit"]}')  # second address: some networks block only one
             zpath = comfy_root.parent / "downloads" / f'{pack["name"]}.zip'
-            await self.download(url, zpath, "nodes", label)
+            for rnd in range(12):
+                try:
+                    await self.download(urls[rnd % 2], zpath, "nodes", label, attempts=2)
+                    break
+                except RuntimeError as e:
+                    if rnd == 11:
+                        raise
+                    await self.step("nodes", "progress", label=f"{label} — {str(e)[-120:]}; пробуем другой адрес…")
+                    await asyncio.sleep(5)
             with zipfile.ZipFile(zpath) as z:
                 top = z.namelist()[0].split("/")[0]
                 z.extractall(nodes_dir)
@@ -369,6 +389,11 @@ class ComfyProcess:
                 self.proc.wait(15)
             except subprocess.TimeoutExpired:
                 self.proc.kill()
+            try:  # whole tree: a helper process left behind would keep comfyui.db and the port locked
+                subprocess.run(["taskkill", "/PID", str(self.proc.pid), "/T", "/F"], timeout=15,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
+            except Exception:
+                pass
         self.proc = None
 
     def log_tail(self, n=15):

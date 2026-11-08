@@ -14,6 +14,7 @@ import json
 import os
 import random
 import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -146,6 +147,7 @@ class App:
         self.output_dir = None
         self.comfy_online = False
         self.process = None  # engine.ComfyProcess in managed mode
+        self._bg = set()  # background tasks (kept so they are not garbage collected)
         self.installer = None
         self.setup_log = []  # last setup events, replayed to a reopened window
         self.model_names = {}  # role -> name as ComfyUI lists it
@@ -198,6 +200,8 @@ class App:
         modes = list(self.config.get("modes") or catalog.MODE_ROLES)
         if "actor" not in modes and ("refs" in modes or "lipsync" in modes):
             modes.append("actor")  # same models, so set-ups made before this mode existed get it too
+        if "swap" not in modes and "refs" in modes:
+            modes.append("swap")   # character-swap preset: References models + a 0.16 GB LoRA, fetched by "Докачать"
         return modes + [m for m in getattr(self, "auto_modes", ()) if m not in modes]
 
     # ---------- ComfyUI connection ----------
@@ -235,8 +239,33 @@ class App:
         self.apply_mirror()
         self.session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=_ssl_context()))
         if self.config.get("engine") == "managed" and self.config.get("setup_done") and not self.comfy_override:
-            self.start_managed()
+            if self.missing_node_packs():
+                self.packs_task = asyncio.create_task(self.install_missing_packs())
+            else:
+                self.start_managed()
         self.ws_task = asyncio.create_task(self.comfy_ws_loop())
+
+    def missing_node_packs(self):
+        """Own ComfyUI: node packs from the catalog that are not in its custom_nodes yet (a newer app version may need more)."""
+        root = self.comfy_root()
+        if not root:
+            return []
+        nodes_dir = root / "ComfyUI" / "custom_nodes"
+        if not nodes_dir.is_dir():
+            return []
+        return [p["name"] for p in catalog.NODE_PACKS if not (nodes_dir / p["name"]).exists()]
+
+    async def install_missing_packs(self):
+        """Put the missing node packs in place, then start ComfyUI. Runs in the background so the app opens at once;
+        ComfyUI is started even when the download fails (no internet), only the new sections stay unavailable."""
+        async def quiet(_ev):
+            pass
+        try:
+            await engine.Installer(ROOT, self.session, quiet).install_nodes(self.comfy_root())
+        except Exception as e:
+            print(f"Не удалось докачать ноды ({type(e).__name__}): {e}", file=sys.stderr)
+        if not self.process:
+            self.start_managed()
 
     async def stop(self, _app):
         self.ws_task.cancel()
@@ -337,6 +366,7 @@ class App:
                     self.comfy_online = True
                     await self.resolve_models()
                     await self.broadcast({"type": "engine", "online": True})
+                    await self.warn_weak_gpu()
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             await self.on_comfy_event(json.loads(msg.data))
@@ -350,6 +380,24 @@ class App:
                 self.comfy_online = False
                 await self.broadcast({"type": "engine", "online": False})
             await asyncio.sleep(2)
+
+    async def warn_weak_gpu(self):
+        """The 'max' profile (full ~32 GB Singularity) is meant for 24 GB cards. Say so once per run on a weaker card."""
+        if getattr(self, "_weak_warned", False) or self.config.get("choice", {}).get("lipsync_unet") != "full":
+            return
+        try:
+            if self.hw is None:
+                self.hw = await asyncio.to_thread(engine.detect_hardware)
+            vram = self.hw.get("vram_gb") or 0
+        except Exception:
+            return
+        if 0 < vram < 24:
+            self._weak_warned = True
+            text = (f"Выбрана самая тяжёлая модель (профиль «Максимум»), а у видеокарты {vram:g} ГБ памяти: "
+                    "генерация может зависать на первом шаге. Откройте «Модели», выберите для Lipsync/Референсов "
+                    "облегчённую версию (pruned) и скачайте её.")
+            self.note_error(text)
+            await self.broadcast({"type": "notice", "text": text})
 
     async def on_comfy_binary(self, data):
         if len(data) < 8:
@@ -442,6 +490,8 @@ class App:
                         d = LONG_DIR / lg["run"]
                         d.mkdir(parents=True, exist_ok=True)
                         (d / f"state_{lg['part']}.latent").write_bytes(body)
+                        (d / f"state_{lg['part']}.json").write_text(
+                            json.dumps({"res": (job.get("meta") or {}).get("res", "")}, ensure_ascii=False), encoding="utf-8")
                 except Exception as e:
                     self.note_error(f"Не удалось сохранить состояние сцены: {e}")
         images = [f for f in files if f["filename"].lower().endswith((".png", ".jpg", ".jpeg", ".webp"))
@@ -473,6 +523,7 @@ class App:
             if meta.get("width") and meta.get("height") and not (item.get("mode") == "upscale" and item.get("res")):
                 item["res"] = f'{meta["width"]}×{meta["height"]}'
             self.library.add(item)
+            await self.archive_item(item)
             items.append(self.public(item))
         await self.broadcast({"type": "done", "prompt_id": pid, "item": items[0], "items": items})
 
@@ -495,9 +546,57 @@ class App:
     def file_path(self, item):
         if item["file"].get("type") == "local":
             return Path(item["file"]["path"])
-        if not self.output_dir or item["file"].get("type") != "output":
-            return None
-        return self.output_dir / item["file"].get("subfolder", "") / item["file"]["filename"]
+        orig = None
+        if self.output_dir and item["file"].get("type") == "output":
+            orig = self.output_dir / item["file"].get("subfolder", "") / item["file"]["filename"]
+        if orig and orig.exists():
+            return orig
+        local = item.get("local")   # the program's own copy: it stays when ComfyUI's output folder is cleaned
+        if local and Path(local).exists():
+            return Path(local)
+        return orig
+
+    # ---------- own copies of the results (they must not vanish when ComfyUI's output folder is cleaned) ----------
+
+    def default_results_dir(self):
+        """Videos\\Minimax H3\\output in the user's folder: it does not depend on where the program lies and survives updates."""
+        return Path.home() / "Videos" / "Minimax H3" / "output"
+
+    def results_dir(self):
+        d = self.config.get("results_dir")
+        return Path(d) if d else self.default_results_dir()
+
+    def keep_copies(self):
+        return self.config.get("keep_copies") is not False
+
+    async def archive_item(self, item):
+        """Copy the finished file of a library item into the program's own results folder."""
+        if not self.keep_copies() or item.get("local") and Path(item["local"]).exists():
+            return False
+        f = item["file"]
+        if f.get("type") == "local":
+            return False
+        try:
+            dest_dir = self.results_dir()
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / f"{str(item.get('date', ''))[:10].replace('-', '')}_{item['id']}_{f['filename']}"
+            src = self.output_dir / f.get("subfolder", "") / f["filename"] if self.output_dir and f.get("type") == "output" else None
+            if src and src.exists():
+                await asyncio.to_thread(shutil.copy2, src, dest)
+            else:   # output folder unknown (own ComfyUI): take the file from ComfyUI itself
+                params = {"filename": f["filename"], "subfolder": f.get("subfolder", ""), "type": f.get("type", "output")}
+                async with self.session.get(self.comfy + "/view", params=params) as r:
+                    if r.status != 200:
+                        return False
+                    with open(dest, "wb") as out:
+                        async for chunk in r.content.iter_chunked(1 << 20):
+                            out.write(chunk)
+            item["local"] = str(dest)
+            self.library.save()
+            return True
+        except Exception as e:
+            self.note_error(f"Не удалось сохранить копию результата: {e}")
+            return False
 
     async def upload_state(self, path, name):
         """Put a saved scene state (.latent) into ComfyUI's input folder, where its LoadLatent node looks for it."""
@@ -928,7 +1027,18 @@ class App:
             comfy["ошибка связи"] = f"{type(e).__name__}: {e}"
             models = []
         hw = await asyncio.to_thread(engine.detect_hardware, self.config.get("install_dir"))
+        long_states = []
+        try:
+            for d in sorted(LONG_DIR.iterdir()) if LONG_DIR.is_dir() else []:
+                files = sorted(d.glob("state_*.latent"))
+                if not files:
+                    continue
+                sizes = ", ".join(f"{f.name}: {round(f.stat().st_size / 1024, 1)} КБ" for f in files)
+                long_states.append(f"{d.name}: {sizes}")
+        except OSError as e:
+            long_states.append(f"не удалось прочитать папку: {e}")
         text = await asyncio.to_thread(report.build, {
+            "long_states": long_states,
             "home": HOME, "data_dir": DATA_DIR, "hw": hw, "page": page.get("page"), "comfy": comfy, "models": models,
             "config": self.config.data, "errors": self.recent_errors, "toasts": page.get("toasts"),
             "comfy_log": self.process.log_tail(60) if self.process else "",
@@ -1182,6 +1292,23 @@ class App:
         if rh:
             return await self.queue_cloud(rh, graph, stages, meta)
         await self.stop_llm()  # the agent's model and H3 do not fit in VRAM together
+        mode_key = (meta or {}).get("mode", "")
+        same = mode_key == getattr(self, "last_mode", None) and mode_key in ("krea", "kreareal", "qwen", "flux")
+        self.last_mode = mode_key
+        # nothing is running or waiting: drop the previous job's models and cache so each job starts clean.
+        # Not between pictures of the same mode: the same big models would just be loaded from disk again.
+        if not self.jobs and not same:
+            try:
+                await self.comfy_json("POST", "/free", json={"unload_models": True, "free_memory": True})
+                await asyncio.sleep(1.5)
+                gpu = await asyncio.to_thread(self.monitor.gpu)
+                used = (gpu or {}).get("vram_used_gb")
+                if used is not None and used > 2.5:  # right after /free ComfyUI itself holds well under this
+                    await self.broadcast({"type": "notice", "text": (
+                        f"Перед заданием занято {used:g} ГБ видеопамяти. Скорее всего, её держат другие программы "
+                        "(браузер, Adobe, игры). Закройте их, иначе генерация может идти медленнее.")})
+            except Exception:
+                pass
         status, res = await self.comfy_json("POST", "/prompt", json={
             "prompt": graph, "client_id": CLIENT_ID,
             "extra_data": {"preview_method": "auto"}})
@@ -1308,7 +1435,8 @@ class App:
         """Improve the quality of a finished video or picture from the library (SeedVR2), the sound stays."""
         peek = await req.json()
         soft = peek.get("method") == "soft2k"  # "up to 2K", soft (pictures only)
-        await self.need_models("upscale")
+        relay = peek.get("engine") == "relay"   # the fast RelayVSR x2 (video only) instead of SeedVR2
+        await self.need_models("relayvsr" if relay else "upscale")
         if self.rh():
             raise web.HTTPBadRequest(text="Увеличение работает только на своём ComfyUI (не в облаке RunningHub).")
         body = peek
@@ -1335,8 +1463,48 @@ class App:
             suffix = Path(f.get("filename", "")).suffix
         if not content:
             raise web.HTTPBadRequest(text="Файл не найден")
+        return await self._upscale_core(body, item, content, suffix, relay, soft)
+
+    async def h_upscale_file(self, req):
+        """The same enlarge for ANY file of the user (made elsewhere): the file comes with the request, not from the library."""
+        form, content, name = {}, None, ""
+        async for part in await req.multipart():
+            if part.name == "file":
+                name = part.filename or ""
+                content = await part.read()
+            else:
+                form[part.name] = (await part.text()).strip()
+        if not content:
+            raise web.HTTPBadRequest(text="Файл не получен")
+        suffix = Path(name).suffix.lower()
+        pic = suffix in (".png", ".jpg", ".jpeg", ".webp", ".bmp")
+        relay = form.get("engine") == "relay"
+        soft = form.get("method") == "soft2k"
+        await self.need_models("relayvsr" if relay else "upscale")
+        if self.rh():
+            raise web.HTTPBadRequest(text="Увеличение работает только на своём ComfyUI (не в облаке RunningHub).")
+        if soft and not pic:
+            raise web.HTTPBadRequest(text="«До 2К» работает для картинок. Для видео выберите «Увеличить в 1,5 или 2 раза».")
+        item = {"id": "", "kind": "image" if pic else "video", "res": form.get("res", ""), "len": float(form.get("len") or 0),
+                "prompt": "Увеличение: " + name[:60], "aspect": "", "q": ""}
+        return await self._upscale_core(form, item, content, suffix, relay, soft)
+
+    async def _upscale_core(self, body, item, content, suffix, relay, soft):
         pic = item.get("kind") == "image"
-        scale = wf.UPSCALE_SCALES.get(str(body.get("scale")), 1.5)
+        if relay:
+            if pic:
+                raise web.HTTPBadRequest(text="Быстрое увеличение работает только для видео. Для картинки выберите SeedVR2.")
+            try:
+                w0, h0 = (int(x) for x in str(item.get("res", "")).split("×"))
+                secs = float(item.get("len") or 0)
+            except ValueError:
+                w0 = h0 = 0; secs = 0.0
+            if w0 and secs and w0 * h0 * secs > wf.RELAY_PIXEL_SECONDS:   # decoded in memory as a whole: longer clips do not fit
+                ok_secs = wf.RELAY_PIXEL_SECONDS / (w0 * h0)
+                raise web.HTTPBadRequest(text=f"Видео слишком большое для быстрого увеличения: оно целиком загружается в память. "
+                                              f"При размере {w0}×{h0} можно не больше {ok_secs:.0f} с (у вас {secs:.0f} с). "
+                                              f"Выберите SeedVR2 или сделайте ролик короче.")
+        scale = 2.0 if relay else wf.UPSCALE_SCALES.get(str(body.get("scale")), 1.5)
         data = aiohttp.FormData()
         name = f"h3s_{uuid.uuid4().hex[:8]}{suffix or ('.png' if pic else '.mp4')}"
         data.add_field("image", content, filename=name, content_type="image/png" if pic else "video/mp4")
@@ -1361,12 +1529,21 @@ class App:
             graph, stages = wf.upscale_image_graph(self.model_names, video, scale, seed, soften=0.5)
             return await self.queue(graph, stages, {
                 "mode": "upscale", "sub": "До 2К, мягко", "prompt": item.get("prompt", "") or "Увеличение до 2К",
-                "aspect": item.get("aspect", ""), "q": "2K", "len": 0.0, "res": f"{round(w0 * scale / 2) * 2}×{round(h0 * scale / 2) * 2}", "seed": seed, "src": item["id"]})
-        graph, stages = (wf.upscale_image_graph if pic else wf.upscale_graph)(self.model_names, video, scale, seed)
+                "aspect": item.get("aspect", ""), "q": "2K", "len": 0.0, "res": f"{round(w0 * scale / 2) * 2}×{round(h0 * scale / 2) * 2}", "seed": seed, "src": item.get("id", "")})
+        def num(key, default):   # a slider value 0..1 from the window (a string when it comes with an uploaded file)
+            try:
+                return min(1.0, max(0.0, float(body.get(key))))
+            except (TypeError, ValueError):
+                return default
+        if relay:
+            graph, stages = wf.relay_graph(self.model_names, video, seed, detail=num("detail", 0.7))
+        else:
+            soften = round(1.0 - num("sharp", 1.0), 2)   # 0 = full sharpness of SeedVR2, more = mixed with the plain enlarge
+            graph, stages = (wf.upscale_image_graph if pic else wf.upscale_graph)(self.model_names, video, scale, seed, soften=soften)
         return await self.queue(graph, stages, {
-            "mode": "upscale", "sub": f"Увеличение ×{body.get('scale', '1.5')}", "prompt": item.get("prompt", "") or "Увеличение",
+            "mode": "upscale", "sub": "Быстрое увеличение ×2 (RelayVSR)" if relay else f"Увеличение ×{body.get('scale', '1.5')}", "prompt": item.get("prompt", "") or "Увеличение",
             "aspect": item.get("aspect", ""), "q": item.get("q", ""), "len": item.get("len", 0.0), "res": res, "seed": seed,
-            "src": item["id"]})
+            "src": item.get("id", "")})
 
     async def h_generate_krea(self, req):
         await self.need_models("krea")
@@ -1580,7 +1757,7 @@ class App:
                 raise web.HTTPBadRequest(text="Файл Pika (pika_h3_flex_turbo_8step_hd_ref2va) не найден в ComfyUI. "
                                               "Скачайте его в разделе «Модели» или выберите прежнее ускорение.")
             pika, steps = self.model_names["pika_lora"], max(6, steps)
-        graph, stages = wf.ref_graph(self.model_names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed, images, videos, audios,
+        graph, stages = wf.ref_graph(self.model_names, wf.lipsync_prompt(prompt, len(images), len(videos)), width, height, seconds, seed, images, videos, audios,
                                      steps, ref_size, extra, pika)
         sub = f"{len(images)} карт." + (f", {len(videos)} видео" if videos else "") + (f", {len(audios)} аудио" if audios else "") \
             + f" · {steps} шагов" + (" · Pika" if pika else "")
@@ -1749,6 +1926,13 @@ class App:
                 src = LONG_DIR / run / f"state_{k - 1}.latent"
                 if not src.exists():
                     raise web.HTTPBadRequest(text=f"Сначала сделайте сцену {k}: следующая продолжает её конец.")
+                try:  # the saved tail only fits a scene of the same frame size
+                    was = json.loads(src.with_suffix(".json").read_text(encoding="utf-8")).get("res")
+                except (OSError, ValueError):
+                    was = None
+                if was and was != f"{width}×{height}":
+                    raise web.HTTPBadRequest(text=f"Сцена {k} сделана в формате {was}, а сейчас выбран {width}×{height}. "
+                                                  "Верните прежний формат и качество или переделайте сцену 1 в новом.")
                 state = await self.upload_state(src, f"h3s_long_{run}_{k - 1}.latent")
             graph, stages = wf.long_part_graph(self.model_names, scenes, k, width, height, seed, images, audio, start,
                                                self.model_names["pika_lora"], self.custom_loras(), "match", vocals, state,
@@ -1837,6 +2021,69 @@ class App:
         sub = f"{len(images)} карт." + (f", голос ({len(audios)})" if audios else ", без голоса") + " · 10 шагов"
         return await self.queue(graph, stages, {
             "mode": "actor", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
+            "res": f"{width}×{height}", "seed": seed})
+
+    async def h_generate_swap(self, req):
+        """Preset «Замена персонажа»: one video + up to two character pictures, the app writes the prompt."""
+        await self.need_models("swap")
+        form, prompt, aspect, quality, seed, images, videos, audios, seconds = await self.read_ref_form(req, 2)
+        if not videos:
+            raise web.HTTPBadRequest(text="Добавьте видео, в котором нужно заменить человека")
+        if not images:
+            raise web.HTTPBadRequest(text="Добавьте картинку персонажа, на которого заменяем")
+        shots = []
+        if form.get("shots"):   # several plans (shots): every one is swapped on its own, then they are joined
+            try:
+                for x in json.loads(form["shots"])[:12]:
+                    s0, e0 = float(x["s"]), float(x["e"])
+                    if e0 - s0 < 0.5:
+                        continue
+                    shots.append({"s": s0, "e": e0, "pic": int(x.get("pic", 0)), "who": str(x.get("who") or "").strip(),
+                                  "a_end": float(x["a_end"]) if x.get("a_end") not in (None, "") else None})
+            except (ValueError, KeyError, TypeError):
+                raise web.HTTPBadRequest(text="Не удалось разобрать список планов")
+            if any(0 <= x["pic"] and x["e"] - x["s"] < 2 for x in shots):
+                raise web.HTTPBadRequest(text="Каждый план для замены должен быть не короче 2 секунд: объедините короткие планы с соседними")
+        whos = [(form.get(f"who{i}") or (form.get("who") if i == 0 else "") or "").strip() for i in range(len(images))]
+        try:
+            cuts = [float(x) for x in (form.get("cuts") or "").replace(";", ",").split(",") if x.strip()]
+        except ValueError:
+            cuts = []
+        text = wf.swap_prompt(whos, (form.get("extra") or "").strip(), cuts, form.get("prompt_style") != "plain")
+        if form.get("raw_prompt", "").strip():   # a prompt written by hand in the MiniMax format (tests, experts): used as it is
+            text = form["raw_prompt"].strip()
+        pika = None
+        if form.get("accel") == "pika":
+            if "pika_lora" in {m["role"] for m in self.missing}:
+                raise web.HTTPBadRequest(text="Файл Pika (pika_h3_flex_turbo_8step_hd_ref2va) не найден в ComfyUI. "
+                                              "Скачайте его в разделе «Модели» или выберите обычное ускорение.")
+            pika = self.model_names["pika_lora"]
+        names = self.model_names
+        if form.get("unet"):   # another base model for this job (tests): only a file this ComfyUI really has
+            try:
+                _, have = await self.comfy_json("GET", "/models/diffusion_models")
+            except Exception:
+                have = []
+            pick = next((f for f in (have or []) if f.replace("/", "\\") == form["unet"].replace("/", "\\")), None)
+            if not pick:
+                raise web.HTTPBadRequest(text="Такой модели нет в ComfyUI: " + form["unet"])
+            names = {**self.model_names, "lipsync_unet": pick}
+        width, height = wf.resolution(aspect, quality, form)
+        seconds = min(15.0, max(3.0, seconds))
+        loras = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora"))) + self.custom_loras()
+        if shots:
+            snd = form.get("sound") if form.get("sound") in ("original", "lock") else "original"
+            graph, stages = wf.swap_shots_graph(names, shots, width, height, seed, images, videos[0],
+                                                (form.get("extra") or "").strip(), pika, loras, snd,
+                                                form.get("small_ref") == "1")
+            seconds = max(x["e"] for x in shots) - min(x["s"] for x in shots)
+        else:
+            snd = form.get("sound") if form.get("sound") in ("original", "lock", "model") else "original"
+            graph, stages = wf.swap_graph(names, text, width, height, seconds, seed, images, videos[0], loras, pika, snd,
+                                             small_ref=form.get("small_ref") == "1")
+        return await self.queue(graph, stages, {
+            "mode": "swap", "sub": "Замена персонажа" + (f", планов: {len(shots)}" if shots else (f" ({len(images)})" if len(images) > 1 else "")) + (" · Pika" if pika else ""),
+            "prompt": prompt or whos[0], "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed})
 
     async def action_setup(self):
@@ -1977,7 +2224,36 @@ class App:
             await self.broadcast({"type": "interrupted", "prompt_id": pid})
         else:
             await self.comfy_json("POST", "/interrupt", json={"prompt_id": pid})
+            task = asyncio.create_task(self.interrupt_watch(pid))
+            self._bg.add(task)
+            task.add_done_callback(self._bg.discard)
         return web.json_response({"ok": True})
+
+    async def interrupt_watch(self, pid, wait=15):
+        """ComfyUI sometimes ignores «Cancel» (stuck on a heavy step). If the job is still there after `wait` seconds:
+        managed engine - restart it; the user's own ComfyUI - only tell the user."""
+        await asyncio.sleep(wait)
+        if pid not in self.jobs:
+            return
+        if not self.process:
+            text = ("ComfyUI не отвечает на «Отмена» уже больше 15 секунд. Это ваш собственный ComfyUI: "
+                    "закройте его окно и запустите заново.")
+            self.note_error(text)
+            await self.broadcast({"type": "notice", "text": text})
+            return
+        text = "ComfyUI не отвечает на «Отмена». Перезапускаем движок, это займёт около минуты."
+        self.note_error(text)
+        await self.broadcast({"type": "notice", "text": text})
+        try:
+            await asyncio.to_thread(self.process.stop)
+            await asyncio.to_thread(self.process.start)
+            await self.wait_comfy()
+        except Exception as e:
+            self.note_error(f"Не удалось перезапустить движок после отмены: {e}")
+        # the restarted engine has an empty queue: nothing of what was running or waiting is there any more
+        for jid in [j for j, job in self.jobs.items() if not job.get("task")]:
+            self.jobs.pop(jid, None)
+            await self.broadcast({"type": "interrupted", "prompt_id": jid})
 
     async def h_library(self, _req):
         return web.json_response([self.public(x) for x in self.library.items])
@@ -1996,14 +2272,53 @@ class App:
         item = self.library.get(req.match_info["id"])
         if not item:
             raise web.HTTPNotFound()
-        path = self.file_path(item)
         recycled = False
-        if path and path.exists():
-            recycled = await asyncio.to_thread(send_to_recycle_bin, path)
-            if not recycled:
-                return web.json_response({"error": "Не удалось переместить файл в корзину"}, status=500)
+        for path in {p for p in (self.file_path(item), Path(item["local"]) if item.get("local") else None) if p}:
+            if path.exists():   # the original and the program's own copy both go to the Recycle Bin
+                ok = await asyncio.to_thread(send_to_recycle_bin, path)
+                recycled = recycled or ok
+                if not ok:
+                    return web.json_response({"error": "Не удалось переместить файл в корзину"}, status=500)
         self.library.remove(item["id"])
         return web.json_response({"ok": True, "recycled": recycled})
+
+    async def h_results_get(self, _req):
+        items = self.library.items
+        lost = sum(1 for x in items if (p := self.file_path(x)) and not p.exists())
+        nocopy = sum(1 for x in items if not (x.get("local") and Path(x["local"]).exists()) and (p := self.file_path(x)) and p.exists())
+        return web.json_response({"dir": str(self.results_dir()), "keep": self.keep_copies(), "lost": lost, "nocopy": nocopy,
+                                  "default": str(self.default_results_dir())})
+
+    async def h_results_set(self, req):
+        body = await req.json()
+        if "keep" in body:
+            self.config.update(keep_copies=bool(body["keep"]))
+        d = (body.get("dir") or "").strip().strip('"')
+        if d:
+            try:
+                Path(d).mkdir(parents=True, exist_ok=True)
+            except OSError:
+                return web.json_response({"error": "Не получается создать папку. Проверьте путь и диск"}, status=400)
+            self.config.update(results_dir=d)
+        elif body.get("reset"):
+            self.config.update(results_dir=None)
+        return await self.h_results_get(req)
+
+    async def h_results_backfill(self, req):
+        """Make copies of the files that are still in ComfyUI's output folder but have no copy of their own yet."""
+        n = 0
+        for x in list(self.library.items):
+            p = self.file_path(x)
+            if p and p.exists() and not (x.get("local") and Path(x["local"]).exists()):
+                n += 1 if await self.archive_item(x) else 0
+        return web.json_response({"copied": n, **json.loads((await self.h_results_get(req)).text)})
+
+    async def h_results_clean(self, req):
+        """Remove the Library records whose files are gone from the disk (nothing on the disk is touched)."""
+        gone = [x["id"] for x in self.library.items if (p := self.file_path(x)) and not p.exists()]
+        for i in gone:
+            self.library.remove(i)
+        return web.json_response({"removed": len(gone), **json.loads((await self.h_results_get(req)).text)})
 
     async def h_file(self, req):
         item = self.library.get(req.match_info["id"])
@@ -2055,7 +2370,17 @@ class App:
             _, _, found = await asyncio.to_thread(ag.find_gguf, custom["dir"])
             candidates = [{"path": str(p), "name": p.name, "gb": round(p.stat().st_size / 1e9, 1),
                            "fits": ag.fits(p, vram), "current": str(p) == custom["model"]} for p in found]
+        options = []
+        for k, ov in ag.LLM_VARIANTS.items():
+            mp, pp = ag.variant_files(self.llm.root, ov)
+            options.append({"key": k, "title": ov["title"], "uncensored": bool(ov.get("uncensored")),
+                            "size": ov["model_size"] + ov["mmproj_size"], "have": mp.exists() and pp.exists(),
+                            "current": k == variant and not custom, "fits": vram >= ov.get("min_vram", 0),
+                            "min_vram": ov.get("min_vram", 0)})
         return web.json_response({
+            "variants": options,
+            "my_model": ({"title": Path((custom or self.config.get("llm_custom_saved") or {}).get("model", "")).stem,
+                          "current": bool(custom)} if (custom or (self.config.get("llm_custom_saved") or {}).get("model")) else None),
             "variant": variant, "title": Path(custom["model"]).stem if custom else v["title"],
             "size": 37e6 if custom else v["model_size"] + v["mmproj_size"], "candidates": candidates, "vram": vram,
             "custom": custom, "vision": self.llm.vision(variant), "has_model": self.llm.has_model(variant),
@@ -2080,7 +2405,7 @@ class App:
             if not wanted and not self.config.get("llm_dir"):
                 return web.json_response({"error": "Сначала укажите папку, куда скачать помощника"}, status=400)
             if wanted:
-                target = Path(wanted) / "MinimaxH3_assistant"
+                target = Path(wanted) if Path(wanted).name == "MinimaxH3_assistant" else Path(wanted) / "MinimaxH3_assistant"
                 try:
                     target.mkdir(parents=True, exist_ok=True)
                 except OSError:
@@ -2151,11 +2476,28 @@ class App:
             return web.json_response({"error": str(e)}, status=500)
         return web.json_response({"text": text, "lang": code, "lang_name": name})
 
+    async def h_agent_variant(self, req):
+        """Choose which of the app's own models the agent uses (Gemma / Qwen, with or without refusals)."""
+        key = (await req.json()).get("variant")
+        if key not in ag.LLM_VARIANTS:
+            return web.json_response({"error": "Неизвестная модель"}, status=400)
+        cur = self.config.get("llm_custom")
+        # the user's own model is not lost: it stays as «Моя модель» and can be switched back on
+        self.config.update(llm_variant=key, llm_custom=None, **({"llm_custom_saved": cur} if cur else {}))
+        await self.stop_llm()
+        return await self.h_agent_status(req)
+
     async def h_agent_model(self, req):
         """Use a GGUF model the user already has (or go back to the app's own Gemma)."""
         body = await req.json()
         if body.get("reset"):
-            self.config.update(llm_custom=None)
+            cur = self.config.get("llm_custom")
+            self.config.update(llm_custom=None, **({"llm_custom_saved": cur} if cur else {}))
+        elif body.get("restore"):
+            saved = self.config.get("llm_custom_saved")
+            if not saved or not Path(saved.get("model", "")).exists():
+                return web.json_response({"error": "Файл вашей модели не найден"}, status=400)
+            self.config.update(llm_custom=saved)
         else:
             folder = (body.get("dir") or "").strip().strip('"')
             if not Path(folder).is_dir():
@@ -2206,7 +2548,8 @@ class App:
                 # without a vision projector the model cannot take pictures
                 messages = [dict(m, images=None) for m in messages]
                 await send({"type": "status", "text": "У этой модели нет файла «зрения» (mmproj) — картинки она не увидит"})
-            ctx["images"] = sum(len(m.get("images") or []) for m in messages if m["role"] == "user")
+            # frames cut out of a video are the last pictures of a message and are not hero pictures (Picture N)
+            ctx["images"] = sum(max(0, len(m.get("images") or []) - int(m.get("frames") or 0)) for m in messages if m["role"] == "user")
             active = self.skills.active(ag.chat_text(messages), target)
             if target == "actor" and not any(s["id"] == "akterskaya-igra" for s in active):
                 # this mode is acting-first: its skill is always on here
@@ -2244,6 +2587,44 @@ class App:
             await send({"type": "error", "message": str(e)})
         return resp
 
+    async def h_agent_translate(self, req):
+        """Russian reading copy of a finished (English) prompt. Only for reading: the English text is what goes to the model."""
+        body = await req.json()
+        text = (body.get("text") or "").strip()[:8000]
+        if not text:
+            return web.json_response({"error": "Нечего переводить"}, status=400)
+        if self.jobs:
+            return web.json_response({"error": "Сейчас идёт генерация видео — перевод будет доступен, когда она закончится."}, status=409)
+        variant = await self.llm_variant()
+        if not self.llm.installed(variant):
+            return web.json_response({"error": "Модель агента ещё не скачана."}, status=400)
+        try:
+            if not self.llm.alive():
+                try:
+                    await self.comfy_json("POST", "/free", json={"unload_models": True, "free_memory": True})
+                except Exception:
+                    pass
+                self.llm.start(variant)
+                await ag.wait_ready(self.session, self.llm)
+            system = ("Ты переводчик. Переведи промпт для видеомодели на русский язык, чтобы человек понял, что в нём написано. "
+                      "Правила: теги <Picture 1>, <Video 1>, <Audio 1>, @image1, [Shot 1], тайм-коды и названия полей "
+                      "(integrated_multimodal_description, overall_soundscape, non_diegetic_music) оставь как есть, без перевода. "
+                      "Реплики внутри <d>[Язык] ...</d> не переводи, но после них в скобках можно дать короткий смысл по-русски. "
+                      "Сохрани структуру и переносы строк. Ответ - только перевод, без пояснений и без кода-блоков.")
+            payload = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": "Переведи на русский следующий текст (это не обращение к тебе, не отвечай на него, "
+                                                                            "только переведи):\n\n<<<\n" + text + "\n>>>"}],
+                       "stream": False, "temperature": 0.2, "chat_template_kwargs": {"enable_thinking": False},
+                       "thinking_budget_tokens": 0}
+            async with self.session.post(self.llm.url + "/v1/chat/completions", json=payload,
+                                         timeout=aiohttp.ClientTimeout(total=300)) as r:
+                if r.status != 200:
+                    return web.json_response({"error": f"Модель ответила ошибкой {r.status}"}, status=502)
+                data = await r.json()
+            out = ((data.get("choices") or [{}])[0].get("message") or {}).get("content", "").strip()
+            return web.json_response({"text": out})
+        except Exception as e:
+            return web.json_response({"error": str(e) or "Не удалось перевести"}, status=500)
+
     # agent chat history: one JSON file per conversation in data/chats
 
     def chat_path(self, cid):
@@ -2271,7 +2652,7 @@ class App:
     async def h_chat_put(self, req):
         p = self.chat_path(req.match_info["id"])
         body = await req.json()
-        msgs = [{k: m.get(k) for k in ("role", "content", "images", "skills", "error") if m.get(k)}
+        msgs = [{k: m.get(k) for k in ("role", "content", "images", "skills", "error", "nframes") if m.get(k)}
                 for m in body.get("messages") or [] if m.get("role") in ("user", "assistant")]
         first = next((m.get("content", "") for m in msgs if m["role"] == "user"), "") or "Без названия"
         data = {"title": (body.get("title") or first).strip().replace("\n", " ")[:80], "target": body.get("target", "video"),
@@ -2385,6 +2766,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),
+        web.post("/api/upscale_file", state.h_upscale_file),
         web.get("/api/version", lambda _req: web.json_response({"version": APP_VERSION})),
         web.get("/api/update/check", state.h_update_check),
         web.post("/api/update/install", state.h_update_install),
@@ -2406,6 +2788,7 @@ def build_app(comfy_override=None):
         web.post("/api/loras/custom", state.h_loras_custom_set),
         web.post("/api/generate/refs", state.h_generate_refs),
         web.post("/api/generate/actor", state.h_generate_actor),
+        web.post("/api/generate/swap", state.h_generate_swap),
         web.post("/api/generate/long", state.h_generate_long),
         web.post("/api/montage", state.h_montage),
         web.get("/api/long/state", state.h_long_state),
@@ -2420,9 +2803,11 @@ def build_app(comfy_override=None):
         web.post("/api/setup/cloud", state.h_setup_cloud),
         web.post("/api/interrupt", state.h_interrupt),
         web.get("/api/agent/status", state.h_agent_status),
+        web.post("/api/agent/translate", state.h_agent_translate),
         web.post("/api/agent/install", state.h_agent_install),
         web.post("/api/agent/install/cancel", state.h_agent_install_cancel),
         web.post("/api/agent/model", state.h_agent_model),
+        web.post("/api/agent/variant", state.h_agent_variant),
         web.post("/api/speech/transcribe", state.h_transcribe),
         web.post("/api/speech/folder", state.h_speech_folder),
         web.post("/api/agent/chat", state.h_agent_chat),
@@ -2434,6 +2819,10 @@ def build_app(comfy_override=None):
         web.post("/api/agent/skills", state.h_skill_upload),
         web.patch("/api/agent/skills/{id}", state.h_skill_patch),
         web.delete("/api/agent/skills/{id}", state.h_skill_delete),
+        web.get("/api/results", state.h_results_get),
+        web.post("/api/results", state.h_results_set),
+        web.post("/api/results/backfill", state.h_results_backfill),
+        web.post("/api/results/clean", state.h_results_clean),
         web.get("/api/library", state.h_library),
         web.patch("/api/library/{id}", state.h_library_patch),
         web.delete("/api/library/{id}", state.h_library_delete),

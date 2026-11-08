@@ -67,6 +67,23 @@ class JsApi:
         res = self._window.create_file_dialog(webview.FOLDER_DIALOG, directory=start if os.path.isdir(start) else "")
         return res[0] if res else None
 
+    @staticmethod
+    def _last_dir():
+        """The folder the user saved into last time (Windows "Save as" starts there next time)."""
+        try:
+            d = (server.DATA_DIR / "last_save_dir.txt").read_text(encoding="utf-8").strip()
+            return d if os.path.isdir(d) else ""
+        except OSError:
+            return ""
+
+    @staticmethod
+    def _remember_dir(folder):
+        try:
+            if folder and os.path.isdir(folder):
+                (server.DATA_DIR / "last_save_dir.txt").write_text(folder, encoding="utf-8")
+        except OSError:
+            pass
+
     def _copy(self, item_id, dest):
         """Stream a library video from the local server into the file the user chose."""
         import urllib.request
@@ -88,7 +105,7 @@ class JsApi:
         import webview
         ext = os.path.splitext(filename)[1].lower() or ".mp4"
         kinds = (f"Картинка {ext[1:].upper()} (*{ext})",) if ext != ".mp4" else ("Видео MP4 (*.mp4)",)
-        res = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename=filename, file_types=kinds)
+        res = self._window.create_file_dialog(webview.SAVE_DIALOG, directory=self._last_dir(), save_filename=filename, file_types=kinds)
         if not res:
             return {"ok": False, "cancelled": True}
         dest = res if isinstance(res, str) else res[0]
@@ -98,15 +115,17 @@ class JsApi:
             self._copy(item_id, dest)
         except Exception as e:
             return {"ok": False, "error": str(e)}
+        self._remember_dir(os.path.dirname(dest))
         return {"ok": True, "path": dest}
 
     def save_videos(self, items):
         """Several videos: one folder is chosen, every video is saved into it."""
         import webview
-        res = self._window.create_file_dialog(webview.FOLDER_DIALOG)
+        res = self._window.create_file_dialog(webview.FOLDER_DIALOG, directory=self._last_dir())
         if not res:
             return {"ok": False, "cancelled": True}
         folder = res if isinstance(res, str) else res[0]
+        self._remember_dir(folder)
         saved, failed = [], 0
         for it in items:
             try:

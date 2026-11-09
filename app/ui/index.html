@@ -603,6 +603,9 @@ details[open] summary::before{content:'－ '}
 .frame .live-img,.frame video.result{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .frame .live-img.dim{filter:blur(6px) brightness(.45);transform:scale(1.05)}
 .frame video.result{object-fit:contain;background:#000}
+/* the finished clip is only a small frame here: this button opens the same big viewer the library uses */
+.frame .expand{display:none}
+.frame.done .expand{display:grid}
 .frame .wait{position:absolute;left:0;right:0;bottom:16px;text-align:center;font-size:12.5px;color:var(--muted)}
 .dot.off{background:var(--warn);box-shadow:0 0 0 3px rgba(255,181,71,.18)}
 
@@ -1774,6 +1777,7 @@ function previewPanel(el, st, opts) {
       <img class="live-img" alt="" hidden>
       <video class="live-vid" autoplay loop muted playsinline hidden style="width:100%;height:100%;object-fit:contain"></video>
       <video class="result" controls loop playsinline hidden></video>
+      <button class="cw-zb expand" type="button" title="Развернуть в большое окно" aria-label="Развернуть в большое окно"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
       <div class="wait" hidden></div>
       <div class="live-hud" hidden><span class="live-dot"></span><span class="hud-t">Предпросмотр</span><span class="hud-s"></span></div>
       <div class="bar"></div>
@@ -1791,12 +1795,14 @@ function previewPanel(el, st, opts) {
   const frame = $('.frame', el), go = $('.go', el), stopB = $('.stop', el), status = $('.status', el);
   const live = $('.live', el), hud = $('.live-hud', el), bar = $('.bar', el);
   const liveImg = $('.live-img', el), result = $('.result', el), wait = $('.wait', el), liveVid = $('.live-vid', el);
+  const expand = $('.expand', el);   // the clip finished: open it in the big viewer, as from the library
+  expand.onclick = () => { if (result.dataset.dragid) openViewer(result.dataset.dragid, el._done ? normItem(el._done) : null); };
   const STEP_MS = 420;
   let run = null;
 
   function resetFrame() {
     [live, hud, liveImg, liveVid, result, wait].forEach(x => x.hidden = true);
-    result.pause(); result.removeAttribute('src');
+    result.pause(); result.removeAttribute('src'); el._done = null;
     $('.res', frame).hidden = false; frame.classList.remove('done');
   }
 
@@ -1901,6 +1907,7 @@ function previewPanel(el, st, opts) {
     if (kind === 'done') {
       [liveImg, liveVid, wait].forEach(x => x.hidden = true);
       result.src = data.url; result.dataset.dragid = data.id; result.draggable = true; result.hidden = false; result.muted = true; result.play().catch(() => {});
+      el._done = data;   // in the rare case the library has not caught up, the viewer still has the item
       frame.classList.add('done'); $('.hud-t', el).textContent = 'Готово'; $('.hud-s', el).textContent = took;
       status.innerHTML = `Готово за ${took} — видео в библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(data.seed ?? '—'))}</b> `
         + (data.seed != null ? '<button class="btn" id="keepSeed" type="button" style="padding:4px 10px;font-size:12px">Зафиксировать</button>' : '');
@@ -2917,7 +2924,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 const MODE_NAME = { montage: 'Монтаж', custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн', long: 'Длинное видео', krea: 'Картинка по тексту', qwen: 'Правка картинки', upscale: 'Увеличение', relayvsr: 'Увеличение' };
 const LIB = [];
 const IMG_PANELS = [];  // refresh functions of the picture result windows
-let libFilter = 'all', selecting = false, selected = new Set(), openId = null;
+let libFilter = 'all', selecting = false, selected = new Set(), openId = null, openItem = null;  // openItem: the viewer may show a clip the library does not have yet
 const ICON = {
   use: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
@@ -3107,8 +3114,8 @@ function setFav(it, fav) {
   it.fav = fav;
   if (API) fetch(`/api/library/${it.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fav }) });
 }
-function openViewer(id) {
-  const it = byId(id); if (!it) return; openId = id;
+function openViewer(id, fallback) {
+  const it = byId(id) || fallback; if (!it) return; openId = it.id || id; openItem = it;
   const vid = $('#viewer video'), img = $('#viewer img');
   const pic = it.kind === 'image';
   vid.hidden = !it.url || pic; img.hidden = $('#viewer .li-play').hidden = !!it.url && !pic;
@@ -3130,7 +3137,7 @@ function openViewer(id) {
   $('#viewer').hidden = false;
 }
 const dimTxt = (w, h) => `${w}×${h} · ${(w * h / 1e6).toFixed(1).replace('.', ',')} МП`;
-function closeViewer() { $('#viewer').hidden = true; openId = null; const v = $('#viewer video'); v.pause(); v.removeAttribute('src'); }
+function closeViewer() { $('#viewer').hidden = true; openId = null; openItem = null; const v = $('#viewer video'); v.pause(); v.removeAttribute('src'); }
 function goTo(view) {
   const n = $(`.nav[data-view="${view}"]`);
   if (n) { n.click(); return; }
@@ -3160,14 +3167,14 @@ $('#bulkSave').onclick = () => saveItems([...selected].map(byId));
 $('#bulkDel').onclick = () => askDelete([...selected]);
 $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.id === 'viewer' ? closeViewer() : (m.hidden = true); }));
 addEventListener('keydown', e => { if (e.key === 'Escape') { $('#confirm').hidden = true; closeViewer(); } });
-$('#vwSave').onclick = () => saveItems([byId(openId)]);
+$('#vwSave').onclick = () => saveItems([(byId(openId) || openItem)]);
 $('#vwCopy').onclick = () => {
-  const t = (byId(openId) || {}).prompt || '';
+  const t = ((byId(openId) || openItem) || {}).prompt || '';
   if (!t) { toast('У этого файла нет промпта'); return; }
   navigator.clipboard?.writeText(t).then(() => toast('Промпт скопирован'), () => toast('Не удалось скопировать'));
 };
-$('#vwZoom').onclick = () => { const it = byId(openId); if (it && it.url) zoomOpen(it.url); };
-$('#vwImg').onclick = () => { const it = byId(openId); if (it && it.kind === 'image' && it.url) zoomOpen(it.url); };
+$('#vwZoom').onclick = () => { const it = (byId(openId) || openItem); if (it && it.url) zoomOpen(it.url); };
+$('#vwImg').onclick = () => { const it = (byId(openId) || openItem); if (it && it.kind === 'image' && it.url) zoomOpen(it.url); };
 $('#vwDel').onclick = () => askDelete([openId]);
 async function continueLong(it) {
   const L2 = RM.long.root;
@@ -3183,15 +3190,15 @@ async function continueLong(it) {
   if (L2._mode === 'parts' && L2._ready() >= $$('.sc', L2).length && $$('.sc', L2).length < 12) L2._addScene('', 10);
   toast('Проект открыт: те же картинки и сцены. Опишите следующую сцену и нажмите «Сделать эту сцену».');
 }
-$('#vwContinue').onclick = () => { const it = byId(openId); if (!it) return; closeViewer(); continueLong(it); };
+$('#vwContinue').onclick = () => { const it = (byId(openId) || openItem); if (!it) return; closeViewer(); continueLong(it); };
 $('#vwSeed').onclick = () => {
-  const it = byId(openId); if (!it || it.seed == null) return;
+  const it = (byId(openId) || openItem); if (!it || it.seed == null) return;
   const st = it.mode === 'video' ? V : it.mode === 'lipsync' ? L : RM[it.mode]?.S; if (!st) return;
   closeViewer(); useSeed(st, it.seed, it.mode);
 };
-$('#vwFav').onclick = () => { const it = byId(openId); setFav(it, !it.fav); $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное'; renderLib(); };
+$('#vwFav').onclick = () => { const it = (byId(openId) || openItem); setFav(it, !it.fav); $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное'; renderLib(); };
 $('#vwRepeat').onclick = () => {
-  const it = byId(openId); closeViewer();
+  const it = (byId(openId) || openItem); closeViewer();
   if (it.mode === 'custom') { toast('Для своих workflow настройки переносятся вручную: откройте раздел «Свои workflow»'); goTo('custom'); return; }
   if (IMG[it.mode]) { IMG[it.mode].fill(it); goTo(it.mode); }
   else if (it.mode === 'video') { Object.assign(V, { aspect: it.aspect, q: it.q, dur: Math.round(it.len) }); $('#vPrompt').value = it.prompt; $('#vPrompt').oninput({ target: $('#vPrompt') }); vUpd(); goTo('video'); }
@@ -4664,7 +4671,7 @@ $('#mlist').addEventListener('click', async e => {
 });
 
 /* ---------- improve quality of a finished video (SeedVR2) ---------- */
-$('#vwUp').onclick = () => openUpscale(byId(openId));
+$('#vwUp').onclick = () => openUpscale((byId(openId) || openItem));
 async function openUpscale(it, file) {   // `file`: any file of the user (not from the Library)
   if (!it) return;
   const st = await (await fetch('/api/status')).json();

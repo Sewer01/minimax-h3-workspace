@@ -18,6 +18,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 import uuid
 import urllib.parse
 import webbrowser
@@ -147,6 +148,8 @@ class App:
         self.library = Library(LIBRARY_FILE)
         self.output_dir = None
         self.comfy_online = False
+        self._relay_ok = None  # does this ComfyUI know the RelayVSR nodes (cached, see relay_ready)
+        self._relay_at = 0.0
         self.process = None  # engine.ComfyProcess in managed mode
         self._bg = set()  # background tasks (kept so they are not garbage collected)
         self.installer = None
@@ -665,6 +668,7 @@ class App:
             "gpu": gpu_name(dev.get("name", "")),
             "vram_total": dev.get("vram_total"), "vram_free": dev.get("vram_free"),
             "comfy_version": stats["system"].get("comfyui_version"),
+            "relay_ok": await self.relay_ready(),  # the UI offers the fast upscale only when the nodes exist
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "paths": {"install": self.config.get("install_dir"), "models": self.config.get("models_dir"),
                       "ext_models": self.config.get("ext_models_dir"),
@@ -691,6 +695,26 @@ class App:
             out.append({"pack": c["pack"], "have": have, "optional": c["optional"], "why": c["why"], "modes": used,
                         "url": f"https://github.com/{repo}"})
         return out
+
+    async def relay_ready(self):
+        """Does the running ComfyUI know the fast RelayVSR nodes?
+
+        They belong to the ComfyUI core, but not to every build: an installed 0.43.0 and 0.44.0 do not have
+        them. Nothing else checks this, so the mode used to send the graph and fail with "Node not found"
+        deep in the queue, which looks to the user like a broken program. Checked once a minute.
+        """
+        now = time.monotonic()
+        if self._relay_ok is not None and now - self._relay_at < 60:
+            return self._relay_ok
+        ok = True
+        for cls in catalog.RELAY_CLASSES:
+            try:
+                status, data = await self.comfy_json("GET", f"/object_info/{cls}", timeout=aiohttp.ClientTimeout(total=8))
+                ok = ok and status == 200 and isinstance(data, dict) and cls in data
+            except Exception:
+                ok = False
+        self._relay_ok, self._relay_at = ok, now
+        return ok
 
     async def h_nodes(self, _req):
         try:
@@ -1437,6 +1461,10 @@ class App:
         peek = await req.json()
         soft = peek.get("method") == "soft2k"  # "up to 2K", soft (pictures only)
         relay = peek.get("engine") == "relay"   # the fast RelayVSR x2 (video only) instead of SeedVR2
+        if relay and not await self.relay_ready():
+            raise web.HTTPBadRequest(text="Быстрое увеличение требует более нового ComfyUI: в вашей версии узлов "
+                                          "RelayVSR ещё нет. Обновите ComfyUI (раздел «Модели») или выберите "
+                                          "«Качественнее» — он работает сейчас.")
         await self.need_models("relayvsr" if relay else "upscale")
         if self.rh():
             raise web.HTTPBadRequest(text="Увеличение работает только на своём ComfyUI (не в облаке RunningHub).")
@@ -1481,6 +1509,10 @@ class App:
         pic = suffix in (".png", ".jpg", ".jpeg", ".webp", ".bmp")
         relay = form.get("engine") == "relay"
         soft = form.get("method") == "soft2k"
+        if relay and not await self.relay_ready():
+            raise web.HTTPBadRequest(text="Быстрое увеличение требует более нового ComfyUI: в вашей версии узлов "
+                                          "RelayVSR ещё нет. Обновите ComfyUI (раздел «Модели») или выберите "
+                                          "«Качественнее» — он работает сейчас.")
         await self.need_models("relayvsr" if relay else "upscale")
         if self.rh():
             raise web.HTTPBadRequest(text="Увеличение работает только на своём ComfyUI (не в облаке RunningHub).")

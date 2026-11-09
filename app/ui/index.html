@@ -4641,7 +4641,8 @@ async function openUpscale(it, file) {   // `file`: any file of the user (not fr
   if (!it) return;
   const st = await (await fetch('/api/status')).json();
   const have = (st.modes || []).includes('upscale') && !(st.models || []).some(m => m.role.startsWith('seedvr') && !m.have);
-  const haveRelay = (st.modes || []).includes('relayvsr') && !(st.models || []).some(m => m.role.startsWith('relayvsr') && !m.have);
+  const relayNodes = st.relay_ok !== false;   // the ComfyUI build itself must know the RelayVSR nodes
+  const haveRelay = relayNodes && (st.modes || []).includes('relayvsr') && !(st.models || []).some(m => m.role.startsWith('relayvsr') && !m.have);
   let m = $('#upMenu');
   if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'upMenu'; document.body.append(m); }
   m.hidden = false;
@@ -4659,7 +4660,9 @@ async function openUpscale(it, file) {   // `file`: any file of the user (not fr
       return `<div style="margin-top:14px;padding:12px;border:1.5px solid var(--line-2);border-radius:12px"><div style="font-weight:800;font-size:15px;margin-bottom:4px">⚡ Быстро — RelayVSR, в 2 раза${w ? ` · ${w * 2}×${h * 2}` : ''}</div>`
         + `<div class="hint" style="margin-bottom:8px">Примерно ${fmtTime(relayT)} на RTX 4060 Ti (оценка). Видео не длиннее ~10 с при 1376×768: оно целиком грузится в память.${tooBig ? ' <b style="color:var(--pink)">Это видео для быстрого варианта слишком большое.</b>' : ''}</div>`
         + (haveRelay ? `<label style="display:block;font-size:13px;margin-bottom:8px"><b>Детали: <span id="upDetailV">70</span>%</b> <span class="hint">меньше — мягче, без пересвета лиц; больше — чётче</span><input type="range" id="upDetail" min="0" max="100" step="5" value="70" style="width:100%"></label><button class="btn pri up-s" data-e="relay" data-k="2" type="button"${tooBig ? ' disabled' : ''}>Увеличить быстро</button>`
-          : `<div class="hint" style="margin-bottom:8px">Нужна модель RelayVSR (около 5,3 ГБ).${st.engine === 'managed' ? '' : ' В своём ComfyUI положите relayvsr_x2_lightx2v_int8_convrot в diffusion_models и relayvsr_flash_vae_x2_fp32 в vae.'}</div>`
+          : `<div class="hint" style="margin-bottom:8px">${relayNodes
+              ? `Нужна модель RelayVSR (около 5,3 ГБ).${st.engine === 'managed' ? '' : ' В своём ComfyUI положите relayvsr_x2_lightx2v_int8_convrot в diffusion_models и relayvsr_flash_vae_x2_fp32 в vae.'}`
+              : 'Нужен более новый ComfyUI: в вашей версии узлов RelayVSR ещё нет. Обновите ComfyUI (раздел «Модели») — или увеличивайте вариантом «Качественнее», он работает сейчас.'}</div>`
             + (st.engine === 'managed' ? '<button class="btn pri" data-dl="relayvsr" type="button">Скачать модель</button>' : '')) + '</div>'
         + `<div style="font-weight:800;font-size:15px;margin:14px 0 4px">✨ Качественнее — SeedVR2 (долго)</div>`;
     })())

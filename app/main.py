@@ -138,6 +138,21 @@ class JsApi:
         return {"ok": bool(saved), "folder": folder, "count": len(saved), "failed": failed}
 
 
+def show_running_window(base):
+    """Ask the copy that already works with these files to bring its own window forward.
+
+    The old behaviour opened http://127.0.0.1:port in a browser, which gave the user a web page instead of
+    the program - without the desktop window, and with two places to work in without noticing.
+    """
+    try:
+        import json
+        import urllib.request
+        with urllib.request.urlopen(base.rstrip("/") + "/api/focus", timeout=5) as r:
+            return bool(json.loads(r.read().decode("utf-8", "ignore")).get("ok"))
+    except Exception:
+        return False
+
+
 def main():
     import ctypes
     if sys.platform == "win32":
@@ -146,9 +161,7 @@ def main():
     port = free_port()
     busy = single.hold(server.DATA_DIR, port)  # a second copy over the same folder spoils settings, queue and ComfyUI
     if busy is not None:
-        if busy:
-            webbrowser.open(busy)  # the first window is already working with these files
-        else:
+        if not (busy and show_running_window(busy)):
             try:
                 ctypes.windll.user32.MessageBoxW(
                     0, "Программа уже запущена с этой папкой данных.\n\nЗакройте первое окно — "

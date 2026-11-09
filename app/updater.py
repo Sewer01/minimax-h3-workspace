@@ -13,13 +13,39 @@ from pathlib import Path
 
 import aiohttp
 
-from version import APP_VERSION
+from version import APP_VERSION, UPDATE_REPO
 
-REPO = "Yuliya1310/minimax-h3-workspace"
-API = f"https://api.github.com/repos/{REPO}/releases/latest"
-DOWNLOAD_PREFIX = f"https://github.com/{REPO}/releases/download/"
 ASSET = "Minimax.H3.Workspace-Setup.exe"
 HEADERS = {"User-Agent": "Minimax-H3-Workspace", "Accept": "application/vnd.github+json"}
+
+
+def repo():
+    """Whose GitHub releases this program follows.
+
+    This build lives in a fork, so updates come from the fork and not from the original author.
+    A file update_repo.txt next to the program (one line, owner/name) or the variable H3_UPDATE_REPO
+    change it without a rebuild - handy to look at a release before publishing it.
+    """
+    env = (os.environ.get("H3_UPDATE_REPO") or "").strip()
+    if env:
+        return env
+    here = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+    for f in (here / "update_repo.txt", here.parent / "update_repo.txt"):
+        try:
+            line = f.read_text(encoding="utf-8-sig").strip().splitlines()[0].strip()
+        except (OSError, IndexError):
+            continue
+        if re.fullmatch(r"[\w.-]+/[\w.-]+", line):
+            return line
+    return UPDATE_REPO
+
+
+def api_url():
+    return f"https://api.github.com/repos/{repo()}/releases/latest"
+
+
+def download_prefix():
+    return f"https://github.com/{repo()}/releases/download/"
 
 
 def parse(v):
@@ -32,7 +58,7 @@ async def check(session):
     """{"available": bool, "current", "version", "url", "asset", "size", "sha256"}; never raises (no internet is normal)."""
     out = {"available": False, "current": APP_VERSION}
     try:
-        async with session.get(API, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=8)) as r:
+        async with session.get(api_url(), headers=HEADERS, timeout=aiohttp.ClientTimeout(total=8)) as r:
             if r.status != 200:
                 return out
             rel = await r.json()
@@ -43,7 +69,7 @@ async def check(session):
     if not new or not cur or not asset or rel.get("draft") or rel.get("prerelease"):
         return out
     url = asset.get("browser_download_url", "")
-    if new > cur and url.startswith(DOWNLOAD_PREFIX):
+    if new > cur and url.startswith(download_prefix()):
         digest = str(asset.get("digest") or "")
         out.update(available=True, version=".".join(map(str, new)), url=rel.get("html_url", ""), asset=url,
                    size=int(asset.get("size") or 0), sha256=digest.split(":", 1)[1] if digest.startswith("sha256:") else "")
@@ -52,7 +78,7 @@ async def check(session):
 
 async def download(session, info):
     """Save the installer to a temp folder and check it against the size and sha256 GitHub published. Returns its path."""
-    if not info.get("asset", "").startswith(DOWNLOAD_PREFIX):
+    if not info.get("asset", "").startswith(download_prefix()):
         raise ValueError("Адрес обновления не с GitHub")
     want = str(info.get("sha256") or "")
     if not want:

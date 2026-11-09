@@ -2745,6 +2745,49 @@ class App:
             raise web.HTTPBadRequest(text=str(e))
         return web.json_response({"ok": True})
 
+    @staticmethod
+    def focus_own_window():
+        """Bring this program's window forward - a second copy of the program asks us to do it."""
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        me = ctypes.windll.kernel32.GetCurrentProcessId()
+        found = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def pick(hwnd, _lparam):
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value != me or not user32.IsWindowVisible(hwnd):
+                return True
+            n = user32.GetWindowTextLengthW(hwnd)
+            if n < 1:
+                return True
+            buf = ctypes.create_unicode_buffer(n + 1)
+            user32.GetWindowTextW(hwnd, buf, n + 1)
+            found.append((hwnd, buf.value))
+            return True
+
+        user32.EnumWindows(pick, 0)
+        if not found:
+            return False
+        hwnd = next((h for h, title in found if "Minimax" in title or "H3" in title), found[0][0])
+        user32.ShowWindow(hwnd, 9)              # SW_RESTORE: it may sit minimized
+        user32.BringWindowToTop(hwnd)
+        if user32.SetForegroundWindow(hwnd):
+            return True
+
+        class Flash(ctypes.Structure):          # Windows does not always hand the focus to a background process
+            _fields_ = [("cbSize", wintypes.UINT), ("hWnd", wintypes.HWND), ("dwFlags", wintypes.UINT),
+                        ("uTimeout", wintypes.UINT), ("dwReserved", ctypes.c_size_t)]
+
+        user32.FlashWindowEx(ctypes.byref(Flash(ctypes.sizeof(Flash), hwnd, 3, 0, 0)))
+        return True
+
+    async def h_focus(self, _req):
+        """A second copy knocked: show the window the user is really working in."""
+        return web.json_response({"ok": await asyncio.to_thread(self.focus_own_window)})
+
     async def h_index(self, _req):
         """The interface, with the key of this session inside it."""
         if self._index is None:
@@ -2881,6 +2924,7 @@ def build_app(comfy_override=None):
     app.add_routes([
         web.get("/", state.h_index),
         web.get("/api/status", state.h_status),
+        web.get("/api/focus", state.h_focus),   # a second copy asks the running one to show its window
         web.get("/api/system", state.h_system),
         web.get("/api/audio/info", state.h_audio_info),
         web.post("/api/audio/separate", state.h_audio_separate),

@@ -258,6 +258,38 @@ MODEL_SHA256 = {
 }
 
 
+LICENSES = {
+    # Классы: nc — нельзя в коммерции; h3 — MiniMax H3 Community License (коммерция разрешена, но
+    # продукт обязан показывать «MiniMax H3» на интерфейсе, при доходе свыше 20 млн $ в год нужно
+    # письменное разрешение MiniMax, на результатах нельзя обучать чужие модели); mixed — ролики
+    # ваши, а саму модель как сервис не сдавать; unknown — в карточке лицензии нет.
+    "Comfy-Org/Qwen-Image-2.1": ("nc", "Qwen Image 2.1 — исследовательская лицензия: только личное использование"),
+    "Comfy-Org/flux2-dev": ("nc", "FLUX.2 dev — некоммерческая лицензия"),
+    "Comfy-Org/Krea-2": ("unknown", "Krea 2 Community License — условия в PDF, перед коммерцией проверьте"),
+    "uzumix/realism_engine_krea2_v2": ("unknown", "лицензия не указана — для коммерции уточните у автора"),
+    "RunningHubAI/rh-h3-speed-slider-1.1-lora": ("unknown", "лицензия не указана — для коммерции уточните у автора"),
+    "Kijai/MelBandRoFormer_comfy": ("unknown", "лицензия не указана — для коммерции уточните у автора"),
+    "Alissonerdx/Minimax-H3-ComfyUI": ("mixed", "ролики можно и в коммерции; саму LoRA как сервис не сдавать"),
+    "noctrex/Huihui-Qwen3-VL-8B-Instruct-abliterated-GGUF": ("unknown", "производная модель без указанной лицензии"),
+}
+H3_NOTE = "MiniMax H3: в коммерческом продукте на интерфейсе должно быть указано «MiniMax H3»"
+LIC_BADGE = {"nc": "нельзя в коммерцию", "unknown": "лицензия не указана",
+             "mixed": "ролик можно, модель — нет", "h3": "MiniMax H3: условия"}
+
+
+def license_of(url):
+    """(класс, пояснение) для файла по его адресу. Пустой класс — свободная лицензия (Apache/MIT)."""
+    if "huggingface.co/" not in (url or ""):
+        return "", ""
+    repo = url.split("huggingface.co/", 1)[1].split("/resolve/", 1)[0]
+    if repo in LICENSES:
+        return LICENSES[repo]
+    low = repo.lower()
+    if "minimax" in low or "-h3" in low or "h3-" in low or low.endswith("h3"):
+        return "h3", H3_NOTE
+    return "", ""
+
+
 def file_sha256(url):
     """The sha256 Hugging Face publishes for this model file, or "" when we have none."""
     if "huggingface.co/" not in url or "/resolve/" not in url:

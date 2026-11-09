@@ -552,6 +552,14 @@ details[open] summary::before{content:'－ '}
 .ag-edit button{border:1px solid var(--line-2);background:var(--bg-2);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--muted)}
 .ag-edit button.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.14);color:var(--text);font-weight:700}
 .ag-edit small{font-size:11.5px;color:var(--dim)}
+/* лицензионная метка модели: видно сразу, можно ли ролик в коммерцию */
+.licb{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
+.licb.nc{color:#ffd7d7;border-color:rgba(255,92,120,.55);background:rgba(255,92,120,.14)}
+.licb.unknown{color:var(--warn);border-color:rgba(255,181,71,.5);background:rgba(255,181,71,.12)}
+.licb.h3,.licb.mixed{color:var(--muted)}
+/* окно подсвечивается, когда из проводника тащат файлы: их можно бросить в любое место */
+body.dropping{outline:3px dashed var(--accent);outline-offset:-10px}
+body.dropping::after{content:'Отпустите — программа разложит файлы по местам';position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:99;padding:9px 16px;border-radius:999px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;box-shadow:0 8px 26px rgba(0,0,0,.35);pointer-events:none}
 .sk-list{display:grid;gap:8px;margin-bottom:10px}
 .sk{padding:10px 12px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);display:grid;gap:6px}
 .sk-top{display:flex;align-items:center;gap:8px}
@@ -1469,6 +1477,100 @@ const foldSlots = box => {
 const watchSlots = box => {
   if (box && !box._folded) { box._folded = true; new MutationObserver(() => foldSlots(box)).observe(box, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] }); }
 };
+
+/* ---------- файлы из проводника: бросаете пачку куда угодно, программа раскладывает по слотам ----------
+   Файл определяется по расширению (тип из проводника Windows часто пуст), попадает в свободные
+   слоты текущего раздела по типу; чужой формат и кончившиеся места — отдельное предупреждение. */
+const FILE_KIND = {
+  image: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tif', 'tiff', 'avif'],
+  video: ['mp4', 'mov', 'webm', 'mkv', 'm4v', 'avi'],
+  audio: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg', 'oga', 'opus'],
+};
+const fileKind = f => {
+  const ext = (f.name.includes('.') ? f.name.split('.').pop() : '').toLowerCase();
+  for (const k in FILE_KIND) if (FILE_KIND[k].includes(ext)) return k;
+  const t = (f.type || '').split('/')[0];
+  return FILE_KIND[t] ? t : '';
+};
+const KIND_WORD = { image: 'картинки', video: 'видео', audio: 'звук' };
+const activeView = () => (($('.view.active') || {}).id || '').replace('view-', '');
+const dropBox = view => view === 'video' ? $('#view-video') : view === 'lipsync' ? $('#view-lipsync')
+  : view === 'upscale' ? $('#view-upscale') : view === 'qwen' ? $('#view-qwen')
+  : view === 'krea' ? $('#view-krea') : view === 'agent' ? $('#view-agent') : (RM[view] && RM[view].root) || null;
+const dropAccepts = view => view === 'upscale' ? ['video'] : view === 'lipsync' ? ['image', 'audio']
+  : view === 'video' || view === 'qwen' || view === 'krea' ? ['image']
+  : view === 'agent' ? ['image', 'video', 'audio'] : ['image', 'video', 'audio'];
+const dropSlots = (view, kind) => {
+  const box = dropBox(view); if (!box) return [];
+  if (view === 'agent') return [$(kind === 'image' ? '#agFile' : kind === 'audio' ? '#agAudioFile' : '#agVidFile', box)].filter(Boolean);
+  if (view === 'video') return $$('label.drop:not(.filled) input', box);
+  if (view === 'upscale') return kind === 'video' ? $$('input', $('#upDrop')) : [];
+  if (view === 'qwen') return kind === 'image' ? $$('#qwDrop, #qwDrop2, #qwDrop3').filter(d => !d.classList.contains('filled')).map(d => $('input', d)) : [];
+  if (view === 'lipsync') {
+    if (kind === 'image') return $$('#refs label.ref:not(.filled) input', box);
+    return kind === 'audio' && !$('.audio-ed.on', box) ? [$('#aFile')].filter(Boolean) : [];
+  }
+  const sel = { image: '.rm-imgs label.ref:not(.filled) input', video: '.rm-vids label:not(.filled) input', audio: '.rm-auds label:not(.filled) input' }[kind];
+  return sel ? $$(sel, box) : [];
+};
+async function spreadFiles(files, view) {
+  const bad = [], left = [], nofit = [];
+  const byKind = { image: [], video: [], audio: [] };
+  files.forEach(f => { const k = fileKind(f); if (k) byKind[k].push(f); else bad.push(f.name); });
+  let placed = 0;
+  for (const kind of ['image', 'video', 'audio']) {
+    const list = byKind[kind]; if (!list.length) continue;
+    if (!dropAccepts(view).includes(kind)) { nofit.push({ kind, list }); continue; }
+    const slots = dropSlots(view, kind);
+    for (let i = 0; i < list.length; i++) {
+      if (!slots[i]) { left.push(list[i].name); continue; }
+      await setDropFile(slots[i], list[i]); placed++;
+    }
+  }
+  return { placed, bad, left, nofit };
+}
+function dropNotes(r) {
+  const list = a => a.slice(0, 3).join(', ') + (a.length > 3 ? ` и ещё ${a.length - 3}` : '');
+  const out = [];
+  if (r.placed) out.push(`загружено: ${r.placed}`);
+  if (r.left.length) out.push(`свободных мест не хватило на: ${list(r.left)}`);
+  if (r.bad.length) out.push(`формат не подходит: ${list(r.bad)}`);
+  r.nofit.forEach(n => out.push(`${KIND_WORD[n.kind]} в этот раздел не кладётся`));
+  return out.join(' · ');
+}
+const DROP_HOME = { audio: 'lipsync', video: 'swap', image: 'video' };   // куда предложить, если сейчас некуда
+async function handleDrop(e) {
+  const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+  if (!files.length) return;
+  const view = activeView();
+  if (!view || !dropBox(view)) { toast('Бросьте файлы в раздел генерации, в чат Агента или в окно увеличения'); return; }
+  const r = await spreadFiles(files, view);
+  const text = dropNotes(r);
+  if (r.placed) toast(text); else if (text) toast(text);
+  if (!r.placed && r.nofit.length) {                 // раздел не для этого типа: предложим подходящий
+    const kind = r.nofit[0].kind, home = DROP_HOME[kind];
+    if (home && home !== view) confirmBox(`Положить в «${MODE_NAME[home] || home}»?`,
+      `${KIND_WORD[kind]} в разделе «${MODE_NAME[view] || view}» не используется. Перейти в «${MODE_NAME[home] || home}» и загрузить туда?`, 'Перейти', async () => {
+        goTo(home); await new Promise(res => setTimeout(res, 250));
+        const r2 = await spreadFiles(r.nofit[0].list, home);
+        toast(dropNotes(r2) || 'Не получилось: раздел ещё не готов');
+      });
+  }
+}
+document.addEventListener('dragover', e => {
+  const dt = e.dataTransfer; if (!dt || ![...(dt.types || [])].includes('Files')) return;
+  if (e.target.closest('label.drop, label.ref, label.slot, #agAtt, #upDrop, #aDrop, .audio-empty')) return;   // слот подсветит сам
+  e.preventDefault(); dt.dropEffect = 'copy';
+  document.body.classList.add('dropping');
+});
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dropping'); });
+document.addEventListener('drop', e => {
+  document.body.classList.remove('dropping');
+  const dt = e.dataTransfer; if (!dt || ![...(dt.types || [])].includes('Files')) return;
+  if (e.defaultPrevented) return;                     // файл бросили ровно в слот — он сам всё сделал
+  e.preventDefault();
+  handleDrop(e);
+});
 
 /* ---------- local server (real ComfyUI) or offline demo ---------- */
 const API = location.protocol.startsWith('http');
@@ -2813,7 +2915,7 @@ function renderModels(s) {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
     const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн', long: 'Длинное видео', krea: 'Картинка по тексту', kreareal: 'Картинка: реализм', qwen: 'Правка картинки', flux: 'Правка: FLUX.2', upscale: 'Увеличение', relayvsr: 'Быстрое увеличение' })[x]).join(', ') || 'дополнительно';
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
+    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${m.lic ? `<span class="licb ${m.lic}" title="${esc(m.lic_note || '')}">${({ nc: 'нельзя в коммерцию', unknown: 'лицензия не указана', mixed: 'ролик можно, модель — нет', h3: 'MiniMax H3: условия' })[m.lic] || 'лицензия'}</span>` : ''}${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   MD_EXT = s.engine === 'external';
@@ -4779,7 +4881,7 @@ $('#mlist').addEventListener('click', async e => {
   const row = b.closest('.m'), role = b.dataset.variant;
   const s = await (await fetch('/api/status')).json(), m = (s.models || []).find(x => x.role === role); if (!m) return;
   $('.pv', row)?.remove(); b.hidden = true;
-  row.insertAdjacentHTML('beforeend', `<div class="pm pv"><select>${m.variants.map(v => `<option value="${v.key}"${v.current ? ' selected' : ''}>${esc(v.label)} · ${GB(v.size)}${v.have ? ' · есть на диске' : ''}</option>`).join('')}</select><button class="btn mini pri" type="button" data-ok>Выбрать</button><button class="btn mini" type="button" data-no>Отмена</button><div class="hint" style="flex-basis:100%">Подходят только версии этой же модели: они заменяют друг друга. Остальные файлы не затрагиваются.</div></div>`);
+  row.insertAdjacentHTML('beforeend', `<div class="pm pv"><select>${m.variants.map(v => `<option value="${v.key}"${v.current ? ' selected' : ''}>${esc(v.label)} · ${GB(v.size)}${v.have ? ' · есть на диске' : ''}${v.lic ? ' · ' + ({ nc: 'НЕЛЬЗЯ в коммерцию', unknown: 'лицензия не указана', mixed: 'ролик можно, модель нельзя', h3: 'условия MiniMax H3' })[v.lic] : ''}</option>`).join('')}</select><button class="btn mini pri" type="button" data-ok>Выбрать</button><button class="btn mini" type="button" data-no>Отмена</button><div class="hint" style="flex-basis:100%">Подходят только версии этой же модели: они заменяют друг друга. Остальные файлы не затрагиваются.</div></div>`);
   const pv = $('.pv', row);
   $('[data-no]', pv).onclick = () => { pv.remove(); b.hidden = false; };
   $('[data-ok]', pv).onclick = async () => {

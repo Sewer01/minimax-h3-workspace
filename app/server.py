@@ -657,8 +657,11 @@ class App:
                    "size": catalog.VARIANTS[role][variant]["size"], "have": role not in missing,
                    "needed": role in needed, "picked": role in (self.config.get("model_pick") or {}),
                    "modes": [m for m, roles in catalog.MODE_ROLES.items() if role in roles],
+                   "lic": catalog.license_of(catalog.VARIANTS[role][variant]["url"])[0],
+                   "lic_note": catalog.license_of(catalog.VARIANTS[role][variant]["url"])[1],
                    "variants": [{"key": k, "label": catalog.VARIANT_LABELS.get(role, {}).get(k, k), "size": v["size"],
-                                 "current": k == variant, "have": v["file"] in getattr(self, "visible", {}).get(v["category"], ())}
+                                 "current": k == variant, "have": v["file"] in getattr(self, "visible", {}).get(v["category"], ()),
+                                  "lic": catalog.license_of(v["url"])[0], "lic_note": catalog.license_of(v["url"])[1]}
                                 for k, v in catalog.VARIANTS[role].items()] if len(catalog.VARIANTS[role]) > 1 else []}
                   for role, variant in self.choice().items() if role in needed]
         choice = self.choice()

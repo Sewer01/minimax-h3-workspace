@@ -379,12 +379,42 @@ def local_env(root):
     return env
 
 
+STALE_CORE = 900   # seconds a core of this install may stay silent before we call it a hung orphan
+
+
+def running_core(py, first=8188, last=8192):
+    """Port of a ComfyUI started by THIS python, and how many seconds it has been alive.
+
+    Only processes of this install are considered, so the user's own ComfyUI is never touched.
+    Returns (port, age) or (None, None).
+    """
+    exe = str(py).replace("'", "''")
+    ps = ("$py = '" + exe + "'; $best = $null; "
+          "foreach ($c in Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue) { "
+          f"if ($c.LocalPort -lt {first} -or $c.LocalPort -gt {last}) {{ continue }}; "
+          "$p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $c.OwningProcess) -ErrorAction SilentlyContinue; "
+          "if (-not $p -or $p.ExecutablePath -ne $py) { continue }; "
+          "$age = [int]((Get-Date) - $p.CreationDate).TotalSeconds; "
+          "if (-not $best -or $c.LocalPort -lt $best[0]) { $best = @($c.LocalPort, $age) } }; "
+          "if ($best) { '{0} {1}' -f $best[0], $best[1] }")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], timeout=40,
+                             capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+        parts = (out.stdout or "").strip().split()
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            return int(parts[0]), int(parts[1])
+    except Exception:
+        pass
+    return None, None
+
+
 class ComfyProcess:
     def __init__(self, comfy_root, log_path):
         self.root = Path(comfy_root)
         self.log_path = log_path
         self.proc = None
         self.port = None
+        self.attached = False   # the core was started elsewhere (another copy of the program): we may not kill it
 
     @property
     def url(self):
@@ -394,8 +424,15 @@ class ComfyProcess:
         if self.proc and self.proc.poll() is None:
             return
         py = self.root / "python_embeded" / "python.exe"
+        port, age = running_core(py)
+        if port and age <= STALE_CORE:
+            # Another copy of the program already runs this ComfyUI or is still waiting for it to answer.
+            # Killing it left that copy with "ComfyUI does not see models" (the log stopped mid-start), and
+            # starting our own on the next port would put the same 200 GB of weights into video memory twice.
+            self.port, self.proc, self.attached = port, None, True
+            return
         self.kill_orphans(py)
-        self.port = free_port(8188)
+        self.port, self.attached = free_port(8188), False
         args = [str(py), "-s", "ComfyUI\\main.py", "--windows-standalone-build", "--disable-auto-launch",
                 "--listen", "127.0.0.1", "--port", str(self.port), "--preview-method", "auto"]
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -419,9 +456,14 @@ class ComfyProcess:
             pass
 
     def alive(self):
+        if self.attached:
+            return bool(self.port)
         return self.proc is not None and self.proc.poll() is None
 
     def stop(self):
+        if self.attached:   # not ours to kill: whoever started that core owns it (another copy, or the user)
+            self.attached, self.port = False, None
+            return
         if self.alive():
             self.proc.terminate()
             try:

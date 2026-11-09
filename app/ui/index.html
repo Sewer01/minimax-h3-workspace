@@ -4190,6 +4190,7 @@ $('#agStoryF').onclick = e => { const b = e.target.closest('button[data-f]'); if
 $('#agStoryM').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; AG.storyModel = b.dataset.m; agCtx(); };
 $('#agTarget').onclick = agTargetClick; $('#agTarget2').onclick = agTargetClick;
 function agCtx() {
+  agEditLabels();   // названия переключателя зависят от того, добавляет ли режим что-то к готовому
   const n = (AG.edit ? 0 : agImgCount()) + AG.att.filter(a => !a.frame).length;   // a fix counts only the pictures of this message
   $('#agStoryF').hidden = AG.target !== 'story';
   $('#agStoryM').hidden = AG.target !== 'story';
@@ -4431,15 +4432,23 @@ async function openChat(id) {
   renderMsgs(); agCtx(); loadChats();
 }
 /* "Правка" or "Продолжить сюжет": a fix replaces what was written, a continuation remembers the whole chat */
-const EDIT_HINTS = {
-  on: 'Вернёт весь промпт с заменой; «Picture 1, 2…» — картинки этого сообщения',
-  off: 'Помнит весь чат: следующие сцены продолжат тех же персонажей, свет и стиль',
+/* в режимах со списком «продолжить» реально что-то добавляет, и переключатель называется по-месту */
+const EDIT_LABELS = {
+  long: { btn: ['Правка сцен', 'Добавить сцены'], on: 'Перепишет весь список сцен, заменив нужное; готовые не тронет', off: 'Оставит готовые сцены и допишет новые после них' },
+  plist: { btn: ['Правка списка', 'Добавить пункты'], on: 'Вернёт весь список с исправленным пунктом', off: 'Оставит готовые пункты и допишет новые' },
+  story: { btn: ['Правка', 'Добавить кадры'], on: 'Вернёт все строки с правкой', off: 'Оставит прежние кадры и добавит новые' },
 };
+const EDIT_DEFAULT = { btn: ['Правка', 'Новый промпт'], on: 'Вернёт весь промпт с заменой; «Picture 1, 2…» — картинки этого сообщения', off: 'Напишет новый промпт, помня персонажей, свет и стиль из чата' };
+function agEditLabels() {
+  const l = (AG.target === 'story' && !AG.storyFrames) ? EDIT_DEFAULT : (EDIT_LABELS[AG.target] || EDIT_DEFAULT);
+  $$('#agEdit button').forEach((b, i) => { b.textContent = l.btn[i]; });
+  $('#agEditHint').textContent = AG.edit ? l.on : l.off;
+}
 $('#agEdit').onclick = e => {
   const b = e.target.closest('button[data-edit]'); if (!b) return;
   AG.edit = b.dataset.edit === '1';
   $$('#agEdit button').forEach(x => x.classList.toggle('on', x === b));
-  $('#agEditHint').textContent = AG.edit ? EDIT_HINTS.on : EDIT_HINTS.off;
+  agEditLabels();
   agCtx();
 };
 function confirmBox(title, text, ok, fn) {

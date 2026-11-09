@@ -119,7 +119,23 @@ class Skills:
                             "builtin": builtin, "path": d, "refs": refs, **self.settings(d.name)})
         return out
 
+    def user_path(self, sid):
+        """Folder of a skill by its id.
+
+        The id arrives from the web address and ends in a recursive delete, so a name with a path in it
+        (`..\\..\\app\\skills\\storyboard`) would remove a built-in skill. Only a plain folder name inside
+        the user's own skills folder is accepted.
+        """
+        sid = str(sid or "")
+        if not sid or sid in (".", "..") or "/" in sid or "\\" in sid or "\x00" in sid:
+            raise ValueError("Неверное имя скилла")
+        d = (Path(self.user_dir) / sid).resolve()
+        if d.parent != Path(self.user_dir).resolve():
+            raise ValueError("Неверное имя скилла")
+        return d
+
     def save_settings(self, sid, mode=None, keywords=None):
+        self.user_path(sid)  # the same rule as when deleting
         all_s = dict(self.config.get("skills") or {})
         cur = dict(all_s.get(sid, {}))
         if mode in ("always", "auto", "off"):
@@ -162,7 +178,12 @@ class Skills:
         root = Path(skill_md).parent
         meta, _ = parse_frontmatter(next(b for p, b in files if p == skill_md).decode("utf-8", errors="replace"))
         sid = re.sub(r"[^\w\-]+", "-", meta.get("name") or root.name or "skill").strip("-").lower() or "skill"
-        dest = self.user_dir / sid
+        dest = self.user_path(sid)   # checks the name is a plain folder name inside the user's skills
+        if (Path(self.builtin_dir) / sid).exists():
+            # a skill of the user under the name of a built-in one is never shown (see list()), so the upload
+            # would look like it did nothing - after the previous one had already been deleted
+            raise ValueError(f"Скилл с именем «{sid}» есть уже среди встроенных и перекроет ваш. "
+                             f"Измените name в SKILL.md и загрузите снова.")
         if dest.exists():
             shutil.rmtree(dest)
         for p, data in files:
@@ -177,7 +198,7 @@ class Skills:
         return sid
 
     def delete(self, sid):
-        d = self.user_dir / sid
+        d = self.user_path(sid)
         if d.exists() and (d / "SKILL.md").exists():
             shutil.rmtree(d)
 

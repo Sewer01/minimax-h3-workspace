@@ -2518,7 +2518,8 @@ async function openSetup() {
   $$('#modePick .mcard').forEach(c => {
     c.classList.toggle('on', setupModes.includes(c.dataset.m));
     $('#modeAll').textContent = $$('#modePick .mcard').every(x => setupModes.includes(x.dataset.m)) ? 'Снять все (оставить только Image-to-Video)' : 'Выбрать все';
-    $('small', c).textContent = `~${P[setupProfile].sizes[c.dataset.m]} ГБ, если ставить только его`;
+    $('small', c).textContent = `~${P[setupProfile].sizes[c.dataset.m]} ГБ, если ставить только его`
+      + (c.dataset.m === 'relayvsr' && setupInfo.relay_ok === false ? ' · сам режим заработает, когда ComfyUI обновится' : '');
   });
   const shared = setupModes.includes('lipsync') && setupModes.includes('refs')
     ? ' Lipsync и Референсы используют одну и ту же основную модель — вместе они почти не добавляют места.' : '';
@@ -2636,10 +2637,22 @@ $('#wzStart').onclick = async () => {
   $('#wzErr').textContent = ''; $('#wzStart').disabled = true;
   try {
     if (setupOpt === 'external') {
-      const r = await postJSON('/api/setup/external', { url: $('#comfyUrl').value, modes: setupModes });
-      toast(`Подключено к ComfyUI ${r.version || ''}`);
-      await afterSetup();
-      if (r.nodes_missing?.length) { goTo('models'); toast(`В вашем ComfyUI нет нод: ${r.nodes_missing.join(', ')}. Подробности в разделе «Модели».`); }
+      const url = $('#comfyUrl').value;
+      const connected = async (r) => {
+        toast(`Подключено к ComfyUI ${r.version || ''}`);
+        await afterSetup();
+        if (r.nodes_missing?.length) { goTo('models'); toast(`В вашем ComfyUI нет нод: ${r.nodes_missing.join(', ')}. Подробности в разделе «Модели».`); }
+      };
+      const r = await postJSON('/api/setup/external', { url, modes: setupModes });
+      if (r.need_confirm) {   // адрес не с этого компьютера: сначала спрашиваем, человек должен понимать, что уходит наружу
+        $('#wzErr').textContent = 'Программа спросит подтверждение — прочитайте окно.';
+        confirmBox('ComfyUI не на этом компьютере', r.need_confirm, 'Подключить', async () => {
+          $('#wzStart').disabled = true;
+          try { await connected(await postJSON('/api/setup/external', { url, modes: setupModes, confirm: 1 })); }
+          catch (e2) { $('#wzErr').textContent = e2.message; }
+          $('#wzStart').disabled = false;
+        });
+      } else await connected(r);
     } else {
 
       await postJSON('/api/setup/install', { install_dir: $('#instDir').value.trim(), profile: setupProfile, modes: setupModes });

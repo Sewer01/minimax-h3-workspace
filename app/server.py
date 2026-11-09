@@ -10,6 +10,7 @@ own ComfyUI or installs one (plus node packs and models) and manages it.
 
 import argparse
 import asyncio
+import ipaddress
 import json
 import os
 import random
@@ -924,6 +925,7 @@ class App:
             "profile": profile, "recommended": catalog.recommended_profile(hw), "modes": modes,
             "profiles": {k: {"title": v["title"], "about": v["about"], "sizes": sizes[k]} for k, v in catalog.PROFILES.items()},
             "install_dir": install_dir, "need_gb": need_gb,
+            "relay_ok": await self.relay_ready() if self.comfy_online else None,  # can this ComfyUI do the fast upscale
             "plan": [{k: m[k] for k in ("role", "title", "file", "size", "variant")} for m in plan],
             "config": {k: self.config.get(k) for k in ("engine", "install_dir", "models_dir", "comfy_url", "setup_done")},
             "installing": bool(self.installer), "log": self.setup_log,
@@ -932,12 +934,16 @@ class App:
 
     async def h_setup_external(self, req):
         body = await req.json()
-        url = (body.get("url") or "http://127.0.0.1:8188").strip().rstrip("/")
-        if not url.startswith("http"):
-            url = "http://" + url
+        url, err = clean_comfy_url(body.get("url"))
+        if err:
+            raise web.HTTPBadRequest(text=err)
+        if not comfy_is_local(url) and not body.get("confirm"):
+            # not this computer and not the local network: the user should know what leaves the machine
+            return web.json_response({"need_confirm": f"{url} — это не этот компьютер и не локальная сеть. Программа "
+                                      f"будет отправлять туда ваши промпты, картинки и аудио и выполнять то, что он "
+                                      f"ответит. Подключить?"})
         old = self.config.get("comfy_url")
         self.config.data["comfy_url"] = url
-        self.process = None
         try:
             stats = await self.system_stats()
         except Exception as e:
@@ -945,6 +951,9 @@ class App:
             return web.json_response({"error": f"ComfyUI не отвечает по адресу {url} ({type(e).__name__}). Откройте этот адрес "
                                       "в браузере: если страница ComfyUI не открывается, проверьте адрес и порт в окне, "
                                       "где запущен ComfyUI."}, status=400)
+        if self.process:  # the ComfyUI the program started itself: stop it instead of forgetting about it
+            await asyncio.to_thread(self.process.stop)
+            self.process = None
         modes = [m for m in (body.get("modes") or []) if m in catalog.MODE_ROLES] or list(catalog.MODE_ROLES)
         self.config.update(engine="external", comfy_url=url, setup_done=True, choice=catalog.DEFAULT_CHOICE, modes=modes)
         names, missing = await self.resolve_models()
@@ -2718,11 +2727,17 @@ class App:
 
     async def h_skill_patch(self, req):
         body = await req.json()
-        self.skills.save_settings(req.match_info["id"], body.get("mode"), body.get("keywords"))
+        try:
+            self.skills.save_settings(req.match_info["id"], body.get("mode"), body.get("keywords"))
+        except ValueError as e:
+            raise web.HTTPBadRequest(text=str(e))
         return web.json_response({"ok": True})
 
     async def h_skill_delete(self, req):
-        self.skills.delete(req.match_info["id"])
+        try:
+            self.skills.delete(req.match_info["id"])   # the name comes from the address and ends in a folder removal
+        except ValueError as e:
+            raise web.HTTPBadRequest(text=str(e))
         return web.json_response({"ok": True})
 
     async def h_index(self, _req):
@@ -2733,6 +2748,47 @@ class App:
         return web.Response(text=self._index, content_type="text/html",
                             headers={"Cache-Control": "no-store",
                                      "Set-Cookie": f"h3token={self.token}; Path=/; SameSite=Lax"})
+
+
+def clean_comfy_url(raw):
+    """The address of the user's own ComfyUI as a plain http(s) URL, or (None, why it is not one).
+
+    Whatever is set here receives the prompts, the pictures and the audio of the user and tells the
+    program what to do, so "it starts with http" is not enough: logins in the address, other schemes and
+    the address a cloud machine answers its metadata on are refused here.
+    """
+    u = str(raw or "").strip() or "http://127.0.0.1:8188"
+    if "://" not in u:
+        u = "http://" + u
+    try:
+        part = urllib.parse.urlsplit(u)
+        port = part.port                       # ValueError for "host:abc" or a port out of range
+    except ValueError:
+        return None, "Адрес не разобрать: нужен вид http://127.0.0.1:8188"
+    if part.scheme not in ("http", "https"):
+        return None, "Подходит только адрес http или https"
+    host = (part.hostname or "").lower()
+    if not host:
+        return None, "В адресе нет имени компьютера"
+    if part.username or part.password:
+        return None, "Адрес не должен содержать логин и пароль"
+    if host.startswith("169.254.") or host in ("metadata", "metadata.google.internal"):
+        return None, "Этот адрес служба облачного компьютера, ComfyUI там быть не может"
+    if port is not None and not 0 < port < 65536:
+        return None, "Порт в адресе вне диапазона"
+    return part.geturl().rstrip("/"), ""
+
+
+def comfy_is_local(url):
+    """Does this address point at this computer or at the local network of the user?"""
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    if host == "localhost":
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False              # another machine by its name: the user confirms it
+    return ip.is_loopback or ip.is_private
 
 
 def lora_strength(form, key, default):

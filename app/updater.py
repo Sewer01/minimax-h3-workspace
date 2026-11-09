@@ -54,6 +54,12 @@ async def download(session, info):
     """Save the installer to a temp folder and check it against the size and sha256 GitHub published. Returns its path."""
     if not info.get("asset", "").startswith(DOWNLOAD_PREFIX):
         raise ValueError("Адрес обновления не с GitHub")
+    want = str(info.get("sha256") or "")
+    if not want:
+        # No checksum from GitHub (an API change, a proxy that rewrote the answer). The installer runs with the
+        # rights of this program and replaces its files, so an unverified one is not worth the risk.
+        raise ValueError("GitHub не прислал контрольную сумму обновления, поэтому программа не ставит его сама. "
+                         "Скачайте установщик со страницы релизов и запустите его вручную.")
     folder = Path(tempfile.gettempdir()) / "h3studio_update"
     folder.mkdir(exist_ok=True)
     dest = folder / ASSET
@@ -67,9 +73,9 @@ async def download(session, info):
                 f.write(chunk)
                 sha.update(chunk)
                 size += len(chunk)
-    if (info.get("size") and size != info["size"]) or (info.get("sha256") and sha.hexdigest() != info["sha256"]):
+    if size != int(info.get("size") or size) or sha.hexdigest() != want.lower():
         dest.unlink(missing_ok=True)
-        raise ValueError("Файл обновления скачался с ошибкой, попробуйте ещё раз")
+        raise ValueError("Файл обновления скачался с ошибкой или не совпал с контрольной суммой, попробуйте ещё раз")
     return dest
 
 

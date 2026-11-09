@@ -7,6 +7,7 @@ Two engine modes are stored in data/config.json:
 
 import asyncio
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -159,6 +160,15 @@ def mirrored(url):
     return url
 
 
+def sha256_of(path):
+    """Checksum of a downloaded file, read in megabyte blocks (the ComfyUI archive is ~2 GB)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def system_proxy():
     """The proxy a VPN/proxy program set in Windows (or HTTPS_PROXY), if any: our own requests would otherwise bypass it."""
     try:
@@ -186,12 +196,19 @@ class Installer:
     async def step(self, sid, state, **kw):
         await self.emit({"type": "setup", "step": sid, "state": state, **kw})
 
-    async def download(self, url, dest, sid, label, size_hint=0, attempts=40):
-        """Resumable download to dest (via dest.part)."""
+    async def download(self, url, dest, sid, label, size_hint=0, attempts=40, sha256=""):
+        """Resumable download to dest (via dest.part).
+
+        `sha256` verifies what arrived. Without it a mirror, a proxy or a broken CDN answer silently becomes
+        the program's ComfyUI, and a file that is on the disk is never looked at again.
+        """
         url = mirrored(url)
         dest = Path(dest)
         if dest.exists():
-            return
+            if not sha256 or await asyncio.to_thread(sha256_of, dest) == sha256.lower():
+                return
+            await self.step(sid, "progress", label=f"{label} — файл не совпал с контрольной суммой, скачиваем заново…")
+            dest.unlink()
         dest.parent.mkdir(parents=True, exist_ok=True)
         part = dest.with_name(dest.name + ".part")
         for attempt in range(attempts):  # a long outage: wait and continue from the saved .part file
@@ -226,6 +243,9 @@ class Installer:
                 await self.step(sid, "progress", label=f"{label} — обрыв связи ({why}), пробуем снова…")
                 await asyncio.sleep(min(30, 3 + attempt * 3))
         part.replace(dest)
+        if sha256 and await asyncio.to_thread(sha256_of, dest) != sha256.lower():
+            dest.unlink(missing_ok=True)  # never unpack or load a file that does not match
+            raise RuntimeError(f"{label} скачался повреждённым — контрольная сумма не совпала. Попробуйте ещё раз.")
 
     async def install_comfy(self, install_dir):
         root = Path(install_dir) / catalog.COMFY_DIRNAME
@@ -234,7 +254,8 @@ class Installer:
             return root
         archive = Path(install_dir) / "downloads" / "ComfyUI_windows_portable_nvidia.7z"
         await self.step("comfy", "progress", label=f"Скачиваем ComfyUI {catalog.COMFY_VERSION}")
-        await self.download(catalog.COMFY_URL, archive, "comfy", f"ComfyUI {catalog.COMFY_VERSION}", catalog.COMFY_SIZE)
+        await self.download(catalog.COMFY_URL, archive, "comfy", f"ComfyUI {catalog.COMFY_VERSION}", catalog.COMFY_SIZE,
+                            sha256=catalog.COMFY_SHA256)
         seven = find_7z(self.app_root)
         if not seven:
             # official standalone 7-Zip extractor (~600 KB)

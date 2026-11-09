@@ -4,11 +4,12 @@ Every model has a role (what the workflows use it for). A role can have several
 variants; `choose_models` picks one per role from the detected hardware.
 """
 
-COMFY_VERSION = "0.43.0"
+COMFY_VERSION = "0.44.0"  # current release; it also brings the newer MiniMax H3 nodes the modes use
 MIN_DRIVER = 580  # the bundled PyTorch is built for CUDA 13
 COMFY_URL = ("https://github.com/Comfy-Org/ComfyUI/releases/download/"
              f"v{COMFY_VERSION}/ComfyUI_windows_portable_nvidia.7z")
-COMFY_SIZE = 2_040_000_000
+COMFY_SIZE = 2_054_382_457  # the real size of the asset, so the progress bar and the disk estimate do not lie
+COMFY_SHA256 = "7170c2db49c182a81adcc051e80234f99dd891656fb200737f87797876348f96"  # GitHub prints this next to the asset
 COMFY_DIRNAME = "ComfyUI_windows_portable"
 
 # Nodes the fast RelayVSR upscale needs: they are part of the ComfyUI core, but not of every build,

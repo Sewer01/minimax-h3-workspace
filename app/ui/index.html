@@ -3676,7 +3676,7 @@ function makeRefMode(cfg) {
     root._setScenes = list => {   // from the agent: replace all scenes
       if (!list.length) return;
       $$('.sc', root).forEach(c => c.remove());
-      list.slice(0, 12).forEach(x => addScene(x.prompt, Math.min(15, Math.max(3, Math.round(x.sec) || 10))));
+      list.slice(0, 20).forEach(x => addScene(x.prompt, Math.min(15, Math.max(3, Math.round(x.sec) || 10))));
       root._run = Math.random().toString(36).slice(2, 12); recount(); refreshStates();
     };
     root._partDone = item => {
@@ -3795,7 +3795,7 @@ function makeRefMode(cfg) {
       fin.addEventListener('change', () => refreshStates());
       recount();
     };
-    $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 12) { toast('Не больше 12 сцен'); return; } addScene('', 10); };
+    $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 20) { toast('Не больше 20 сцен — это уже полчаса расчёта'); return; } addScene('', 10); };
     queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done
     root._addScene = addScene;
     // the «Очистить» button of the section: in this mode the scenes are the text

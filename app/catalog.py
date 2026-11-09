@@ -15,6 +15,7 @@ COMFY_DIRNAME = "ComfyUI_windows_portable"
 # Nodes the fast RelayVSR upscale needs: they are part of the ComfyUI core, but not of every build,
 # so the mode is offered only when the running ComfyUI actually knows them (see App.relay_ready).
 RELAY_CLASSES = ("RelayVSRConditioning", "VSRDecode")
+LONG_MAX_SCENES = 20   # scenes in one long video; each scene is a separate render (3-15 s), so this is a time budget, not a model limit
 
 # Downloaded as GitHub archives of a fixed commit, so users need no git.
 NODE_PACKS = [

@@ -1941,7 +1941,7 @@ class App:
             scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10))) for x in json.loads(form.get("scenes") or "[]")]
         except (ValueError, TypeError, AttributeError):
             scenes = []
-        scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), files.get(f"simg{i}")) for i, (p, sec) in enumerate(scenes) if p][:12]
+        scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), files.get(f"simg{i}")) for i, (p, sec) in enumerate(scenes) if p][:catalog.LONG_MAX_SCENES]
         if not scenes:
             raise web.HTTPBadRequest(text="Напишите хотя бы одну сцену")
         images = [files[f"img{i}"] for i in range(5) if f"img{i}" in files]

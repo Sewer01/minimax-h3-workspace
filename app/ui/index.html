@@ -4369,7 +4369,9 @@ async function agSend() {
   AG.msgs.push(reply); renderMsgs();
   const el = $('#agMsgs .msg:last-child');
   AG.busy = true; $('#agSend').textContent = 'Стоп'; AG.ctrl = new AbortController();
-  const ctx = { model: AG.storyFrames && AG.storyModel === 'krea' ? 'flux' : AG.storyModel, frames: AG.target === 'story' && AG.storyFrames, duration: AG_IMG.includes(AG.target) ? null : AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
+  // «Правка картинки» делается и на Qwen, и на FLUX.2 klein, а теги картинок у них разные: агенту нужен движок раздела
+  const qwBtn = $('.qw-eng button.on', $('#view-qwen'));
+  const ctx = { model: AG.target === 'qwen' ? ((qwBtn && qwBtn.dataset.e) || 'qwen') : (AG.storyFrames && AG.storyModel === 'krea' ? 'flux' : AG.storyModel), frames: AG.target === 'story' && AG.storyFrames, duration: AG_IMG.includes(AG.target) ? null : AG.target === 'video' ? V.dur : AG.target === 'lipsync' ? (L.dur0 ? L.len() : null) : RM[AG.target].S.dur };
   if (AG.target === 'actor') ctx.voice = RM.actor.voice() ? 1 : 0;
   if (AG.target === 'long') ctx.long = { sound: RM.long.root._snd, secs: $$('.sc input[type=range]', RM.long.root).map(r => +r.value) };
   try {
@@ -4516,7 +4518,9 @@ async function sendPrompt(blk, to) {
       const mm = line.match(/^\s*SCENE\s*(\d+)\s*\|\s*(\d+(?:\.\d+)?)\s*$/i);
       if (mm) { cur = { sec: +mm[2], text: [] }; list.push(cur); } else if (cur) cur.text.push(line); else if (line.trim()) { cur = { sec: 10, text: [line] }; list.push(cur); }
     }
-    const clean = t => t.split('\n').filter(l => !/^\s*(overall_soundscape|non_diegetic_music|integrated_multimodal_description)\s*:/i.test(l)).join('\n').trim();
+    // строки про звук принадлежат сцене: раньше такая строка вырезалась вместе со всем текстом,
+    // написанным на ней; снимаем только префикс поля описания, чтобы программа поставила выравнивание сама
+    const clean = t => t.split('\n').map(l => l.replace(/^\s*integrated_multimodal_description\s*:\s*(\[Shot \d+\]\s*)?/i, '')).join('\n').trim();
     L2.root._setScenes(list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec })).filter(x => x.prompt));
     if (fix && files.length) $$('label.ref.filled .x', L2.root).forEach(x => x.click());   // a fix replaces the pictures; a continuation keeps the old ones
     for (const f of files) {   // existing references (e.g. the last frame of the video being continued) stay; new pictures take the free slots

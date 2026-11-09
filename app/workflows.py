@@ -6,6 +6,7 @@ The graphs mirror the user's workflows in the project root.
 """
 
 import math
+import re
 
 FPS = 24
 
@@ -794,7 +795,10 @@ def lipsync_scale(quality):
 
 def lipsync_prompt(text, n_refs, n_videos=0):
     """Wrap free text into H3's structured prompt unless the user already wrote one.
-    Reference videos are tagged <Video N> as the official workflow asks; with pictures present the face comes from the pictures."""
+    Reference videos are tagged <Video N> as the official workflow asks; with pictures present the face comes from the pictures.
+    Nothing here is added twice: if the text already carries the alignment line the model does not get a second one, and the
+    two sound fields are filled with N/A only when nothing was said about sound - in the long mode the agent does write
+    ambience and music, and "N/A" under such a scene contradicts it, which is the failure this model punishes hardest."""
     if "integrated_multimodal_description" in text:
         return text
     refs = " ".join(f"<Picture {i}> (from [Shot 1]) is fully referenced." for i in range(1, n_refs + 1))
@@ -803,9 +807,21 @@ def lipsync_prompt(text, n_refs, n_videos=0):
         refs += f" {vids} {'is' if n_videos == 1 else 'are'} referenced for motion, camera and setting only."
         if n_refs:
             refs += " The faces and identities must match the reference pictures exactly."
-    return (f"For the target video, at 0.00 seconds into the target video, {refs}\n\n"
-            f"integrated_multimodal_description: [Shot 1] {text}\n\n"
-            "overall_soundscape: N/A\n\nnon_diegetic_music: N/A")
+    low = text.lower()
+    fields = []
+    for name in ("overall_soundscape", "non_diegetic_music"):
+        m = re.search(rf"(?im)^[ \t]*{name}[ \t]*:[ \t]*(.+?)[ \t]*$", text)
+        if m and m.group(1).strip():
+            fields.append(f"{name}: {m.group(1).strip()}")
+            text = re.sub(rf"(?im)^[ \t]*{name}[ \t]*:.*$\n?", "", text).strip()
+    parts = [] if "for the target video" in low else [
+        f"For the target video, at 0.00 seconds into the target video, {refs}"]
+    parts.append(f"integrated_multimodal_description: [Shot 1] {text}")
+    if "overall_soundscape" not in low:
+        parts.append("overall_soundscape: N/A")
+    if "non_diegetic_music" not in low:
+        parts.append("non_diegetic_music: N/A")
+    return "\n\n".join(parts + fields)
 
 
 def lipsync_graph(m, prompt, width, height, seconds, seed, audio, ref_images, scale, ref_size="max", extra_loras=()):

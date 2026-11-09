@@ -26,7 +26,7 @@ description: Превращает вольное описание персона
 
 ## Шаг 3. Выдача под модель
 
-Если приложение или пользователь назвал модель - выдай один промпт под неё. Если не названа - выдай два блока с подписями Krea 2 и Qwen 2.1.
+Модель всегда названа приложением (в начале сообщения). Блок ответа один. Если модель почему-то не названа - делай под Krea 2. Второй блок с вариантом под другую модель не выдавай: каждый блок кода в чате получает свою кнопку переноса, и перевод или «альтернатива» уезжают в модель.
 
 ### Krea 2 (только текст, без негатива)
 
@@ -45,18 +45,17 @@ Character reference sheet in a single wide image, four panels side by side, [STY
 
 - Наблюдательный стиль, 150-300 слов, настоящее время, третье лицо; слово "vertical/horizontal/portrait/landscape" про кадр не пиши, размер задаётся в приложении.
 - Возраст словами этапа жизни ("woman in her thirties"), не числом. Цвет кожи и этничность - только если задал пользователь.
-- Негатив выдавай отдельным блоком ```negative, не внутри промпта.
+- Негатив не выводи: в листе персонажа поля для негатива нет. Вместо запретов пиши, что на листе есть.
 - Картинку-референс описывать вручную не нужно, если она загружена: используй "preserve the face, hair and outfit from the reference".
 
 Шаблон:
 ```prompt
 The image is a [STYLE] character reference sheet split into four equal panels side by side on a plain [BACKGROUND] studio backdrop. In the first panel the [character] stands full-body facing the viewer in a neutral pose, [DNA], wearing [WARDROBE]. In the second panel the same character stands in the same pose seen from behind, same scale, the back of the hair and the outfit clearly visible. The third panel is a head-and-shoulders portrait facing the viewer with a neutral expression, showing [face details]. The fourth panel is a head-and-shoulders portrait in profile, with the same lighting and scale as the third. Soft even studio light falls from the front with gentle shadows. The face, hairstyle, skin tone and clothing are identical in every panel, and the composition is balanced and symmetrical.
 ```
-```negative
-different face between panels, different hair between panels, different outfit, inconsistent proportions, merged or overlapping figures, scenic background, dramatic lighting, cropped figure, text, labels, captions, color swatches, watermark, blurry, deformed hands, extra limbs
-```
 
 ### Qwen по загруженной картинке (персонаж уже есть) - проверенный шаблон
+
+Лист по готовой картинке делается в разделе «Правка картинки» → «Лист персонажа», и там промпт собирает сама программа: этот шаблон нужен, только если пользователь просит текст промпта. Размер листа выбирает приложение: 4 панели - 16:9, 6 панелей - 21:9; своего размера или своего разрешения не обещай.
 
 Когда у пользователя уже есть картинка персонажа и она загружена в приложение, не описывай внешность словами: ссылайся на `<image1>`. Этот промпт проверен на реальном персонаже, результат: четыре одинаковые по стилю панели, лицо и аксессуары совпали с исходником, панель 1 без головы. Размер холста 1920x1088.
 ```prompt

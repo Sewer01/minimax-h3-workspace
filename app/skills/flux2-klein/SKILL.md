@@ -32,10 +32,14 @@ description: Пишет промпт для генерации ОДНОЙ кар
 
 ## Выдача
 
-Одной строкой по-русски: какой формат кадра выбрать (16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3). Затем один английский блок:
+Одной строкой по-русски: какой формат кадра выбрать (16:9, 9:16, 1:1, 4:3, 3:4, 3:2, 2:3, 21:9). Затем один английский блок:
 
 ```prompt
 Candid color photograph of a woman in her thirties with short dark hair, wearing a mustard wool coat, laughing as she crosses a wet cobblestone street with a paper cup of coffee. Narrow old-town street, shop windows glowing behind her, light drizzle on the stones. Late-afternoon overcast light with warm reflections from the windows, 50mm lens at eye level, shallow depth of field, relaxed cheerful mood.
 ```
 
 Русскую версию, настройки и негатив не выводи. Если пользователь просит что-то, что модель делает плохо (длинный текст, точные схемы, много мелких людей), честно скажи об этом одной строкой и предложи упростить.
+
+## Правка картинки
+
+В разделе «Правка картинки» может быть выбран FLUX.2 klein. Тогда картинки в промпте называются image 1, image 2, image 3 — словами, без угловых скобок. Одна правка за раз: назови, что менять, и что обязательно сохранить (лицо, причёску, одежду, позу, ракурс, свет, стиль картинки). Блок ответа один, на английском.

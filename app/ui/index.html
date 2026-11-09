@@ -1447,6 +1447,29 @@ window.fetch = (input, init) => {
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+/* the blue part of a slider has to follow its handle, wherever that slider was built (the scene
+   cards in the long mode are created later and never painted, so the fill stood still there) */
+const paintRange = r => {
+  if (!r || r.type !== 'range') return;
+  const min = +r.min || 0, max = +r.max || 100;
+  if (max > min) r.style.setProperty('--p', ((+r.value - min) / (max - min) * 100) + '%');
+};
+document.addEventListener('input', e => { if (e.target && e.target.type === 'range') paintRange(e.target); }, true);
+addEventListener('load', () => $$('input[type=range]').forEach(paintRange));
+
+/* a wall of empty plates is noise: show the filled ones plus one free slot, the rest appear as they
+   get filled (the long mode and references had up to twelve plates from the start) */
+const foldSlots = box => {
+  if (!box) return;
+  const slots = $$(':scope > .ref, :scope > .slot', box);
+  let last = -1;
+  slots.forEach((s, i) => { if (s.classList.contains('filled')) last = i; });
+  slots.forEach((s, i) => { s.hidden = i > Math.max(0, last + 1); });
+};
+const watchSlots = box => {
+  if (box && !box._folded) { box._folded = true; new MutationObserver(() => foldSlots(box)).observe(box, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] }); }
+};
+
 /* ---------- local server (real ComfyUI) or offline demo ---------- */
 const API = location.protocol.startsWith('http');
 const promptHandlers = new Map(), earlyEvents = new Map();
@@ -1816,6 +1839,13 @@ function previewPanel(el, st, opts) {
     result.pause(); result.removeAttribute('src'); el._done = null;
     $('.res', frame).hidden = false; frame.classList.remove('done');
   }
+  // «Очистить» in the section must empty this preview too, not only the fields
+  el._reset = () => {
+    resetFrame();
+    $$('.sum b', el).forEach(b => b.textContent = '—');
+    if (typeof status !== 'undefined' && status) status.textContent = '';
+    if (typeof bar !== 'undefined' && bar) bar.style.width = 0;
+  };
 
   /* ----- real generation through the local server ----- */
   const STAGE = {
@@ -2149,6 +2179,7 @@ $('#vClear').onclick = () => {
     `Уберём${pics.length ? ' картинки (' + pics.length + ' шт.) и' : ''} промпт. Готовые видео в Библиотеке останутся.`, 'Очистить', () => {
       pics.forEach(s => $(s + ' .x').click());
       $('#vPrompt').value = ''; $('#vPrompt').oninput({ target: $('#vPrompt') });
+      const prev = $('#vPreview'); if (prev && prev._reset) prev._reset();   // and the preview panel with the result
       toast('Раздел очищен');
     });
 };
@@ -2205,6 +2236,7 @@ mountLoras($('#lLoras'), L, ['realism']);
 // refs
 const MAX_REFS = 9;
 const refsEl = $('#refs');
+watchSlots(refsEl);   // here too: one free plate, not a wall of them
 for (let i = 1; i <= MAX_REFS; i++) {
   const r = document.createElement('label');
   r.className = 'ref';
@@ -2277,6 +2309,7 @@ $('#lClear').onclick = () => {
       if (hasAudio) $('#aRemove').click();
       pics.forEach(x => x.click());
       $('#lPrompt').value = ''; $('#lPrompt').dispatchEvent(new Event('input', { bubbles: true }));
+      const prev = $('#lPreview'); if (prev && prev._reset) prev._reset();
       toast('Раздел очищен');
     });
 };
@@ -3291,6 +3324,7 @@ function makeRefMode(cfg) {
         files.forEach(x => x.click());
         if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); }
         if (root._clearScenes) root._clearScenes();
+        const prev = $('.rm-preview', root); if (prev && prev._reset) prev._reset();   // the mini preview goes empty too
         toast('Раздел очищен');
       });
   };
@@ -3377,6 +3411,8 @@ function makeRefMode(cfg) {
     return cuts;
   }
   mkSlots(audsEl, cfg.scenes ? 1 : 3, 'audio/*', ICON_AUD, cfg.scenes ? 'Музыка' : 'Аудио');
+  // twelve empty plates are noise: only the filled ones and one free slot stay visible
+  [imgsEl, vidsEl, audsEl].forEach(b => { watchSlots(b); foldSlots(b); });
   if (cfg.swap) $('.rm-vids input', root).addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
     const box = $('.sw-cuts', root), hint = $('.sw-cuts-hint', root); box.value = '';
@@ -3455,6 +3491,7 @@ function makeRefMode(cfg) {
       const st = Math.max(0, parseFloat($('.lm-start', root)?.value) || 0);
       all.forEach((c, i) => {
         $('b', c).textContent = `Сцена ${i + 1}`; $('.x', c).hidden = all.length < 2; $('output', c).textContent = $('input[type=range]', c).value + ' с';
+      paintRange($('input[type=range]', c));   // the blue fill follows the handle, also on a freshly added scene
         const from = i ? a[i - 1] / 24 : 0, to = a[i] / 24;
         $('.sc-win', c).textContent = own ? `кусок аудио ${mmss(st + from)}–${mmss(st + to)}` : '';
       });

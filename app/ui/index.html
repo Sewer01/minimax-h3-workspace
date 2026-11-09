@@ -391,6 +391,13 @@ details[open] summary::before{content:'－ '}
 .len b{font-family:var(--mono);font-weight:500;font-size:15px}
 
 /* refs */
+/* уголок-счётчик в плитке: который по счёту и сколько всего помещается в режим */
+.cnt{position:absolute;top:5px;right:6px;z-index:2;font-size:10.5px;font-weight:700;color:#fff;background:rgba(10,12,18,.6);border:1px solid var(--line-2);padding:1px 7px;border-radius:999px;pointer-events:none;font-style:normal}
+.ref.filled .cnt,.slot.filled .cnt,.drop.filled .cnt{background:rgba(10,12,18,.82);border-color:var(--line)}
+/* на заполненной плитке уголок уступает место кнопке удаления в том же углу */
+.ref.filled .cnt{right:32px}
+.slot.filled .cnt{right:25px}
+.drop.filled .cnt{right:40px}
 .refs{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
 .ref{position:relative;aspect-ratio:3/4;border-radius:12px;border:1.5px dashed var(--line-2);background:var(--bg-2);display:grid;place-items:center;cursor:pointer;overflow:hidden;transition:.15s}
 .ref:hover{border-color:var(--accent)}
@@ -840,7 +847,7 @@ body.dropping::after{content:'Отпустите — программа разл
             <div class="card-h"><h3><span class="n">1</span>Кадры</h3><span class="hint">необязательно — без картинок видео создаётся по тексту</span>
               <button class="btn mini" id="vClear" type="button" title="Убрать картинки и промпт этого раздела">Очистить</button></div>
             <div class="frames">
-              <label class="drop" id="dFirst">
+              <label class="drop" id="dFirst"><i class="cnt">1/2</i>
                 <input type="file" accept="image/*">
                 <div class="ph">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
@@ -850,7 +857,7 @@ body.dropping::after{content:'Отпустите — программа разл
                 <button class="x" type="button" aria-label="Убрать">✕</button>
               </label>
               <svg class="arrow" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-              <label class="drop disabled" id="dLast">
+              <label class="drop disabled" id="dLast"><i class="cnt">2/2</i>
                 <input type="file" accept="image/*">
                 <div class="ph">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg>
@@ -2342,7 +2349,7 @@ watchSlots(refsEl);   // here too: one free plate, not a wall of them
 for (let i = 1; i <= MAX_REFS; i++) {
   const r = document.createElement('label');
   r.className = 'ref';
-  r.innerHTML = `<input type="file" accept="image/*"><div class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>${i === 1 ? 'Персонаж' : 'Референс'}</div>
+  r.innerHTML = `<input type="file" accept="image/*"><div class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>${i === 1 ? 'Персонаж' : 'Референс'}</div><i class="cnt">${i}/${MAX_REFS}</i>
     <span class="tag" hidden>Picture ${i}</span><button class="x" type="button">✕</button>`;
   refsEl.append(r);
   const input = $('input', r);
@@ -3434,7 +3441,7 @@ function makeRefMode(cfg) {
   // picture slots (same behaviour as Lipsync)
   for (let i = 0; i < cfg.maxImages; i++) {
     const r = document.createElement('label'); r.className = 'ref';
-    r.innerHTML = `<input type="file" accept="image/*"><div class="plus">${ICON_IMG}${i === 0 ? 'Главный' : 'Референс'}</div><span class="tag" hidden></span><button class="x" type="button">✕</button>`;
+    r.innerHTML = `<input type="file" accept="image/*"><div class="plus">${ICON_IMG}${i === 0 ? 'Главный' : 'Референс'}</div><i class="cnt">${i + 1}/${cfg.maxImages}</i><span class="tag" hidden></span><button class="x" type="button">✕</button>`;
     imgsEl.append(r);
     const input = $('input', r);
     const set = f => {
@@ -3454,7 +3461,7 @@ function makeRefMode(cfg) {
   const mkSlots = (el, n, accept, icon, label) => {
     for (let i = 0; i < n; i++) {
       const s = document.createElement('label'); s.className = 'slot';
-      s.innerHTML = `<input type="file" accept="${accept}" hidden>${icon}<span>${label} ${i + 1}</span><small></small><button class="x" type="button">✕</button>`;
+      s.innerHTML = `<input type="file" accept="${accept}" hidden>${icon}<i class="cnt">${i + 1}/${n}</i><span>${label} ${i + 1}</span><small></small><button class="x" type="button">✕</button>`;
       el.append(s);
       const input = $('input', s);
       input.onchange = () => {
@@ -5711,9 +5718,9 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     <div class="grid"><div class="col">
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Картинка</h3><button class="btn mini qw-clear" type="button" title="Убрать картинки и текст правки">Очистить</button></div>
         <div class="qw-slots">
-          <label class="drop" id="qwDrop"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-5-5L5 21"/></svg><b>Ваша картинка</b><span>перетащите или нажмите</span></div><span class="tag" hidden>Исходная</span><button class="x" type="button">✕</button></label>
-          <label class="drop qw-s2" id="qwDrop2" title="Ещё одна картинка (референс, по желанию)"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span class="tag" hidden>2</span><button class="x" type="button">✕</button></label>
-          <label class="drop qw-s3" id="qwDrop3" title="Ещё одна картинка (референс, по желанию)"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span class="tag" hidden>3</span><button class="x" type="button">✕</button></label>
+          <label class="drop" id="qwDrop"><input type="file" accept="image/*"><i class="cnt">1/3</i><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-5-5L5 21"/></svg><b>Ваша картинка</b><span>перетащите или нажмите</span></div><span class="tag" hidden>Исходная</span><button class="x" type="button">✕</button></label>
+          <label class="drop qw-s2" id="qwDrop2" title="Ещё одна картинка (референс, по желанию)"><input type="file" accept="image/*"><i class="cnt">2/3</i><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span class="tag" hidden>2</span><button class="x" type="button">✕</button></label>
+          <label class="drop qw-s3" id="qwDrop3" title="Ещё одна картинка (референс, по желанию)"><input type="file" accept="image/*"><i class="cnt">3/3</i><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span class="tag" hidden>3</span><button class="x" type="button">✕</button></label>
         </div>
         <div class="hint qw-morehint" style="margin-top:8px"></div></div>
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Что делаем</h3></div>

@@ -829,7 +829,8 @@ details[open] summary::before{content:'－ '}
       <div class="grid">
         <div class="col">
           <div class="card">
-            <div class="card-h"><h3><span class="n">1</span>Кадры</h3><span class="hint">необязательно — без картинок видео создаётся по тексту</span></div>
+            <div class="card-h"><h3><span class="n">1</span>Кадры</h3><span class="hint">необязательно — без картинок видео создаётся по тексту</span>
+              <button class="btn mini" id="vClear" type="button" title="Убрать картинки и промпт этого раздела">Очистить</button></div>
             <div class="frames">
               <label class="drop" id="dFirst">
                 <input type="file" accept="image/*">
@@ -882,7 +883,8 @@ details[open] summary::before{content:'－ '}
       <div class="grid">
         <div class="col">
           <div class="card">
-            <div class="card-h"><h3><span class="n">1</span>Аудио</h3><span class="hint">голос, песня или диалог</span></div>
+            <div class="card-h"><h3><span class="n">1</span>Аудио</h3><span class="hint">голос, песня или диалог</span>
+              <button class="btn mini" id="lClear" type="button" title="Убрать аудио, картинки и промпт этого раздела">Очистить</button></div>
             <label class="audio-empty" id="aDrop">
               <input type="file" accept="audio/*" hidden id="aFile">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -2139,6 +2141,17 @@ const lastDrop = wireDrop($('#dLast'), on => { V.last = on; vUpd(); });
 // the first frame decides the composition, so the format always follows it
 wireDrop($('#dFirst'), (on, img) => { V.first = on; if (!on) lastDrop.clear(); vUpd(); if (on) fitAspect(V, img, vUpd, true); });
 $('#vPrompt').oninput = e => $('#vCount').textContent = e.target.value.length + ' символов';
+// one click instead of picking the page apart by hand
+$('#vClear').onclick = () => {
+  const pics = ['#dFirst', '#dLast'].filter(s => $(s).classList.contains('filled')), txt = $('#vPrompt').value.trim();
+  if (!pics.length && !txt) { toast('Здесь и так пусто'); return; }
+  confirmBox('Очистить «Image-to-Video»?',
+    `Уберём${pics.length ? ' картинки (' + pics.length + ' шт.) и' : ''} промпт. Готовые видео в Библиотеке останутся.`, 'Очистить', () => {
+      pics.forEach(s => $(s + ' .x').click());
+      $('#vPrompt').value = ''; $('#vPrompt').oninput({ target: $('#vPrompt') });
+      toast('Раздел очищен');
+    });
+};
 vUpd();
 
 /* ---------- LIPSYNC view ---------- */
@@ -2253,6 +2266,19 @@ $('#aRemove').onclick = () => {
   $('#aEd').classList.remove('on'); aDrop.style.display = '';
   syncCut(); lUpd(); memSave();
   toast('Аудио удалено');
+};
+// one click: audio, pictures and the prompt of this section
+$('#lClear').onclick = () => {
+  const pics = $$('.ref.filled .x', refsEl), hasAudio = !!audioName, txt = $('#lPrompt').value.trim();
+  if (!pics.length && !hasAudio && !txt) { toast('Здесь и так пусто'); return; }
+  confirmBox('Очистить «Lipsync»?',
+    `Уберём${hasAudio ? ' аудио,' : ''}${pics.length ? ' картинки (' + pics.length + ' шт.) и' : ''} промпт. Готовые клипы в Библиотеке останутся.`,
+    'Очистить', () => {
+      if (hasAudio) $('#aRemove').click();
+      pics.forEach(x => x.click());
+      $('#lPrompt').value = ''; $('#lPrompt').dispatchEvent(new Event('input', { bubbles: true }));
+      toast('Раздел очищен');
+    });
 };
 aFile.onchange = () => loadAudio(aFile.files[0]);
 const aDrop = $('#aDrop');
@@ -3235,7 +3261,8 @@ function makeRefMode(cfg) {
     <div class="head"><div><h1>${cfg.title}</h1><p>${cfg.sub}</p></div><div class="mode-pill"><i></i><span class="rm-pill">${cfg.pill}</span></div></div>
     <div class="grid"><div class="col">
       <div class="card">
-        <div class="card-h"><h3><span class="n">1</span>Референсы</h3><span class="counter rm-count"></span></div>
+        <div class="card-h"><h3><span class="n">1</span>Референсы</h3><span class="counter rm-count"></span>
+          <button class="btn mini rm-clear" type="button" title="Убрать все картинки, видео, аудио и промпт этого раздела">Очистить</button></div>
         <div class="refs rm-imgs"></div>
         <div class="rm-media">
           ${cfg.videos ? `<div><div class="sub-l"><span>Референс-видео</span></div><div class="slots rm-vids"></div><small class="media-hint">движение, камера, хореография · 2–15 с</small></div>` : ''}
@@ -3252,6 +3279,21 @@ function makeRefMode(cfg) {
       <div class="card rm-params"></div>
     </div><div class="preview rm-preview"></div></div>`;
   const imgsEl = $('.rm-imgs', root), vidsEl = $('.rm-vids', root), audsEl = $('.rm-auds', root);
+
+  // one button instead of clicking every ✕ by hand: pictures, video, audio, text and scenes at once
+  $('.rm-clear', root).onclick = () => {
+    const ta = $('.rm-prompt', root) || root._ta;
+    const files = $$('.ref.filled .x, .slot.filled .x, .drop.filled .x', root);
+    const text = (ta ? ta.value : '').trim() || (root._hasText ? root._hasText() : '');
+    if (!files.length && !text) { toast('Здесь и так пусто'); return; }
+    confirmBox(`Очистить «${cfg.title}»?`,
+      `Уберём загруженное (${files.length} шт.), текст${cfg.scenes ? ' и сцены' : ''}. Видео и картинки в Библиотеке останутся.`, 'Очистить', () => {
+        files.forEach(x => x.click());
+        if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+        if (root._clearScenes) root._clearScenes();
+        toast('Раздел очищен');
+      });
+  };
 
   // picture slots (same behaviour as Lipsync)
   for (let i = 0; i < cfg.maxImages; i++) {
@@ -3617,6 +3659,14 @@ function makeRefMode(cfg) {
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 12) { toast('Не больше 12 сцен'); return; } addScene('', 10); };
     queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done
     root._addScene = addScene;
+    // the «Очистить» button of the section: in this mode the scenes are the text
+    root._hasText = () => $$('.sc textarea', root).some(t => t.value.trim());
+    root._clearScenes = () => {
+      $$('.sc', root).forEach(c => c.remove());
+      addScene('', 10);
+      root._run = Math.random().toString(36).slice(2, 12);   // the new scenes continue nothing from the old ones
+      recount(); refreshStates();
+    };
     const mus = document.createElement('div'); mus.className = 'card';
     root._snd = 'none';
     mus.innerHTML = `<div class="card-h"><h3><span class="n">2</span>Звук</h3></div>
@@ -4251,15 +4301,6 @@ $('#agEdit').onclick = e => {
   $('#agEditHint').textContent = AG.edit ? EDIT_HINTS.on : EDIT_HINTS.off;
   agCtx();
 };
-$('#agWipe').onclick = () => confirmBox('Удалить все переписки?',
-  'Все чаты с агентом будут удалены, восстановить нельзя. Видео и картинки в Библиотеке останутся.', 'Удалить',
-  async () => {
-    try {
-      const r = await fetch('/api/agent/chats', { method: 'DELETE' });
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
-      AG.id = null; AG.msgs = []; renderMsgs(); loadChats(); toast('История переписок очищена');
-    } catch (e) { toast('Не вышло очистить историю: ' + e.message); }
-  });
 function confirmBox(title, text, ok, fn) {
   $('#cfTitle').textContent = title; $('#cfText').textContent = text; $('#cfOk').textContent = ok;
   $('#confirm').hidden = false;
@@ -4277,7 +4318,7 @@ $('#agHist').addEventListener('click', e => {
   }
   openChat(row.dataset.id);
 });
-$('#agClear').onclick = () => confirmBox('Очистить всю историю?', 'Все переписки с агентом будут удалены.', 'Очистить', async () => {
+$('#agWipe').onclick = () => confirmBox('Очистить всю историю?', 'Все переписки с агентом будут удалены, восстановить нельзя. Видео и картинки в Библиотеке останутся.', 'Очистить', async () => {
   await fetch('/api/agent/chats', { method: 'DELETE' }); newChat(); toast('История очищена');
 });
 $('#agNew').onclick = newChat;
@@ -5357,7 +5398,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     <div class="head"><div><h1>Картинка по тексту</h1><p>Опишите картинку словами — модель Krea 2 нарисует её. Загрузить свою картинку здесь нельзя: для этого раздел «Правка картинки»</p></div>
       <div class="mode-pill"><i></i><span>Krea 2 · 1 МП</span></div></div>
     <div class="grid"><div class="col">
-      <div class="card"><div class="card-h"><h3><span class="n">1</span>Промпт</h3><span class="counter kr-count">0 символов</span></div>
+      <div class="card"><div class="card-h"><h3><span class="n">1</span>Промпт</h3><span class="counter kr-count">0 символов</span><button class="btn mini kr-clear" type="button" title="Убрать промпт (или список промптов)">Очистить</button></div>
         <div class="seg kr-bm" style="grid-template-columns:1fr 1fr;margin-bottom:8px"><button type="button" data-b="0" class="on">Один промпт</button><button type="button" data-b="1">Список промптов<small>серия картинок</small></button></div>
         <textarea class="kr-prompt" placeholder="Опишите картинку: кто или что в кадре, где, какой свет, какой стиль (фото, иллюстрация, постер)…"></textarea>
         <div class="kr-batch" hidden style="margin-top:10px">
@@ -5446,6 +5487,14 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   $('.kr-asp', root).onclick = e => { const c = e.target.closest('.chip'); if (c) { S.aspect = c.dataset.a; S.cw = S.ch = 0; $('.sz-w', root).value = $('.sz-h', root).value = ''; $('.sz-reset', root).hidden = true; upd(); } };
   szWire(root, S, () => upd(), () => IMG_SIZES[S.aspect]);
   $('.kr-prompt', root).oninput = e => $('.kr-count', root).textContent = e.target.value.length + ' символов';
+  $('.kr-clear', root).onclick = () => {
+    const ta = $('.kr-prompt', root);
+    if (!ta.value.trim()) { toast('Здесь и так пусто'); return; }
+    confirmBox('Очистить «Картинку по тексту»?', 'Уберём промпт и вставленный список промптов. Картинки в Библиотеке останутся.', 'Очистить', () => {
+      ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
+      toast('Раздел очищен');
+    });
+  };
 
   /* --- list of prompts: a series of pictures, one queue job per prompt --- */
   const K = { batch: false, items: [], removed: new Set() };
@@ -5508,7 +5557,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
     <div class="head"><div><h1>Правка картинки</h1><p>Загрузите картинку и напишите, что изменить: поменять место, одежду, свет, поставить персонажа в новую сцену. Или соберите лист персонажа</p></div>
       <div class="mode-pill"><i></i><span>Qwen Image 2.1</span></div></div>
     <div class="grid"><div class="col">
-      <div class="card"><div class="card-h"><h3><span class="n">1</span>Картинка</h3></div>
+      <div class="card"><div class="card-h"><h3><span class="n">1</span>Картинка</h3><button class="btn mini qw-clear" type="button" title="Убрать картинки и текст правки">Очистить</button></div>
         <div class="qw-slots">
           <label class="drop" id="qwDrop"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-5-5L5 21"/></svg><b>Ваша картинка</b><span>перетащите или нажмите</span></div><span class="tag" hidden>Исходная</span><button class="x" type="button">✕</button></label>
           <label class="drop qw-s2" id="qwDrop2" title="Ещё одна картинка (референс, по желанию)"><input type="file" accept="image/*"><div class="ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span class="tag" hidden>2</span><button class="x" type="button">✕</button></label>
@@ -5543,6 +5592,16 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
   const drop = $('#qwDrop');
   wireDrop(drop, () => {});
   const drop2 = $('#qwDrop2'), drop3 = $('#qwDrop3');
+  $('.qw-clear', root).onclick = () => {
+    const pics = [drop, drop2, drop3].filter(d => d.classList.contains('filled')), ta = $('.qw-prompt', root);
+    if (!pics.length && !ta.value.trim()) { toast('Здесь и так пусто'); return; }
+    confirmBox('Очистить «Правку картинки»?',
+      `Уберём${pics.length ? ' картинки (' + pics.length + ' шт.) и' : ''} текст правки. Картинки в Библиотеке останутся.`, 'Очистить', () => {
+        pics.forEach(d => $('.x', d)?.click());
+        ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true }));
+        toast('Раздел очищен');
+      });
+  };
   szWire($('.qw-szwrap', root), S, () => upd(), () => IMG_SIZES[S.aspect] || [1376, 768]);
   wireDrop(drop2, () => {}); wireDrop(drop3, () => {});
   const P = imgPanel($('.qw-prev', root), {

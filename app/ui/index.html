@@ -1415,6 +1415,21 @@ equirements.txt</code><br>
 <div class="toast" id="toast"></div>
 
 <script>
+/* The local server answers only its own window: every request that changes something carries the key
+   the server put into this page. The wrapper is here so no call has to remember about it. */
+const H3_TOKEN = window.__H3_TOKEN || '';
+const rawFetch = window.fetch.bind(window);
+window.fetch = (input, init) => {
+  const path = typeof input === 'string' ? input : (input && input.url) || '';
+  if (path.startsWith('/api/')) {
+    const o = Object.assign({}, init || {});
+    o.headers = new Headers(o.headers || {});
+    o.headers.set('X-H3-Token', H3_TOKEN);
+    return rawFetch(input, o);
+  }
+  return rawFetch(input, init);
+};
+
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
@@ -1428,7 +1443,7 @@ function onPrompt(id, fn) {
 }
 function offPrompt(id) { promptHandlers.delete(id); }
 function connectEvents() {
-  const ws = new WebSocket(`ws://${location.host}/api/events`);
+  const ws = new WebSocket(`ws://${location.host}/api/events?token=${H3_TOKEN}`);   // the key is hex only
   ws.binaryType = 'blob';
   ws.onmessage = e => {
     if (typeof e.data !== 'string') { previewHandlers.forEach(f => f(e.data)); return; }

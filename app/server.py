@@ -150,6 +150,8 @@ class App:
         self.comfy_online = False
         self._relay_ok = None  # does this ComfyUI know the RelayVSR nodes (cached, see relay_ready)
         self._relay_at = 0.0
+        self.token = uuid.uuid4().hex   # the key of this session: only our own window may ask the server to act
+        self._index = None              # index.html with that key in it
         self.process = None  # engine.ComfyProcess in managed mode
         self._bg = set()  # background tasks (kept so they are not garbage collected)
         self.installer = None
@@ -2724,7 +2726,13 @@ class App:
         return web.json_response({"ok": True})
 
     async def h_index(self, _req):
-        return web.FileResponse(UI_DIR / "index.html", headers={"Cache-Control": "no-store"})
+        """The interface, with the key of this session inside it."""
+        if self._index is None:
+            html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+            self._index = html.replace("</head>", f'<script>window.__H3_TOKEN="{self.token}";</script></head>', 1)
+        return web.Response(text=self._index, content_type="text/html",
+                            headers={"Cache-Control": "no-store",
+                                     "Set-Cookie": f"h3token={self.token}; Path=/; SameSite=Lax"})
 
 
 def lora_strength(form, key, default):
@@ -2769,9 +2777,44 @@ def send_to_recycle_bin(path):
     return r.returncode == 0 and not path.exists()
 
 
+def _same_origin(request):
+    """Is the request from the window that shows this program (or from the program itself)?"""
+    origin = request.headers.get("Origin") or request.headers.get("Referer") or ""
+    if not origin:
+        return True
+    here = f"{request.scheme}://{request.headers.get('Host', '')}"
+    return origin == here or origin.startswith(here + "/")
+
+
+def _guard(state):
+    """Only the program's own window may ask the local server to do something.
+
+    The server listens on 127.0.0.1 only, but that does not stop a web page: a plain form or fetch POST
+    reaches the handler before CORS has anything to say, so any site the user opens could queue jobs,
+    start downloads of tens of gigabytes, point the program at someone else's ComfyUI or open its windows.
+    The event stream is worse - a cross-origin WebSocket is not a CORS request at all, and through it a
+    foreign page reads prompts, modes and folder paths. Every request that changes something therefore
+    carries the key of this session in the X-H3-Token header (a foreign page cannot add a header without a
+    preflight this server never answers), the event stream carries it in its address, and a request whose
+    origin is not ours is refused outright.
+    """
+    async def middleware(request, handler):
+        if request.path.startswith("/api/"):
+            if not _same_origin(request):
+                return web.json_response({"error": "Запрос не из окна программы"}, status=403)
+            if request.method == "GET":
+                if request.path == "/api/events" and request.query.get("token") != state.token \
+                        and request.cookies.get("h3token") != state.token:
+                    return web.json_response({"error": "Нет ключа сеанса: обновите окно программы"}, status=403)
+            elif request.headers.get("X-H3-Token") != state.token:
+                return web.json_response({"error": "Нет ключа сеанса: обновите окно программы"}, status=403)
+        return await handler(request)
+    return web.middleware(middleware)   # aiohttp 3.14: without the mark the handler gets (app, handler)
+
+
 def build_app(comfy_override=None):
     state = App(comfy_override)
-    app = web.Application(client_max_size=300 * 1024 * 1024)
+    app = web.Application(client_max_size=300 * 1024 * 1024, middlewares=[_guard(state)])
     app.on_startup.append(state.start)
     app.on_cleanup.append(state.stop)
     app.add_routes([

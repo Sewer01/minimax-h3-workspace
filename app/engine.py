@@ -30,15 +30,33 @@ CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 class Config:
     def __init__(self, path):
         self.path = path
-        self.data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        try:
+            self.data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except (OSError, ValueError):
+            self.data = {}  # a damaged settings file must not stop the program; the next write fixes it
 
     def get(self, key, default=None):
         return self.data.get(key, default)
 
     def update(self, **kw):
-        self.data.update(kw)
+        """Put only the given keys on top of the file as it is on disk right now, and replace the file atomically.
+
+        Reading the file first matters: a second copy of the program may work with the same data folder (the port
+        is picked automatically, so nothing stopped it from starting), and writing our whole in-memory copy back
+        quietly restored the keys the other copy had changed. That once reset `setup_done`: the program stopped
+        starting its own ComfyUI and asked to download models that are lying on the disk.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), encoding="utf-8")
+        try:
+            on_disk = json.loads(self.path.read_text(encoding="utf-8"))
+            if isinstance(on_disk, dict):
+                self.data = {**self.data, **on_disk}
+        except (OSError, ValueError):
+            pass  # missing or half-written file: keep what we have in memory
+        self.data.update(kw)
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, self.path)  # a reader sees either the old file or the new one, never a part of it
 
     @property
     def configured(self):

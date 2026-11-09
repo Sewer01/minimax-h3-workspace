@@ -19,6 +19,7 @@ if getattr(sys, "frozen", False):
 from aiohttp import web  # noqa: E402
 
 import server  # noqa: E402
+import single  # noqa: E402
 
 
 def free_port(start=8765):
@@ -143,6 +144,18 @@ def main():
         # no Windows error dialogs (e.g. nvidia-smi.exe 0xc0000142 under memory pressure); child processes inherit this
         ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002)  # SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX
     port = free_port()
+    busy = single.hold(server.DATA_DIR, port)  # a second copy over the same folder spoils settings, queue and ComfyUI
+    if busy is not None:
+        if busy:
+            webbrowser.open(busy)  # the first window is already working with these files
+        else:
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    0, "Программа уже запущена с этой папкой данных.\n\nЗакройте первое окно — "
+                       "две копии портят общие настройки и очередь.", "Minimax H3 Workspace", 0x40)
+            except Exception:
+                pass
+        return
     srv = ServerThread(port)
     srv.start()
     srv.ready.wait(30)
@@ -184,6 +197,7 @@ def main():
         threading.Event().wait()
     finally:
         srv.shutdown()
+        single.release(server.DATA_DIR)
 
 
 if __name__ == "__main__":

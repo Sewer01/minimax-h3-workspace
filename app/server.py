@@ -34,6 +34,7 @@ import customwf
 import engine
 import monitor
 import report
+import single
 import speech
 import updater
 from version import APP_VERSION
@@ -2840,12 +2841,19 @@ def main():
     ap.add_argument("--open", action="store_true", help="open the UI in the default browser")
     args = ap.parse_args()
 
-    app = build_app(args.comfy)
-    if args.open:
-        async def open_browser(_app):
-            asyncio.get_running_loop().call_later(1, webbrowser.open, f"http://127.0.0.1:{args.port}")
-        app.on_startup.append(open_browser)
-    web.run_app(app, host="127.0.0.1", port=args.port, print=lambda *_: print(f"Minimax H3 Workspace: http://127.0.0.1:{args.port}"))
+    busy = single.hold(DATA_DIR, args.port)  # the same guard as in main.py: two copies spoil settings, queue and ComfyUI
+    if busy is not None:
+        print("Программа уже работает с этой папкой данных" + (f", адрес: {busy}" if busy else "") + ".")
+        raise SystemExit(1)
+    try:
+        app = build_app(args.comfy)
+        if args.open:
+            async def open_browser(_app):
+                asyncio.get_running_loop().call_later(1, webbrowser.open, f"http://127.0.0.1:{args.port}")
+            app.on_startup.append(open_browser)
+        web.run_app(app, host="127.0.0.1", port=args.port, print=lambda *_: print(f"Minimax H3 Workspace: http://127.0.0.1:{args.port}"))
+    finally:
+        single.release(DATA_DIR)
 
 
 if __name__ == "__main__":

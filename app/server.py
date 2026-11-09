@@ -201,10 +201,20 @@ class App:
         return Path(d) / catalog.COMFY_DIRNAME if d else None
 
     def choice(self):
-        return {**catalog.DEFAULT_CHOICE, **(self.config.get("choice") or {}), **(self.config.get("choice_override") or {})}
+        raw = {**catalog.DEFAULT_CHOICE, **(self.config.get("choice") or {}), **(self.config.get("choice_override") or {})}
+        # a role or a variant renamed in catalog used to raise KeyError in /api/status (the interface then said
+        # "engine offline") and the same KeyError was swallowed in the ComfyUI loop: drop what catalog does not
+        # know and fall back to the default variant of that role
+        out = {}
+        for role, variant in raw.items():
+            variants = catalog.VARIANTS.get(role)
+            if not variants:
+                continue
+            out[role] = variant if variant in variants else catalog.DEFAULT_CHOICE.get(role, next(iter(variants)))
+        return out
 
     def modes(self):
-        modes = list(self.config.get("modes") or catalog.MODE_ROLES)
+        modes = [m for m in (self.config.get("modes") or catalog.MODE_ROLES) if m in catalog.MODE_ROLES]
         if "actor" not in modes and ("refs" in modes or "lipsync" in modes):
             modes.append("actor")  # same models, so set-ups made before this mode existed get it too
         if "swap" not in modes and "refs" in modes:
@@ -249,7 +259,7 @@ class App:
             if self.missing_node_packs():
                 self.packs_task = asyncio.create_task(self.install_missing_packs())
             else:
-                self.start_managed()
+                await asyncio.to_thread(self.start_managed)
         self.ws_task = asyncio.create_task(self.comfy_ws_loop())
 
     def missing_node_packs(self):
@@ -272,7 +282,7 @@ class App:
         except Exception as e:
             print(f"Не удалось докачать ноды ({type(e).__name__}): {e}", file=sys.stderr)
         if not self.process:
-            self.start_managed()
+            await asyncio.to_thread(self.start_managed)
 
     async def stop(self, _app):
         self.ws_task.cancel()
@@ -376,7 +386,15 @@ class App:
                     await self.warn_weak_gpu()
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
-                            await self.on_comfy_event(json.loads(msg.data))
+                            try:
+                                await self.on_comfy_event(json.loads(msg.data))
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception as exc:
+                                # a broken event must not drop the connection: the task would keep
+                                # showing "running" in the window until the program restarts
+                                self.note_error(f"Событие ComfyUI: {exc}")
+                                await self.broadcast({"type": "notice", "text": "Программа не поняла сообщение ComfyUI"})
                         elif msg.type == aiohttp.WSMsgType.BINARY:
                             await self.on_comfy_binary(msg.data)
             except asyncio.CancelledError:
@@ -477,7 +495,17 @@ class App:
     async def finish_job(self, job):
         pid = job["prompt_id"]
         self.jobs.pop(pid, None)
-        _, hist = await self.comfy_json("GET", f"/history/{pid}")
+        # ComfyUI writes the history a moment after the job ends; asking once made a finished render look like
+        # "returned nothing", so a clip that took twenty minutes was reported lost while the file sat on disk
+        hist = {}
+        for _wait in range(5):
+            try:
+                _, hist = await self.comfy_json("GET", f"/history/{pid}")
+            except Exception:
+                hist = {}
+            if (hist or {}).get(pid):
+                break
+            await asyncio.sleep(1.2)
         outputs = (hist or {}).get(pid, {}).get("outputs", {})
         tagged = [(nid, f) for nid, out in outputs.items() for lst in out.values() if isinstance(lst, list)
                   for f in lst if isinstance(f, dict) and "filename" in f]
@@ -1015,7 +1043,7 @@ class App:
             await inst.step("start", "progress", label="Запускаем ComfyUI…")
             if self.process:
                 await asyncio.to_thread(self.process.stop)
-            self.start_managed()
+            await asyncio.to_thread(self.start_managed)
             await self.wait_comfy()
             await inst.step("start", "done", label="ComfyUI запущен")
             _, missing = await self.resolve_models()

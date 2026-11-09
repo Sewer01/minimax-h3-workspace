@@ -37,8 +37,8 @@ NODE_PACKS = [
 # What each mode needs from custom nodes: checked in a user's own ComfyUI (a new install gets them by itself).
 # `classes` are node names ComfyUI must know; `optional` ones only switch a feature on.
 NODE_CHECKS = [
-    {"pack": "ComfyUI-H3-NativeAudioLock", "classes": ["MiniMaxH3NativeAudioLock"], "modes": ["lipsync"],
-     "optional": False, "why": "точный липсинг под ваше аудио"},
+    {"pack": "ComfyUI-H3-NativeAudioLock", "classes": ["MiniMaxH3NativeAudioLock"], "modes": ["lipsync", "swap"],
+     "optional": False, "why": "точный липсинг под ваше аудио (в замене персонажа звук тоже замораживается этой нодой)"},
     {"pack": "Comfyui_Minimax_h3_latent_Upscaler", "classes": ["MinimaxH3LatentUpscaler3D"], "modes": ["lipsync", "action"],
      "optional": False, "why": "второй проход (увеличение кадра)"},
     {"pack": "ComfyUI-MelBandRoFormer", "classes": ["MelBandRoFormerSampler", "MelBandRoFormerModelLoader"],
@@ -441,7 +441,9 @@ def recommended_profile(hw):
 
 
 def roles_for(modes, optional=True):
-    roles = {r for m in modes for r in MODE_ROLES[m]} | {"preview"}
+    # the live-preview decoder (taeh3) is no longer added here: server.preview_opts() keeps previews off, and a
+    # file nothing uses must not make the setup say "models are missing" nor force a download
+    roles = {r for m in modes for r in MODE_ROLES[m]}
     if optional:
         roles |= {r for m in modes for r in MODE_OPTIONAL.get(m, [])}
     return [r for r in ALL_ROLES if r in roles]

@@ -398,6 +398,8 @@ details[open] summary::before{content:'－ '}
 .ref.filled .cnt{right:32px}
 .slot.filled .cnt{right:25px}
 .drop.filled .cnt{right:40px}
+/* зоны, которые начали принимать перетаскивание, подсвечиваются так же, как рамки */
+.slot.over,.ref.over,#agAtt.over{outline:2px dashed var(--accent);outline-offset:-2px}
 .refs{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
 .ref{position:relative;aspect-ratio:3/4;border-radius:12px;border:1.5px dashed var(--line-2);background:var(--bg-2);display:grid;place-items:center;cursor:pointer;overflow:hidden;transition:.15s}
 .ref:hover{border-color:var(--accent)}
@@ -1499,10 +1501,14 @@ const fileKind = f => {
   const t = (f.type || '').split('/')[0];
   return FILE_KIND[t] ? t : '';
 };
+// проводник не всегда сообщает тип: картинку узнаём и по расширению, иначе слот молча её отклонит
+const isImage = f => !!f && ((f.type || '').startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif|tiff?|avif)$/i.test(f.name || ''));
+// контекст один на все распаковки звука: новых контекстов браузер разрешает мало
+const sharedAudioCtx = () => (sharedAudioCtx.c = sharedAudioCtx.c || new (window.AudioContext || window.webkitAudioContext)());
 const KIND_WORD = { image: 'картинки', video: 'видео', audio: 'звук' };
 const activeView = () => (($('.view.active') || {}).id || '').replace('view-', '');
 const dropBox = view => view === 'video' ? $('#view-video') : view === 'lipsync' ? $('#view-lipsync')
-  : view === 'upscale' ? $('#view-upscale') : view === 'qwen' ? $('#view-qwen')
+  : view === 'upscale' ? $('#view-upfile') : view === 'qwen' ? $('#view-qwen')
   : view === 'krea' ? $('#view-krea') : view === 'agent' ? $('#view-agent') : (RM[view] && RM[view].root) || null;
 const dropAccepts = view => view === 'upscale' ? ['video'] : view === 'lipsync' ? ['image', 'audio']
   : view === 'video' || view === 'qwen' || view === 'krea' ? ['image']
@@ -1523,7 +1529,7 @@ const dropSlots = (view, kind) => {
 async function spreadFiles(files, view) {
   const bad = [], left = [], nofit = [];
   const byKind = { image: [], video: [], audio: [] };
-  files.forEach(f => { const k = fileKind(f); if (k) byKind[k].push(f); else bad.push(f.name); });
+  files.forEach(f => { const k = fileKind(f); if (k && (k !== 'image' || isImage(f))) byKind[k].push(f); else bad.push(f.name); });
   let placed = 0;
   for (const kind of ['image', 'video', 'audio']) {
     const list = byKind[kind]; if (!list.length) continue;
@@ -1566,7 +1572,7 @@ async function handleDrop(e) {
 }
 document.addEventListener('dragover', e => {
   const dt = e.dataTransfer; if (!dt || ![...(dt.types || [])].includes('Files')) return;
-  if (e.target.closest('label.drop, label.ref, label.slot, #agAtt, #upDrop, #aDrop, .audio-empty')) return;   // слот подсветит сам
+  if (e.target.closest('label.drop, label.ref, label.slot, #agAtt, #upDrop, #aDrop, .audio-empty')) return;   // эти зоны принимают файл сами
   e.preventDefault(); dt.dropEffect = 'copy';
   document.body.classList.add('dropping');
 });
@@ -1799,7 +1805,7 @@ function paramsCard(el, st, opts) {
     $$('.seg button[data-q]', el).forEach(c => c.style.opacity = st.cw && st.ch ? .45 : '');
     if (opts.duration) {
       const d = $('.dur', el); d.value = st.dur;
-      d.style.setProperty('--p', ((st.dur - 3) / 22 * 100) + '%');
+      paintRange(d);   // заливка по фактическим min/max: у «Замены» шкала 3-15, а не 3-25
       $('.durv', el).textContent = `${st.dur} с · ${frames(st.dur)} кадров` + (st.dur > 15 ? ' · дольше 15 с модель держит качество хуже' : '');
     }
     $('.vwarn', el).hidden = !(st.q === '1080p' && st.len() > 8);
@@ -1944,7 +1950,8 @@ function previewPanel(el, st, opts) {
   let run = null;
 
   function resetFrame() {
-    [live, hud, liveImg, liveVid, result, wait].forEach(x => x.hidden = true);
+    liveVid.pause(); liveVid.removeAttribute('src'); liveVid.load();
+  [live, hud, liveImg, liveVid, result, wait].forEach(x => x.hidden = true);
     result.pause(); result.removeAttribute('src'); el._done = null;
     $('.res', frame).hidden = false; frame.classList.remove('done');
   }
@@ -2055,7 +2062,8 @@ function previewPanel(el, st, opts) {
     const took = fmtTime((performance.now() - run.t0) / 1000);
     run = null;
     if (kind === 'done') {
-      [liveImg, liveVid, wait].forEach(x => x.hidden = true);
+      liveVid.pause(); liveVid.removeAttribute('src'); liveVid.load();   // скрытое зацикленное видео иначе продолжает декодироваться
+        [liveImg, liveVid, wait].forEach(x => x.hidden = true);
       result.src = data.url; result.dataset.dragid = data.id; result.draggable = true; result.hidden = false; result.muted = true; result.play().catch(() => {});
       el._done = data;   // in the rare case the library has not caught up, the viewer still has the item
       frame.classList.add('done'); $('.hud-t', el).textContent = 'Готово'; $('.hud-s', el).textContent = took;
@@ -2199,9 +2207,10 @@ function fitAspect(st, img, upd, force) {
 function wireDrop(zone, onFile) {
   const input = $('input', zone);
   const set = file => {
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!isImage(file)) return;
     zone._file = file;
     let img = $('img', zone); if (!img) { img = document.createElement('img'); zone.prepend(img); }
+    img.onerror = () => { URL.revokeObjectURL(img.src); res(null); };   // иначе промис не завершается и чат зависает навсегда
     img.src = URL.createObjectURL(file);
     zone.classList.add('filled'); $('.ph', zone).hidden = true;
     const tag = $('.tag', zone); if (tag) tag.hidden = false;
@@ -2354,7 +2363,7 @@ for (let i = 1; i <= MAX_REFS; i++) {
   refsEl.append(r);
   const input = $('input', r);
   const set = f => {
-    if (!f || !f.type.startsWith('image/')) return;
+    if (!isImage(f)) return;
     $('img', r)?.remove(); $('select', r)?.remove();
     r._file = f;
     const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
@@ -3433,6 +3442,8 @@ function makeRefMode(cfg) {
         files.forEach(x => x.click());
         if (ta) { ta.value = ''; ta.dispatchEvent(new Event('input', { bubbles: true })); }
         if (root._clearScenes) root._clearScenes();
+        if (root._setSrc) root._setSrc(null);   // the "we continue a finished video" plate goes away with the rest
+        root._target = null; root._chainPart = 0;
         const prev = $('.rm-preview', root); if (prev && prev._reset) prev._reset();   // the mini preview goes empty too
         toast('Раздел очищен');
       });
@@ -3445,7 +3456,7 @@ function makeRefMode(cfg) {
     imgsEl.append(r);
     const input = $('input', r);
     const set = f => {
-      if (!f || !f.type.startsWith('image/')) return;
+      if (!isImage(f)) return;
       $('img', r)?.remove(); r._file = f;
       const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
       fitSlot(r, img);
@@ -3464,6 +3475,13 @@ function makeRefMode(cfg) {
       s.innerHTML = `<input type="file" accept="${accept}" hidden>${icon}<i class="cnt">${i + 1}/${n}</i><span>${label} ${i + 1}</span><small></small><button class="x" type="button">✕</button>`;
       el.append(s);
       const input = $('input', s);
+        s.addEventListener('dragover', e => { e.preventDefault(); s.classList.add('over'); });
+        s.addEventListener('dragleave', () => s.classList.remove('over'));
+        s.addEventListener('drop', e => {
+          e.preventDefault(); e.stopPropagation(); s.classList.remove('over');
+          const f = e.dataTransfer.files[0]; if (!f) return;
+          const dt = new DataTransfer(); dt.items.add(f); input.files = dt.files; input.dispatchEvent(new Event('change'));
+        });
       input.onchange = () => {
         const f = input.files[0]; if (!f) return;
         s._file = f; s.classList.add('filled'); $('span', s).textContent = accept.startsWith('video') ? '✓ Видео загружено' : f.name;
@@ -4172,9 +4190,16 @@ $('#agVidFile').onchange = async e => {
     renderAtt(); agCtx(); toast(`Из видео взято ${frames.length} кадров. Теперь напишите, кого на что заменить`);
   } catch (err) { toast(err.message); }
 };
+$('#agAtt').addEventListener('dragover', e => { if ([...(e.dataTransfer.types || [])].includes('Files')) { e.preventDefault(); $('#agAtt').classList.add('over'); } });
+$('#agAtt').addEventListener('dragleave', () => $('#agAtt').classList.remove('over'));
+$('#agAtt').addEventListener('drop', async e => {
+  if (![...(e.dataTransfer.types || [])].includes('Files')) return;
+  e.preventDefault(); e.stopPropagation(); $('#agAtt').classList.remove('over');
+  for (const f of e.dataTransfer.files) await agAttachFile(f);
+});
 $('#agAtt').onclick = e => { const b = e.target.closest('button[data-i]'); if (b) { AG.att.splice(+b.dataset.i, 1); renderAtt(); } };
 $('#agFile').onchange = async e => {
-  for (const f of e.target.files) if (f.type.startsWith('image/')) AG.att.push({ file: f, url: await fileToDataURL(f) });
+  for (const f of e.target.files) { if (!isImage(f)) { toast('Это не картинка: ' + f.name); continue; } const u = await fileToDataURL(f); if (u) AG.att.push({ file: f, url: u }); else toast('Картинка не открылась: ' + f.name); }
   e.target.value = ''; renderAtt();
 };
 $('#agEmpty').onclick = e => { const s = e.target.closest('span'); if (s) { $('#agIn').value = s.textContent.replace(/[«»]/g, '').replace(/ \+ фото героинь$/, ''); $('#agIn').focus(); } };
@@ -4234,7 +4259,7 @@ function renderAssistant(el, m) {
     const closed = i < parts.length - 1;
     const text = m.edits?.[i] ?? p.replace(/\n$/, '');
     html += `<div class="pblock"><pre${closed ? ` contenteditable="plaintext-only" spellcheck="false" data-b="${i}" title="Текст можно править прямо здесь"` : ''}>${esc(text)}</pre>${closed ? `<div class="pb-act">
-      <button class="btn pri" data-send="${AG.target}">В ${AG_NAMES[AG.target]}</button>
+      <button class="btn pri" data-send="${m.to || AG.target}">В ${AG_NAMES[m.to || AG.target]}</button>
       <select class="pb-other"><option value="">Отправить в…</option><option value="video">Image-to-Video</option><option value="lipsync">Lipsync</option><option value="refs">Референсы</option><option value="actor">Актёрская игра</option><option value="swap">Замена персонажа</option><option value="action">Экшн-сцены</option><option value="long">Длинное видео (сцены)</option><option value="krea">Картинка по тексту</option><option value="qwen">Правка картинки</option></select>
       <button class="btn" data-ru title="Русский перевод только для чтения: в модель уходит английский текст">Показать по-русски</button><button class="btn" data-copy>Копировать</button><button class="btn" data-paste title="Вставить скопированный текст на место выделенного (или в конец)">Вставить</button><small class="pb-n">${text.length} симв.</small></div>` : ''}${m.ru?.[i] ? `<div class="pb-ru"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px"><b>По-русски (только для чтения):</b><button class="btn" data-copy-ru type="button" style="padding:3px 10px;font-size:12px">Копировать русский</button></div><span class="pb-ru-t">${esc(m.ru[i]).replace(/\n/g, '<br>')}</span></div>` : ''}</div>`;
   });
@@ -4283,13 +4308,13 @@ async function setChatAudio(wavBlob, name, dur) {
 $('#agAudioFile').onchange = async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   try {
-    const buf = await new AudioContext().decodeAudioData(await f.arrayBuffer());
+    const buf = await sharedAudioCtx().decodeAudioData(await f.arrayBuffer());
     if (buf.duration > 120) toast('Длинное аудио: берём первые 2 минуты. Для нужного куска выделите его в разделе Lipsync и нажмите значок микрофона-фрагмента.');
     await setChatAudio(wavSlice(buf, 0, Math.min(buf.duration, 120)), f.name, Math.min(buf.duration, 120));
   } catch { toast('Не удалось прочитать аудиофайл'); }
 };
 // attach something from the Library to the chat: a picture (or the last frame of a video), or the sound of a video
-const agAttachFile = async f => { AG.att.push({ file: f, url: await fileToDataURL(f) }); renderAtt(); agCtx(); };
+const agAttachFile = async f => { const u = await fileToDataURL(f); if (!u) { toast('Картинка не открылась: ' + f.name); return; } AG.att.push({ file: f, url: u }); renderAtt(); agCtx(); };
 $('#agLib').onclick = () => {
   let m = $('#agLibM'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'agLibM'; document.body.append(m); }
   m.hidden = false; let tab = 'img';
@@ -4311,7 +4336,7 @@ $('#agLib').onclick = () => {
       if (tab === 'img') { await agAttachFile(await libToFile(it)); toast('Картинка добавлена в чат'); }
       else {
         toast('Берём звук из видео…');
-        const buf = await new AudioContext().decodeAudioData(await (await fetch(it.url)).arrayBuffer());
+        const buf = await sharedAudioCtx().decodeAudioData(await (await fetch(it.url)).arrayBuffer());
         if (buf.duration > 120) toast('Длинное аудио: берём первые 2 минуты.');
         const d = Math.min(buf.duration, 120);
         await setChatAudio(wavSlice(buf, 0, d), (it.label || it.sub || 'видео из Библиотеки'), d);
@@ -4344,7 +4369,7 @@ $('#agMic').onclick = async () => {
     btn.title = 'Голосовой ввод: нажмите, говорите, нажмите ещё раз';
     const ta = $('#agIn'), before = ta.placeholder; ta.placeholder = 'Распознаём речь…';
     try {
-      const buf = await new AudioContext().decodeAudioData(await new Blob(chunks).arrayBuffer());
+      const buf = await sharedAudioCtx().decodeAudioData(await new Blob(chunks).arrayBuffer());
       if (buf.duration < 0.4) throw new Error('Запись слишком короткая');
       const j = await transcribeWav(wavSlice(buf, 0, buf.duration));
       if (!j.text) toast('Речь не распознана — скажите ещё раз'); else { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + j.text; ta.focus(); }
@@ -4373,7 +4398,7 @@ async function agSend() {
   }
   AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videoFile: frs[0]?.vfile, audioFile: au?.file });
   AG.att = []; renderAtt(); $('#agIn').value = ''; AG.audio = null; showAudioBox();
-  const reply = { role: 'assistant', content: '', status: 'Отправляем…', edit: AG.edit };   // перенос в раздел потом поступит по тому же смыслу
+  const reply = { role: 'assistant', content: '', status: 'Отправляем…', edit: AG.edit, to: AG.target };   // перенос в раздел потом поступит по тому же смыслу
   AG.msgs.push(reply); renderMsgs();
   const el = $('#agMsgs .msg:last-child');
   AG.busy = true; $('#agSend').textContent = 'Стоп'; AG.ctrl = new AbortController();
@@ -4429,7 +4454,7 @@ async function loadChats() {
 }
 function newChat() {
   if (AG.busy) AG.ctrl?.abort();
-  AG.id = null; AG.msgs = []; AG.att = []; renderAtt(); renderMsgs(); agCtx(); loadChats(); $('#agIn').focus();
+  AG.id = null; AG.msgs = []; AG.att = []; AG.audio = null; renderAtt(); showAudioBox(); renderMsgs(); agCtx(); loadChats(); $('#agIn').focus();
 }
 async function openChat(id) {
   if (AG.busy) AG.ctrl?.abort();

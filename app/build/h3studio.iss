@@ -1,6 +1,6 @@
 ; Inno Setup script: ISCC.exe app\build\h3studio.iss  (after the PyInstaller build)
 #define AppName "Minimax H3 Workspace"
-#define AppVersion "1.1.12"
+#define AppVersion "1.1.13"
 #define AppExe "MinimaxH3Workspace.exe"
 
 [Setup]
@@ -52,3 +52,4 @@ Filename: "{app}\{#AppExe}"; Flags: nowait skipifnotsilent
 
 ; ComfyUI and models live in the folder chosen in the app, outside {app}, and are kept on uninstall on purpose:
 ; they are tens of gigabytes. Settings go to <that folder>\data (see datadir.py).
+

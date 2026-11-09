@@ -781,7 +781,7 @@ class App:
                             ev = dict(ev, overall_done=base + ev["done"], overall_total=total, index=idx + 1, count=len(entries), label=label)
                         await emit(ev)
                     inst.emit = emit_overall
-                    await inst.download(e["url"], dest, "models", label, e["size"])
+                    await inst.download(e["url"], dest, "models", label, e["size"], sha256=catalog.file_sha256(e["url"]))
                     base += e["size"]
                 await self.resolve_models()
                 await self.broadcast({"type": "mdl", "state": "done", "label": "Готово: файлы скачаны и лежат в вашей папке моделей"})

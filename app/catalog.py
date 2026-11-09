@@ -212,6 +212,64 @@ VARIANTS = {
     },
 }
 
+# sha256 of every model file this program downloads, exactly as Hugging Face publishes it
+# (the LFS oid of the file, read through their API - nothing was downloaded to build this).
+# A mirror or a damaged CDN answer must never quietly become someone else's weights.
+# Files that Hugging Face keeps as plain git objects have no published sum and are not here.
+MODEL_SHA256 = {
+    "Alissonerdx/Minimax-H3-ComfyUI|latent_upscaler/h3_upscaler_lms_v0.1.safetensors": "40d4228227146245ef2b65480b647c50222465ca125de5880f192e3259e40d59",
+    "Alissonerdx/Minimax-H3-ComfyUI|vae_approx/taeh3.safetensors": "4fd022bfcab08772fe0536b17ea1a3bbb5625be11e397868d1c5d891863d4c13",
+    "Comfy-Org/Krea-2|diffusion_models/krea2_turbo_int8_convrot.safetensors": "8e4eeda70dd5037ab1ba2bef6b417f9f901e26093117cf397f741fc1fdaaf3f1",
+    "Comfy-Org/Krea-2|text_encoders/qwen3vl_4b_fp8_scaled.safetensors": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094",
+    "Comfy-Org/Krea-2|vae/qwen_image_vae.safetensors": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+    "Comfy-Org/MiniMax-H3|loras/minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors": "5b9ab5ade15d0775676d01a907268a69a1468dc6033b3b0d3ded5502f3ebb84c",
+    "Comfy-Org/MiniMax-H3|text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors": "35a88d51044231fe332301d7a62aa81e3f2cba62febeb446e2c1e3e0ef76f2c6",
+    "Comfy-Org/MiniMax-H3|vae/minimax_h3_audio_vae_fp32.safetensors": "8e505d95dd1561d47abd43d4238fd40d9bb1ae9e147ed0a4cba778d76ae4db48",
+    "Comfy-Org/MiniMax-H3|vae/minimax_h3_video_vae_int8_convrot.safetensors": "52a2c8c73583c86e4f41cdcce3a6ad0ea562987bc0bf3d60a0cef5f5c8e60c0e",
+    "Comfy-Org/Qwen-Image-2.1|diffusion_models/qwen_image_2.1_int8_convrot.safetensors": "cb74113cb03faecd79611b01fd7fd642f0aa60d6f0b95086abee214d75eaa57d",
+    "Comfy-Org/Qwen-Image-2.1|text_encoders/qwen3vl_8b_int8_convrot.safetensors": "8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f",
+    "Comfy-Org/Qwen-Image-2.1|vae/qwen_image_2.1_vae_bf16.safetensors": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9",
+    "Comfy-Org/RelayVSR|diffusion_models/relayvsr_x2_lightx2v_int8_convrot.safetensors": "240e75e0c17cf2845d559b25254a230ff7458f81449d7a8c5e7e3fb8275c7b3c",
+    "Comfy-Org/RelayVSR|vae/relayvsr_flash_vae_x2_fp32.safetensors": "b5bb0339acb5b52545911ea29a51b4c5b805776a779222b5a14591571f42e21c",
+    "Comfy-Org/SeedVR2|diffusion_models/seedvr2_3b_int8_convrot.safetensors": "c3dec8bcc5916843a8a858572970597462e1f2dc598d6dfd818f6cd40f53a157",
+    "Comfy-Org/SeedVR2|vae/seedvr2_ema_vae_fp16.safetensors": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1",
+    "Comfy-Org/flux2-dev|split_files/vae/flux2-vae.safetensors": "d64f3a68e1cc4f9f4e29b6e0da38a0204fe9a49f2d4053f0ec1fa1ca02f9c4b5",
+    "Comfy-Org/z_image_turbo|split_files/text_encoders/qwen_3_4b.safetensors": "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a",
+    "FastVideo/FastVideo-FastH3-8-Step-V2-NVFP4-Comfy|diffusion_models/fastvideo_fasth3_8step_v2_pruned_nvfp4.safetensors": "49371f21b546e59813984938a1b4fbea9348eb5003e07a01d48083efcc5a1d94",
+    "FastVideo/FastVideo-FastH3-Comfy|diffusion_models/fastvideo_fasth3_8step_v2_pruned_int8_convrot.safetensors": "0922785978dc9bfe1adf27d8b291b0ca763f9f165f882e6cb297c72fbb6deda8",
+    "JOKER141/MiniMax-H3-General-Motion-Continuity-Repair|Motion_Repair.safetensors": "a678a3657cefd5c2c2712f892da2f71be53c3f252e335557e918854f8abc579f",
+    "Kerstal/krea-2_model|redcraftKREA2RedMix_krea2Edition.safetensors": "92e8d4eecbf4f89b30140dc231e377118823be3a30c5c04342bcf394fe27e73b",
+    "Kijai/MelBandRoFormer_comfy|MelBandRoformer_fp16.safetensors": "6119aef379a6c7264e0b37db65ae1e6488b8ca4a00baf56d6d244737b8488226",
+    "LBH-123-AI/Minimax_h3_latent_Upscaler|minimax_h3_latent_upscaler_3d_conv_v1/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors": "4f57821f5837f32f7142b67d815606dbd7550f194e5c769f7d6c3f83b146a5e6",
+    "Pika-Labs/Pika-H3-Flex-Turbo-LoRA|pika_h3_flex_turbo_8step_hd_ref2va.safetensors": "dfe46d972408d1094053ff1f30c720bf16176ec334962009767ab0fff29e6de2",
+    "RunningHubAI/rh-h3-speed-slider-1.1-lora|H3_speed_slider_1.1.safetensors": "593b074e8eb17bf9f858c3586fc12f53038dbfdd9634e146fe34a17e2661ca40",
+    "WarmBloodAban/Minimax-h3_Singularity|Minimax-h3_Singularity_ref2va_Pruned_v1.3_int8.safetensors": "412a7b126595a958964193f3b42513d7cf2df4196ef04223a0f05e3622949cce",
+    "WarmBloodAban/Minimax-h3_Singularity|Minimax-h3_Singularity_ref2va_v1.3_Pruned_w4a8.safetensors": "2a319b6fafbd646c123ac12a28b1908c7468b148a8c03164172b2f72370264ec",
+    "WarmBloodAban/Minimax-h3_Singularity|Minimax-h3_Singularity_ref2va_v1.3_int8.safetensors": "551915097b8727537a82f3a2c5acec965165ec84e780b3e9a5f28ce867fddf08",
+    "WarmBloodAban/Minimax-h3_Singularity|Minimax-h3_Singularity_ref2va_v2_int8.safetensors": "db3ec568863db6f5ec1840210d41653afef73d4df7b0cb489c52ad458b6f8a7f",
+    "WarmBloodAban/Minimax-h3_Singularity|Minimax-h3_Singularity_ref2va_v2_pruned_int8.safetensors": "d7637c2c35cd30facd9e93778c491f6d82f91c4a441aecbdb4c384a62a5f3d9f",
+    "akatz-ai/MiniMax-H3-Character-Swap-LoRA|h3_character_swap_v1.5.safetensors": "8f2c3c3eba161df8d0c6099598b4730f641f5ce01e04cd16d2427cff8a35218f",
+    "binglingzhimeng/minimax_h3_hybrid_fl2va_ref2va_b25-49_w6a8|minimax_h3_hybrid_fl2va_ref2va_b25-49_w6a8.safetensors": "156f0c302593777c25b49d87565b02239715b128595128ef683a759ee6ab0406",
+    "black-forest-labs/FLUX.2-klein-4b-fp8|flux-2-klein-4b-fp8.safetensors": "97ed34fe0567e436200f2faee3939b88f2b5d99f8af2a4dc16532c4245c0ccb6",
+    "fal/MiniMax-H3-Realism-People-LoRA|h3-realism-people-t2v-i2v-r2v.safetensors": "acc529601d2da117fb81179e76c56e488a3beab1171659d305f04fa3655b787e",
+    "lightx2v/Minimax-h3-Turbo-SLA|minimax_h3_fl2v_turbo_4step_v0.1_768p_sla_comfyui_bf16.safetensors": "5cae6df40a06ea825f85fc8876c9ea1c9692c833a9af07bb8b3bac9ce2a71bac",
+    "smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models|minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors": "a629cfea8d89a071b140c6e1935dc9a23e72de6badc18975a2bb9e6d1423d76d",
+    "uzumix/realism_engine_krea2_v2|realism_engine_krea2_v2.safetensors": "1815c6ac01216ad62f8dd17edab7c1fd31edf16c1b11434317123bae60e33257",
+}
+
+
+def file_sha256(url):
+    """The sha256 Hugging Face publishes for this model file, or "" when we have none."""
+    if "huggingface.co/" not in url or "/resolve/" not in url:
+        return ""
+    try:
+        repo, tail = url.split("huggingface.co/", 1)[1].split("/resolve/", 1)
+        _rev, path = tail.split("/", 1)
+    except ValueError:
+        return ""
+    return MODEL_SHA256.get(f"{repo}|{path}", "")
+
+
 # What a file name of each role must contain (any of these words, any case). Used only to warn when a file is picked
 # by hand that does not look like the right one, and to say what to check when ComfyUI fails with a shape error.
 ROLE_MARKS = {

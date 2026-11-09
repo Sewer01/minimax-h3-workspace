@@ -354,7 +354,7 @@ class Installer:
 
             self.emit = emit_overall
             try:
-                await self.download(m["url"], dest, "models", label, m["size"])
+                await self.download(m["url"], dest, "models", label, m["size"], sha256=catalog.file_sha256(m["url"]))
             finally:
                 self.emit = original_emit
             done_before += m["size"]

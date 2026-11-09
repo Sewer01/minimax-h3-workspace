@@ -547,6 +547,11 @@ details[open] summary::before{content:'－ '}
 .ag-audio-h small{font-family:var(--mono);color:var(--muted)}
 .ag-audio-h button{width:24px;height:24px;border-radius:7px;background:var(--surface-2);font-size:11px}
 .ag-audio textarea{min-height:56px;font-size:13px}
+/* is the next message a fix of what was written, or the next scene of the same story? */
+.ag-edit{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 18px 8px}
+.ag-edit button{border:1px solid var(--line-2);background:var(--bg-2);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--muted)}
+.ag-edit button.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.14);color:var(--text);font-weight:700}
+.ag-edit small{font-size:11.5px;color:var(--dim)}
 .sk-list{display:grid;gap:8px;margin-bottom:10px}
 .sk{padding:10px 12px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);display:grid;gap:6px}
 .sk-top{display:flex;align-items:center;gap:8px}
@@ -989,7 +994,7 @@ details[open] summary::before{content:'－ '}
         <div class="card ag-hist">
           <button class="btn pri" id="agNew2" style="width:100%">＋ Новый чат</button>
           <div class="ag-hlist" id="agHist"></div>
-          <button class="btn" id="agClear" style="width:100%">Очистить историю</button>
+          <button class="btn" id="agWipe" style="width:100%" title="Удалить все сохранённые переписки с агентом">Очистить историю</button>
         </div>
         <div class="card ag-chat">
           <div class="ag-msgs" id="agMsgs">
@@ -1005,6 +1010,10 @@ details[open] summary::before{content:'－ '}
             <div class="ag-audio-h"><b id="agAudioName"></b><small id="agAudioDur"></small><button type="button" id="agAudioX" title="Убрать аудио">✕</button></div>
             <label class="hint" for="agAudioText">Слова из аудио — проверьте и поправьте, агент вставит их в промпт дословно</label>
             <textarea id="agAudioText" rows="2" placeholder="Распознаём слова…"></textarea>
+          </div>
+          <div class="ag-edit" id="agEdit" role="group" aria-label="Как понимать следующее сообщение">
+            <button type="button" data-edit="1" class="on">Правка</button><button type="button" data-edit="0">Продолжить сюжет</button>
+            <small id="agEditHint">Вернёт весь промпт с заменой; «Picture 1, 2…» — картинки этого сообщения</small>
           </div>
           <div class="ag-comp">
             <label class="btn ag-clip" title="Приложить картинки с компьютера"><input type="file" accept="image/*" multiple hidden id="agFile">
@@ -3922,7 +3931,7 @@ $('.nav[data-view="presets"]').addEventListener('click', async () => { presetsPa
 presetsPaint();
 
 /* ---------- AGENT ---------- */
-const AG = { msgs: [], att: [], target: 'video', busy: false, ctrl: null, status: null };
+const AG = { msgs: [], att: [], target: 'video', busy: false, ctrl: null, status: null, edit: true };
 const fileToDataURL = (file, max = 1024) => new Promise(res => {
   const img = new Image();
   img.onload = () => {
@@ -3992,7 +4001,7 @@ $('#agStoryF').onclick = e => { const b = e.target.closest('button[data-f]'); if
 $('#agStoryM').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; AG.storyModel = b.dataset.m; agCtx(); };
 $('#agTarget').onclick = agTargetClick; $('#agTarget2').onclick = agTargetClick;
 function agCtx() {
-  const n = agImgCount() + AG.att.filter(a => !a.frame).length;
+  const n = (AG.edit ? 0 : agImgCount()) + AG.att.filter(a => !a.frame).length;   // a fix counts only the pictures of this message
   $('#agStoryF').hidden = AG.target !== 'story';
   $('#agStoryM').hidden = AG.target !== 'story';
   $$('#agStoryF button').forEach(b => b.classList.toggle('on', (b.dataset.f === '1') === AG.storyFrames));
@@ -4167,7 +4176,7 @@ async function agSend() {
   }
   AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videoFile: frs[0]?.vfile, audioFile: au?.file });
   AG.att = []; renderAtt(); $('#agIn').value = ''; AG.audio = null; showAudioBox();
-  const reply = { role: 'assistant', content: '', status: 'Отправляем…' };
+  const reply = { role: 'assistant', content: '', status: 'Отправляем…', edit: AG.edit };   // перенос в раздел потом поступит по тому же смыслу
   AG.msgs.push(reply); renderMsgs();
   const el = $('#agMsgs .msg:last-child');
   AG.busy = true; $('#agSend').textContent = 'Стоп'; AG.ctrl = new AbortController();
@@ -4177,7 +4186,7 @@ async function agSend() {
   try {
     const r = await fetch('/api/agent/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AG.ctrl.signal,
-      body: JSON.stringify({ target: AG.target, ctx, think: AG.think, messages: AG.msgs.slice(0, -1).map(m => ({ role: m.role, content: m.content, images: m.images, frames: m.nframes || 0 })) }),
+      body: JSON.stringify({ target: AG.target, ctx, think: AG.think, editing: AG.edit, messages: AG.msgs.slice(0, -1).map(m => ({ role: m.role, content: m.content, images: m.images, frames: m.nframes || 0 })) }),
     });
     const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
     for (;;) {
@@ -4230,6 +4239,27 @@ async function openChat(id) {
   const b = $(`#agTarget button[data-t="${c.target}"], #agTarget2 button[data-t="${c.target}"]`); if (b) b.click();
   renderMsgs(); agCtx(); loadChats();
 }
+/* "Правка" or "Продолжить сюжет": a fix replaces what was written, a continuation remembers the whole chat */
+const EDIT_HINTS = {
+  on: 'Вернёт весь промпт с заменой; «Picture 1, 2…» — картинки этого сообщения',
+  off: 'Помнит весь чат: следующие сцены продолжат тех же персонажей, свет и стиль',
+};
+$('#agEdit').onclick = e => {
+  const b = e.target.closest('button[data-edit]'); if (!b) return;
+  AG.edit = b.dataset.edit === '1';
+  $$('#agEdit button').forEach(x => x.classList.toggle('on', x === b));
+  $('#agEditHint').textContent = AG.edit ? EDIT_HINTS.on : EDIT_HINTS.off;
+  agCtx();
+};
+$('#agWipe').onclick = () => confirmBox('Удалить все переписки?',
+  'Все чаты с агентом будут удалены, восстановить нельзя. Видео и картинки в Библиотеке останутся.', 'Удалить',
+  async () => {
+    try {
+      const r = await fetch('/api/agent/chats', { method: 'DELETE' });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+      AG.id = null; AG.msgs = []; renderMsgs(); loadChats(); toast('История переписок очищена');
+    } catch (e) { toast('Не вышло очистить историю: ' + e.message); }
+  });
 function confirmBox(title, text, ok, fn) {
   $('#cfTitle').textContent = title; $('#cfText').textContent = text; $('#cfOk').textContent = ok;
   $('#confirm').hidden = false;
@@ -4259,7 +4289,21 @@ async function sendPrompt(blk, to) {
   const prompt = $('pre', blk).textContent;
   // pictures of a reopened chat exist only as data URLs; turn them back into files
   const toFile = (u, i) => { const [h, b] = u.split(','); const bin = atob(b); const a = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) a[k] = bin.charCodeAt(k); return new File([a], `picture${i + 1}.jpg`, { type: h.slice(5, h.indexOf(';')) }); };
-  const files = AG.msgs.flatMap(m => m.files || (m.images || []).slice(0, (m.images || []).length - (m.nframes || 0)).map(toFile));
+  const own = m => (m.files && m.files.length ? m.files
+    : (m.images || []).slice(0, (m.images || []).length - (m.nframes || 0)).map(toFile));
+  const msgIdx = +(blk.closest('.msg')?.dataset.i ?? -1);
+  const answer = msgIdx >= 0 ? AG.msgs[msgIdx] : null;
+  const fix = answer ? answer.edit !== false : true;   // этот ответ — правка или продолжение сюжета
+  let files = [];
+  if (fix) {   // a fix carries the pictures that were discussed in that message, not every picture of the chat
+    for (let k = msgIdx - 1; k >= 0; k--) {
+      const m = AG.msgs[k];
+      if (m.role !== 'user') continue;
+      files = own(m);
+      if (files.length) break;
+    }
+  }
+  if (!files.length) files = AG.msgs.flatMap(own);
   if (to === 'story' && (AG.storyFrames || (files.length && AG.storyModel !== 'krea'))) {
     IMG.qwen.fill({ prompt, kind: 'story', engine: AG.storyFrames && AG.storyModel === 'krea' ? 'flux' : AG.storyModel, frames: AG.storyFrames });
     for (const [i, sel] of ['#qwDrop', '#qwDrop2', '#qwDrop3'].entries()) {
@@ -4281,7 +4325,8 @@ async function sendPrompt(blk, to) {
     }
   } else if (to === 'video') {
     $('#vPrompt').value = prompt; $('#vPrompt').oninput({ target: $('#vPrompt') });
-    if (files[0]) { $('#dFirst .x')?.click(); await setDropFile($('#dFirst input'), files[0]); }
+    if (files.length) { $('#dFirst .x')?.click(); if (fix) $('#dLast .x')?.click(); }   // a fix replaces both frames
+    if (files[0]) await setDropFile($('#dFirst input'), files[0]);
     if (files[1]) await setDropFile($('#dLast input'), files[1]);
   } else if (to === 'long') {
     const L2 = RM.long, list = []; let cur = null;
@@ -4293,6 +4338,7 @@ async function sendPrompt(blk, to) {
     }
     const clean = t => t.split('\n').filter(l => !/^\s*(overall_soundscape|non_diegetic_music|integrated_multimodal_description)\s*:/i.test(l)).join('\n').trim();
     L2.root._setScenes(list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec })).filter(x => x.prompt));
+    if (fix && files.length) $$('label.ref.filled .x', L2.root).forEach(x => x.click());   // a fix replaces the pictures; a continuation keeps the old ones
     for (const f of files) {   // existing references (e.g. the last frame of the video being continued) stay; new pictures take the free slots
       const have = $$('label.ref.filled', L2.root).some(r => r._file && r._file.name === f.name && r._file.size === f.size);
       const free = $$('label.ref:not(.filled) input', L2.root)[0];

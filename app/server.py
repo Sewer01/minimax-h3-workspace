@@ -2566,6 +2566,8 @@ class App:
         messages = body.get("messages") or []
         target = body.get("target") if body.get("target") in ag.AGENT_TARGETS else "video"
         ctx = body.get("ctx") or {}
+        # a fix talks about the pictures of this very message; a continuation of the story keeps the whole chat
+        editing = bool(body.get("editing", True))
         resp = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"})
         await resp.prepare(req)
 
@@ -2593,13 +2595,16 @@ class App:
                 messages = [dict(m, images=None) for m in messages]
                 await send({"type": "status", "text": "У этой модели нет файла «зрения» (mmproj) — картинки она не увидит"})
             # frames cut out of a video are the last pictures of a message and are not hero pictures (Picture N)
-            ctx["images"] = sum(max(0, len(m.get("images") or []) - int(m.get("frames") or 0)) for m in messages if m["role"] == "user")
+            users = [m for m in messages if m.get("role") == "user"]
+            # a fix is about the pictures of this very message, so Picture N is counted there and not over the chat
+            counted = users[-1:] if editing and users else users
+            ctx["images"] = sum(max(0, len(m.get("images") or []) - int(m.get("frames") or 0)) for m in counted)
             active = self.skills.active(ag.chat_text(messages), target)
             if target == "actor" and not any(s["id"] == "akterskaya-igra" for s in active):
                 # this mode is acting-first: its skill is always on here
                 active += [s for s in self.skills.list() if s["id"] == "akterskaya-igra" and s["mode"] != "off"]
             await send({"type": "skills", "names": [s["name"] for s in active]})
-            system = ag.system_prompt("\n\n".join(self.skills.text(s) for s in active), target, ctx)
+            system = ag.system_prompt("\n\n".join(self.skills.text(s) for s in active), target, ctx, editing=editing)
             await send({"type": "status", "text": "Читаю скиллы и думаю…"})
 
             thinking = False

@@ -1485,6 +1485,7 @@ body.dropping::after{content:'Отпустите — программа разл
           <div class="wz-go">
             <span class="hint" id="wzErr"></span>
             <button class="btn pri big" id="wzStart">Установить</button>
+        <button class="btn" id="wzRestore" hidden type="button" title="Ничего не менялось: вернуть то, что было до этого экрана">← Вернуться к прежним настройкам</button>
           </div>
         </div>
       </div>
@@ -3415,6 +3416,14 @@ async function mountCloud(host, wizard) {
     } catch (e) { msg.style.color = 'var(--pink)'; msg.textContent = e.message; }
   };
 }
+$('#wzRestore').onclick = async () => {
+  try {
+    await postJSON('/api/setup/restore'); firstRun(false); setNavLocked(false);
+    toast('Прежние настройки на месте');
+    let v = ''; try { v = localStorage.getItem('h3-last-view') || ''; } catch {}
+    await loadStatus(); goTo(v && document.querySelector(`.nav[data-view="${v}"]`) ? v : 'video');
+  } catch (e) { toast(e.message); }
+};
 $('#mdReset').onclick = async () => {
   try { await postJSON('/api/setup/reset'); setNavLocked(true); openSetup(); } catch (e) { toast(e.message); }
 };
@@ -3492,7 +3501,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
   firstRun(SET_LOCK);
   if (!API) return;
   const s = await (await fetch('/api/status')).json();
-  if (!s.configured) openSetup();
+  if (!s.configured) { openSetup(); const rb = $('#wzRestore'); if (rb) rb.hidden = !s.can_restore; }
   else { showSetupPane('status'); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false).then(() => { $('#mdCloudBox').open = !!CLOUD.enabled; }); loadNodes(); }
 });
 
@@ -4890,7 +4899,9 @@ function openRent() {
   fetch('/api/rent/info').then(r => r.json()).then(j => { const el = $('#rentRef'); if (el) el.hidden = !j.ref; }).catch(() => {});
   m.onclick = e => { if (e.target === m || e.target.closest('[data-x]')) { m.hidden = true; return; } if (e.target.closest('[data-site]')) { fetch('/api/rent/open', { method: 'POST' }); return; } if (e.target.closest('[data-connect]')) { m.hidden = true; connectRent(); } };
 }
-$('#mdRentCard').addEventListener('click', e => { const b = e.target.closest('[data-rent]'); if (!b) return; if (b.dataset.rent === 'how') openRent(); else connectRent(); });
+$('#mdRentCard').addEventListener('click', e => { const b = e.target.closest('[data-rent]'); if (!b) return;
+  if (b.dataset.rent === 'how') { openRent(); return; }
+  confirmBox('Подключить арендованный сервер?', 'Программа покажет экран установки: нужно будет вписать адрес вашего сервера. Скачанные файлы и папки не тронуты, а кнопка «Вернуться к прежним настройкам» вернёт всё как было.', 'Показать экран установки', () => connectRent()); });
 $('#view-presets').innerHTML = `<div class="pr-steps" id="prSteps"><span class="st"><i>1</i>Тип</span><u></u><span class="st"><i>2</i>Вариант</span><u></u><span class="st"><i>3</i>Создать</span></div>
   <div class="pr-first"><div class="n">1</div><div><b>Сначала откройте «Настройки»</b><span>Там выбирается, как работает программа: «Я новичок» (всё скачается само) или «У меня уже есть ComfyUI и модели». Без этого генерация не начнётся.</span></div><button class="btn primary" id="prGoSet" type="button">Открыть Настройки</button></div>
   <div class="pr-head"><h1 id="prTitle"></h1><p id="prSub"></p></div>

@@ -974,6 +974,7 @@ class App:
             "relay_ok": await self.relay_ready() if self.comfy_online else None,  # can this ComfyUI do the fast upscale
             "plan": [{k: m[k] for k in ("role", "title", "file", "size", "variant")} for m in plan],
             "config": {k: self.config.get(k) for k in ("engine", "install_dir", "models_dir", "comfy_url", "setup_done")},
+            "can_restore": bool(self.config.get("setup_backup")),
             "installing": bool(self.installer), "log": self.setup_log,
             "last": getattr(self, "setup_last", None),
         })
@@ -1216,14 +1217,31 @@ class App:
             self.installer.cancelled = True
         return web.json_response({"ok": True})
 
+    KEEP_ON_RESET = ("engine", "install_dir", "models_dir", "comfy_url", "comfy_key", "modes",
+                     "choice", "choice_override", "profile")
+
     async def h_setup_reset(self, _req):
-        """Back to the first-run wizard; installed files stay where they are."""
+        """Back to the first-run wizard; installed files stay where they are, and so does the
+           previous set-up: it goes into setup_backup, and /api/setup/restore puts it back. Without
+           that way out one careless click on the «rent» card throws a working program to the wizard."""
         if self.installer:
             return web.json_response({"error": "Сначала остановите установку"}, status=409)
         if self.process:
             await asyncio.to_thread(self.process.stop)
             self.process = None
+        if self.config.configured:
+            self.config.update(setup_backup={k: self.config.get(k) for k in self.KEEP_ON_RESET})
         self.config.update(setup_done=False)
+        return web.json_response({"ok": True})
+
+    async def h_setup_restore(self, _req):
+        """Cancel the wizard: the set-up that was in place before it was opened."""
+        backup = self.config.get("setup_backup") or {}
+        if not backup:
+            return web.json_response({"error": "Прежних настроек не найдено"}, status=409)
+        self.config.update(**{k: v for k, v in backup.items() if v is not None}, setup_done=True)
+        self.config.data.pop("setup_backup", None)
+        self.config.update()
         return web.json_response({"ok": True})
 
     # ---------- cloud (RunningHub) ----------
@@ -3159,6 +3177,7 @@ def build_app(comfy_override=None):
         web.post("/api/queue/discard", state.h_queue_discard),
         web.post("/api/search-web", state.h_search_web),
                 web.post("/api/setup/reset", state.h_setup_reset),
+    web.post("/api/setup/restore", state.h_setup_restore),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),

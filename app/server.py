@@ -688,7 +688,10 @@ class App:
         try:
             stats = await self.system_stats()
         except Exception:
-            return web.json_response({**base, "online": False})
+            # ComfyUI is not up (yet): the page needs the flag and the mode list anyway, so that
+            # «Настройки» is not an empty hole while the core is loading
+            return web.json_response({**base, "online": False, "modes": self.modes(),
+                                      "can_restore": bool(self.config.get("setup_backup"))})
         dev = (stats.get("devices") or [{}])[0]
         await self.resolve_models()
         missing = {m["role"] for m in self.missing}
@@ -711,7 +714,9 @@ class App:
         add_modes = {m: round((catalog.plan_size(choice, self.modes() + [m]) - catalog.plan_size(choice, self.modes())) / 1e9, 1)   # gigabytes (plan_size is in bytes)
                      for m in catalog.MODE_ROLES if m not in self.modes()}
         return web.json_response({
-            **base, "online": True, "modes": self.modes(), "add_modes": add_modes, "hf_mirror": bool(self.config.get("hf_mirror")),
+            **base, "online": True, "modes": self.modes(), "add_modes": add_modes,
+            "hf_mirror": bool(self.config.get("hf_mirror")),
+            "can_restore": bool(self.config.get("setup_backup")),
             "offer_modes": [{"mode": m, "gb": add_modes[m]} for m in catalog.OFFER_MODES
                             if m in add_modes and m not in (self.config.get("offered_modes") or [])],
             "gpu": gpu_name(dev.get("name", "")),

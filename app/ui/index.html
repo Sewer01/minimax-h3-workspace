@@ -1384,6 +1384,7 @@ body.dropping::after{content:'Отпустите — программа разл
           <p id="setupSub">Движок, модели и файлы, тема и размер интерфейса</p>
         </div>
       </div>
+      <div id="wzRestoreRow" hidden style="margin:0 0 12px"><button class="btn pri" id="wzRestore" type="button" title="Ничего не менялось: вернуть то, что было до этого экрана">← Вернуться к прежним настройкам</button></div>
       <div id="setCustomBox" hidden style="margin:0 0 14px"><button class="btn" id="setCustom" type="button">Свои workflow (для тех, кто работает в ComfyUI) →</button></div>
       <div class="card" id="uiCard" style="margin-bottom:16px">
         <div class="card-h"><h3>Интерфейс</h3><span class="hint">выбор сохраняется</span></div>
@@ -1485,7 +1486,7 @@ body.dropping::after{content:'Отпустите — программа разл
           <div class="wz-go">
             <span class="hint" id="wzErr"></span>
             <button class="btn pri big" id="wzStart">Установить</button>
-        <button class="btn" id="wzRestore" hidden type="button" title="Ничего не менялось: вернуть то, что было до этого экрана">← Вернуться к прежним настройкам</button>
+
           </div>
         </div>
       </div>
@@ -1587,7 +1588,7 @@ equirements.txt</code><br>
           <div class="hint" id="mdDlN" style="margin-top:6px"></div>
         </div>
         <div class="card" id="mdModelsCard">
-          <div class="card-h"><h3>Модели</h3><span><button class="btn pri" id="mdFix" hidden>Докачать недостающие</button> <button class="btn pri" id="mdFixExt" hidden>Скачать недостающие</button></span></div>
+          <div class="card-h"><h3>Модели</h3><span><button class="btn mini" id="mdRecheck" type="button" title="Спросить ComfyUI ещё раз, какие файлы он видит">Проверить ещё раз</button> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button> <button class="btn pri" id="mdFixExt" hidden>Скачать недостающие</button></span></div>
           <div id="mdAdd" class="rent-row" style="margin:0 0 12px"></div>
           <label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px;cursor:pointer" title="Те же файлы, но с другого сервера. Помогает, когда Hugging Face грузит медленно или не открывается."><input type="checkbox" id="mdMirror" style="margin-top:3px"><span>Если Hugging Face грузит медленно: скачивать через зеркало <b>hf-mirror.com</b>. Файлы те же. Скачивание можно закрыть и продолжить позже, оно докачается с того же места.</span></label>
           <div class="mlist" id="mlist"></div>
@@ -3046,12 +3047,14 @@ function showSetupPane(which) {
   $('#setupSteps').hidden = which === 'status';
 }
 
+function showRestore(on) { const row = $('#wzRestoreRow'); if (row) row.hidden = !on; }
 async function openSetup() {
   showSetupPane('choose'); setStep(1);
   const qs = new URLSearchParams({ modes: setupModes.join(',') });
   if ($('#instDir').value) qs.set('install_dir', $('#instDir').value);
   if (setupProfile) qs.set('profile', setupProfile);
   setupInfo = await (await fetch('/api/setup/info?' + qs)).json();
+  showRestore(!!setupInfo.can_restore);   // the button has to be visible on every step of the wizard
   setupProfile = setupInfo.profile;
   if (setupInfo.installing) { showSetupPane('progress'); setStep(2); replaySetup(setupInfo); return; }
   const hw = setupInfo.hardware, c = setupInfo.config;
@@ -3307,6 +3310,13 @@ async function afterSetup() {
 let MD_ENGINE = '', MD_EXTDIR = '', MD_NEED = [];
 let MD_EXT = false;
 function renderModels(s) {
+  if (!s.models) {   // ComfyUI has not answered yet: an empty page looks like "you have no models at all"
+    $('#mlist').innerHTML = `<div class="note"><span>${s.online
+      ? 'Список моделей пока не пришёл. Нажмите «Проверить ещё раз».'
+      : 'ComfyUI сейчас не запущен, поэтому список пуст. Он появится сам, как только ComfyUI ответит; обычно это полминуты после запуска программы.'}</span></div>`;
+    $('#modelsBadge').hidden = true;
+    return;
+  }
   if (!s.models) return;
   MD_ENGINE = s.engine;
   const have = s.models.filter(m => m.have).length;
@@ -3324,6 +3334,7 @@ function renderModels(s) {
   const need = s.models.filter(m => !m.have && m.modes.some(x => (s.modes || []).includes(x)));
   MD_NEED = need.map(m => m.role);
   $('#mdFixExt').hidden = s.engine !== 'external' || !need.length;
+  if (need.length) $('#mdModelsCard').classList.remove('collapsed');   // a missing file has to be seen, not hidden behind a folded card
   $('#mdFixExt').textContent = `Скачать недостающие (${need.length}, ${GB(need.reduce((a, m) => a + m.size, 0))})`;
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн-сцены', long: 'Видеостудия', krea: 'Изображение по тексту', kreareal: 'Изображение: реализм', qwen: 'Правка изображения', flux: 'Правка изображения: FLUX.2 (в коммерцию)', upscale: 'Увеличение видео и изображений', relayvsr: 'Быстрое увеличение видео (RelayVSR)' };
   $('#mdAdd').innerHTML = s.engine === 'managed' || s.engine === 'external' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
@@ -3418,12 +3429,14 @@ async function mountCloud(host, wizard) {
 }
 $('#wzRestore').onclick = async () => {
   try {
-    await postJSON('/api/setup/restore'); firstRun(false); setNavLocked(false);
+    await postJSON('/api/setup/restore'); firstRun(false); setNavLocked(false); showRestore(false);
     toast('Прежние настройки на месте');
     let v = ''; try { v = localStorage.getItem('h3-last-view') || ''; } catch {}
     await loadStatus(); goTo(v && document.querySelector(`.nav[data-view="${v}"]`) ? v : 'video');
   } catch (e) { toast(e.message); }
 };
+$('#mdRecheck').onclick = async () => { const b = $('#mdRecheck'); b.disabled = true;
+  try { await loadStatus(); toast('Проверили ещё раз'); } finally { b.disabled = false; } };
 $('#mdReset').onclick = async () => {
   try { await postJSON('/api/setup/reset'); setNavLocked(true); openSetup(); } catch (e) { toast(e.message); }
 };
@@ -3501,7 +3514,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
   firstRun(SET_LOCK);
   if (!API) return;
   const s = await (await fetch('/api/status')).json();
-  if (!s.configured) { openSetup(); const rb = $('#wzRestore'); if (rb) rb.hidden = !s.can_restore; }
+  if (!s.configured) { showRestore(!!s.can_restore); openSetup(); }
   else { showSetupPane('status'); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false).then(() => { $('#mdCloudBox').open = !!CLOUD.enabled; }); loadNodes(); }
 });
 

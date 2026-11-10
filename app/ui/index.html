@@ -1898,13 +1898,25 @@ function connectEvents() {
   ws.onclose = () => { setEngine(false); setTimeout(connectEvents, 2000); };
 }
 let ENGINE_ON = true;
-async function startEngine(quiet) {
+let WAIT_CORE = 0;
+/* ComfyUI boots for tens of seconds; until the list is there the page keeps asking by itself */
+function waitCore() {
+  if (WAIT_CORE) return;
+  let n = 0;
+  WAIT_CORE = setInterval(async () => {
+    if (++n > 45 || !document.querySelector('#view-models.active')) { clearInterval(WAIT_CORE); WAIT_CORE = 0; return; }
+    await loadStatus();
+    if (ENGINE_ON) { clearInterval(WAIT_CORE); WAIT_CORE = 0; toast('ComfyUI отвечает — список моделей обновлён'); }
+  }, 4000);
+}
+async function startEngine() {
   try {
     const r = await postJSON('/api/engine/start', {});
-    if (!quiet) toast(r.note || 'ComfyUI уже запущен');
+    toast(r.note || 'ComfyUI уже работает');
+    if (r.starting) waitCore();
   } catch (e) { toast(e.message); }
 }
-$('#engRow').onclick = () => { if ($('#engTxt').textContent.trim() !== 'подключён') startEngine(); };
+$('#engRow').onclick = () => startEngine();
 function setEngine(on) {
   ENGINE_ON = on;
   const cloudOn = typeof CLOUD !== 'undefined' && CLOUD.enabled;
@@ -1988,14 +2000,25 @@ function offerNewModes(s) {
 }
 async function loadStatus() {
   try {
-    const s = await (await fetch('/api/status')).json();
+    const ctrl = new AbortController();
+    const kill = setTimeout(() => ctrl.abort(), 25000);   // a core that does not answer must not hang the page
+    let s;
+    try { s = await (await fetch('/api/status', { signal: ctrl.signal })).json(); } finally { clearTimeout(kill); }
     $('#setCustomBox').hidden = s.engine !== 'external';
     setEngine(s.online);
-    if (!s.online) return;
+    renderModels(s);            // also when the core is silent: the card has to say why it is empty
+    if (!s.online) { waitCore(); return; }
     askSavedQueue();
-    renderModels(s);
     offerNewModes(s);
-  } catch { setEngine(false); }
+  } catch (e) {
+    setEngine(false);
+    const box = $('#mlist');
+    if (box && document.querySelector('#view-models.active')) {
+      box.innerHTML = `<div class="note warn"><span>Программа не дождалась ответа от ComfyUI за 25 секунд. Он сейчас ${
+        $('#engTxt').textContent.trim() || 'не запущен'}. Попробуйте «Проверить ещё раз» — пока ComfyUI загружается, список обновится сам.</span></div>`;
+      waitCore();
+    }
+  }
 }
 
 /* live load of this computer in the sidebar (CPU, RAM, video card, disk) */
@@ -3317,6 +3340,10 @@ async function afterSetup() {
 let MD_ENGINE = '', MD_EXTDIR = '', MD_NEED = [];
 let MD_EXT = false;
 function renderModels(s) {
+  if (s.models_error) {
+    $('#mlist').innerHTML = `<div class="note warn"><span>Список моделей не собрался: ${esc(s.models_error)}. ComfyUI отвечает, но не отдаёт файлы — попробуйте «Проверить ещё раз» или перезапустите его кнопкой «Движок» слева внизу.</span></div>`;
+    return;
+  }
   if (!s.models) {   // ComfyUI has not answered yet: an empty page looks like "you have no models at all"
     $('#mlist').innerHTML = `<div class="note"><span>${s.online
       ? 'Список моделей пока не пришёл. Нажмите «Проверить ещё раз».'

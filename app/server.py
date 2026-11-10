@@ -333,12 +333,16 @@ class App:
     async def resolve_models(self):
         """Match the chosen model files against what ComfyUI sees (any subfolder)."""
         visible = {}
+        slow = False
         for cat in {v["category"] for variants in catalog.VARIANTS.values() for v in variants.values()}:
             try:
-                _, lst = await self.comfy_json("GET", f"/models/{cat}")
+                # a short timeout on purpose: a core that is still booting answers slowly, and waiting
+                # for it here is what used to freeze the whole status answer for minutes
+                _, lst = await self.comfy_json("GET", f"/models/{cat}", timeout=aiohttp.ClientTimeout(total=6))
             except Exception:
-                lst = []
+                slow, lst = True, []
             visible[cat] = lst or []
+        self.models_slow = slow
         self.visible = {cat: {n.replace("/", "\\").split("\\")[-1] for n in lst} for cat, lst in visible.items()}
         names, found, entries = {}, set(), {}
         for role, variant in self.choice().items():
@@ -693,7 +697,10 @@ class App:
             return web.json_response({**base, "online": False, "modes": self.modes(),
                                       "can_restore": bool(self.config.get("setup_backup"))})
         dev = (stats.get("devices") or [{}])[0]
-        await self.resolve_models()
+        try:
+            await self.resolve_models()
+        except Exception as e:      # a broken list is shown as a broken list, not as "no models"
+            self.model_names, self.missing, self.models_error = getattr(self, "model_names", {}), [], f"{type(e).__name__}: {e}"
         missing = {m["role"] for m in self.missing}
         needed = catalog.roles_for(self.modes())
         models = [{"role": role, "title": catalog.ROLE_TITLES[role], "name": self.model_names[role],
@@ -728,6 +735,9 @@ class App:
                       "ext_models": self.config.get("ext_models_dir"),
                       "assistant": str(self.llm.root), "data": str(DATA_DIR)},
             "models": models,
+            "models_error": getattr(self, "models_error", None),
+            "models_slow": bool(getattr(self, "models_slow", False)),
+            "comfy": self.comfy,
         })
 
     async def nodes_status(self):

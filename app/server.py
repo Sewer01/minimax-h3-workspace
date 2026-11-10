@@ -93,7 +93,6 @@ def round_size(form, step=32, low=256, high=2048, max_px=2200000):
     return r(w), r(h)
 
 
-SUPPORT_URL = "https://pay.cloudtips.ru/p/0e4d4824"
 # Immers.Cloud: the author's referral link goes here (a discount for the new user, a bonus for the author). Empty: the plain site is opened.
 RENT_REFERRAL = ""   # our build opens the plain site: no one else's referral code inside a program we hand out
 RENT_SITE = "https://immers.cloud/"
@@ -1116,55 +1115,6 @@ class App:
     def note_error(self, text):
         self.recent_errors = (self.recent_errors + [f"{datetime.now():%H:%M:%S} {text}"])[-15:]
 
-    async def h_report(self, req):
-        """Collect everything the author needs into one text file and show it in Explorer."""
-        try:
-            page = await req.json()
-        except Exception:
-            page = {}
-        comfy = {"адрес": self.comfy, "режим": self.config.get("engine"), "онлайн": self.comfy_online,
-                 "настройка завершена": bool(self.config.get("setup_done"))}
-        try:
-            st = await self.system_stats()
-            sysinfo = st.get("system", {})
-            comfy.update({"версия ComfyUI": sysinfo.get("comfyui_version"), "версия PyTorch": sysinfo.get("pytorch_version"),
-                          "запуск": " ".join(map(str, sysinfo.get("argv", []))),
-                          "устройства": "; ".join(f'{d.get("name")} (всего {round(d.get("vram_total", 0) / 1024 ** 3, 1)} ГБ, '
-                                                  f'свободно {round(d.get("vram_free", 0) / 1024 ** 3, 1)} ГБ)' for d in st.get("devices", []))})
-            await self.resolve_models()
-            needed = catalog.roles_for(self.modes())
-            missing = {m["role"] for m in self.missing}
-            models = [{"title": catalog.ROLE_TITLES[r], "name": self.model_names.get(r), "have": r not in missing}
-                      for r in self.choice() if r in needed]
-        except Exception as e:
-            comfy["ошибка связи"] = f"{type(e).__name__}: {e}"
-            models = []
-        hw = await asyncio.to_thread(engine.detect_hardware, self.config.get("install_dir"))
-        long_states = []
-        try:
-            for d in sorted(LONG_DIR.iterdir()) if LONG_DIR.is_dir() else []:
-                files = sorted(d.glob("state_*.latent"))
-                if not files:
-                    continue
-                sizes = ", ".join(f"{f.name}: {round(f.stat().st_size / 1024, 1)} КБ" for f in files)
-                long_states.append(f"{d.name}: {sizes}")
-        except OSError as e:
-            long_states.append(f"не удалось прочитать папку: {e}")
-        text = await asyncio.to_thread(report.build, {
-            "long_states": long_states,
-            "home": HOME, "data_dir": DATA_DIR, "hw": hw, "page": page.get("page"), "comfy": comfy, "models": models,
-            "config": self.config.data, "errors": self.recent_errors, "toasts": page.get("toasts"),
-            "comfy_log": self.process.log_tail(60) if self.process else "",
-            "llm_log": self.llm.log_tail(12)})
-        folder = DATA_DIR / "reports"
-        folder.mkdir(parents=True, exist_ok=True)
-        path = folder / f"Отчёт для разработчика {datetime.now():%Y-%m-%d %H-%M-%S}.txt"
-        path.write_text(text, encoding="utf-8")
-        try:
-            subprocess.Popen(["explorer", "/select,", str(path)])
-        except Exception:
-            pass
-        return web.json_response({"ok": True, "path": str(path), "name": path.name})
 
     async def h_open_driver(self, _req):
         webbrowser.open("https://www.nvidia.com/Download/index.aspx?lang=ru")
@@ -1226,10 +1176,6 @@ class App:
         self.save_queue()
         return web.json_response({"ok": True})
 
-    async def h_support(self, _req):
-        """Open the author's donation page (a fixed address, never taken from the request)."""
-        webbrowser.open(SUPPORT_URL)
-        return web.json_response({"ok": True})
 
     async def h_rent_open(self, _req):
         """Open the rental site (the author's referral link if there is one): a fixed address, never taken from the request."""
@@ -3182,15 +3128,13 @@ def build_app(comfy_override=None):
         web.post("/api/setup/cancel", state.h_setup_cancel),
         web.post("/api/open-driver-page", state.h_open_driver),
         web.post("/api/clipboard", state.h_clipboard),
-        web.post("/api/support", state.h_support),
-        web.post("/api/rent/open", state.h_rent_open),
+                web.post("/api/rent/open", state.h_rent_open),
         web.get("/api/rent/info", state.h_rent_info),
         web.get("/api/queue/saved", state.h_queue_saved),
         web.post("/api/queue/resume", state.h_queue_resume),
         web.post("/api/queue/discard", state.h_queue_discard),
         web.post("/api/search-web", state.h_search_web),
-        web.post("/api/report", state.h_report),
-        web.post("/api/setup/reset", state.h_setup_reset),
+                web.post("/api/setup/reset", state.h_setup_reset),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),

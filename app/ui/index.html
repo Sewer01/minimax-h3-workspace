@@ -184,7 +184,7 @@
 .cw-bg3{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px}
 .cw-bg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .cw-f{display:grid;gap:4px;align-content:start}.cw-f.wide{grid-column:1/-1}
-.themes{display:flex;gap:8px;padding:0 10px 4px}
+.themes{display:flex;gap:8px;padding:0}
 .themes button{width:22px;height:22px;border-radius:50%;border:2px solid var(--line-2);transition:.15s;padding:0}
 .themes button:hover{transform:scale(1.15)}
 .themes button.on{border-color:var(--text);box-shadow:0 0 0 2px var(--surface)}
@@ -263,12 +263,6 @@ body.nosb-on #modeBar{left:112px}
 .meter{display:grid;gap:5px}
 .side-foot .stat b{font-variant-numeric:tabular-nums}
 .side-foot .stat small{color:var(--dim);font-size:11px}
-.rep-btn{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 0 12px;padding:9px 10px;border-radius:11px;border:1px solid rgba(var(--accent-rgb),.45);background:var(--accent-soft);color:var(--text);font-weight:700;font-size:12.5px;width:100%;transition:.15s;flex:none}
-.rep-btn svg{width:16px;height:16px}
-.rep-btn:hover{color:var(--text);border-color:var(--accent)}
-.rep-btn[disabled]{opacity:.6;cursor:default}
-.sup-btn{display:block;margin:-4px 0 12px;padding:4px 10px;width:100%;text-align:center;font-size:12px;color:var(--muted);font-weight:600;border-radius:9px;flex:none}
-.sup-btn:hover{color:var(--text)}
 @media (max-height:760px){.side-foot{gap:6px;padding:10px 12px}.side-foot .stat{font-size:11.5px}}
 
 /* main */
@@ -909,21 +903,7 @@ body.dropping::after{content:'Отпустите — программа разл
       <div><div class="brand-name">Minimax H3</div><div class="brand-sub">Workspace · локальная генерация</div><div class="brand-sub" id="appVer" style="opacity:.75"></div></div>
     </div>
 
-    <button class="rep-btn" id="repBtn" title="Если что-то не работает, нажмите: приложение соберёт файл с данными о компьютере и ошибках. Отправьте этот файл автору.">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
-      Отчёт для разработчика
-    </button>
-    <button class="sup-btn" id="supBtn" type="button" title="Программа бесплатная. Если она вам помогла, можно поддержать автора: откроется страница оплаты в браузере. Ничего вводить в самой программе не нужно.">♥ Поддержать проект</button>
-    <div class="zoom-btns" id="uiZoom" title="Размер интерфейса (или Ctrl + колесо мыши)" style="margin:0 0 8px 4px"><button class="btn" id="uiSm" type="button">А−</button><small id="uiPct">100%</small><button class="btn" id="uiLg" type="button">А+</button></div>
-    <div class="themes" id="themes" title="Тема оформления">
-      <button data-t="" style="background:#e8264f" title="Бордо"></button>
-      <button data-t="light" style="background:#f3f4f6" title="Светлая"></button>
-      <button data-t="gray" style="background:#b7bcc4" title="Серая"></button>
-      <button data-t="graphite" style="background:#272a30" title="Графит"></button>
-      <button data-t="night" style="background:#2fb5a8" title="Ночь"></button>
-      <button data-t="forest" style="background:#d4a24c" title="Лес"></button>
-    </div>
-    <button class="nav" data-view="models" title="Здесь выбирается, как работает программа: «Я новичок» или «У меня уже есть ComfyUI», а также модели и файлы">
+    <button class="nav" data-view="models" title="Движок, модели и файлы, тема и размер интерфейса">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
       Настройки <span class="badge" id="modelsBadge" hidden></span><span class="starthere">Начните здесь</span>
     </button>
@@ -1400,11 +1380,26 @@ body.dropping::after{content:'Отпустите — программа разл
     <section class="view" id="view-models">
       <div class="head">
         <div>
-          <h1 id="setupTitle">Установка</h1>
-          <p id="setupSub">Приложению нужен ComfyUI и модели. Всё поставится само — или подключите то, что уже есть</p>
+          <h1 id="setupTitle">Настройки</h1>
+          <p id="setupSub">Движок, модели и файлы, тема и размер интерфейса</p>
         </div>
       </div>
       <div id="setCustomBox" hidden style="margin:0 0 14px"><button class="btn" id="setCustom" type="button">Свои workflow (для тех, кто работает в ComfyUI) →</button></div>
+      <div class="card" id="uiCard" style="margin-bottom:16px">
+        <div class="card-h"><h3>Интерфейс</h3><span class="hint">выбор сохраняется</span></div>
+        <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+          <div class="themes" id="themes" title="Тема оформления">
+      <button data-t="" style="background:#e8264f" title="Бордо"></button>
+      <button data-t="light" style="background:#f3f4f6" title="Светлая"></button>
+      <button data-t="gray" style="background:#b7bcc4" title="Серая"></button>
+      <button data-t="graphite" style="background:#272a30" title="Графит"></button>
+      <button data-t="night" style="background:#2fb5a8" title="Ночь"></button>
+      <button data-t="forest" style="background:#d4a24c" title="Лес"></button>
+    </div>
+          <div class="zoom-btns" id="uiZoom" title="Размер интерфейса (или Ctrl + колесо мыши)" ><button class="btn" id="uiSm" type="button">А−</button><small id="uiPct">100%</small><button class="btn" id="uiLg" type="button">А+</button></div>
+          <span class="hint">или Ctrl + колесо мыши</span>
+        </div>
+      </div>
 
       <div class="steps" id="setupSteps">
         <div class="step" data-s="1"><i>1</i>Проверка компьютера</div>
@@ -2962,7 +2957,7 @@ function showSetupPane(which) {
   $('#wzChoose').hidden = which !== 'choose';
   $('#wzProgress').hidden = which !== 'progress';
   $('#mdStatus').hidden = which !== 'status';
-  $('#setupTitle').textContent = which === 'status' ? 'Модели и движок' : 'Установка';
+  $('#setupTitle').textContent = which === 'status' ? 'Настройки' : 'Установка';
   $('#setupSteps').hidden = which === 'status';
 }
 
@@ -3434,25 +3429,6 @@ const TOASTS = [];
 const noteMsg = s => { TOASTS.push(new Date().toLocaleTimeString('ru') + ' ' + String(s).slice(0, 300)); if (TOASTS.length > 20) TOASTS.shift(); };
 window.addEventListener('error', e => noteMsg('Ошибка скрипта: ' + e.message + ' (' + (e.filename || '').split('/').pop() + ':' + e.lineno + ')'));
 window.addEventListener('unhandledrejection', e => noteMsg('Ошибка: ' + (e.reason && e.reason.message || e.reason)));
-$('#supBtn').onclick = () => fetch('/api/support', { method: 'POST' }).then(() => toast('Открываю страницу поддержки в браузере'), () => {});
-$('#repBtn').onclick = async () => {
-  const b = $('#repBtn'); b.disabled = true;
-  try {
-    const app = document.querySelector('.app'), cs = getComputedStyle(document.body);
-    const page = {
-      'Браузерная строка (userAgent)': navigator.userAgent,
-      'Размер окна, пикс': innerWidth + ' x ' + innerHeight, 'Масштаб экрана': devicePixelRatio,
-      'Сетка страницы (.app)': app ? getComputedStyle(app).display + ' / ' + getComputedStyle(app).gridTemplateColumns : 'нет',
-      'Цвет фона': cs.backgroundColor, 'Цвет текста': cs.color,
-      'Тема': document.documentElement.dataset.theme || 'по умолчанию',
-      'Шрифт Manrope загружен': document.fonts ? String(document.fonts.check('14px Manrope')) : 'нет данных',
-      'Язык системы': navigator.language,
-    };
-    const j = await postJSON('/api/report', { page, toasts: TOASTS });
-    toast('Отчёт сохранён: ' + j.name + '. Отправьте этот файл автору.');
-  } catch (e) { toast('Не удалось собрать отчёт: ' + e.message); }
-  b.disabled = false;
-};
 function toast(msg) {
   noteMsg(msg);
   const t = $('#toast'); t.textContent = msg; t.classList.add('on');
@@ -5957,7 +5933,7 @@ const cwBox = (title, ws) => `<div class="cw-box"><div class="cw-bt">${esc(title
   `<label class="cw-f${w.kind === 'combo' || w.multiline ? ' wide' : ''}"><span>${esc(w.name)}</span>${cwField(w)}</label>`).join('')}</div></div>`;
 function cwRender() {
   try { cwRenderInner(); }
-  catch (e) { $('#cwBody').innerHTML = `<div class="note warn"><span>Не удалось показать форму этого workflow: ${esc(e.message || e)}. Пришлите «Отчёт для разработчика» (Настройки) вместе с файлом workflow.</span></div>`; }
+  catch (e) { $('#cwBody').innerHTML = `<div class="note warn"><span>Не удалось показать форму этого workflow: ${esc(e.message || e)}. пришлите файл comfyui.log из папки данных (Настройки) вместе с файлом workflow.</span></div>`; }
 }
 function cwRenderInner() {
   const r = CW.rep, W = r.widgets;

@@ -32,6 +32,7 @@ from aiohttp import web
 
 import agent as ag
 import catalog
+import clipboard
 import cloud
 import customwf
 import engine
@@ -103,6 +104,7 @@ ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 HOME = Path(sys.executable).parent if getattr(sys, "frozen", False) else ROOT
 UI_DIR = ROOT / "ui"
 DATA_DIR = Path(os.environ.get("H3STUDIO_DATA", HOME / "data"))
+clipboard.data_dir = DATA_DIR   # the clipboard helper and its temporary PNG live with the app's own files
 LONG_DIR = DATA_DIR / "long"   # saved scene states of the long video made scene by scene
 LIBRARY_FILE = DATA_DIR / "library.json"
 QUEUE_FILE = DATA_DIR / "queue.json"
@@ -2975,6 +2977,25 @@ class App:
         user32.FlashWindowEx(ctypes.byref(Flash(ctypes.sizeof(Flash), hwnd, 3, 0, 0)))
         return True
 
+    async def h_clipboard_has_image(self, _req):
+        """Whether there is a picture to paste: asks Windows about the formats, cheap and without helpers."""
+        return web.json_response({"have": await asyncio.to_thread(clipboard.has_picture)})
+
+    async def h_clipboard_image(self, req):
+        """GET: the clipboard picture (404 when there is none). POST: put this PNG on the clipboard."""
+        if req.method == "POST":
+            data = await req.read()
+            if not data.startswith(clipboard.PNG_SIGNATURE) or len(data) > 40_000_000:
+                return web.json_response({"error": "Нужна картинка в формате PNG"}, status=400)
+            if await asyncio.to_thread(clipboard.set_picture, data):
+                return web.json_response({"ok": True})
+            return web.json_response({"error": "Не удалось положить картинку в буфер обмена"}, status=500)
+        picture = await asyncio.to_thread(clipboard.picture)
+        if not picture:
+            return web.json_response({"error": "В буфере обмена нет картинки"}, status=404)
+        data, mime = picture
+        return web.Response(body=data, content_type=mime, headers={"Cache-Control": "no-store"})
+
     async def h_focus(self, _req):
         """A second copy knocked: show the window the user is really working in."""
         return web.json_response({"ok": await asyncio.to_thread(self.focus_own_window)})
@@ -3115,7 +3136,10 @@ def build_app(comfy_override=None):
     app.add_routes([
         web.get("/", state.h_index),
         web.get("/api/status", state.h_status),
-        web.get("/api/focus", state.h_focus),   # a second copy asks the running one to show its window
+        web.get("/api/clipboard/has-image", state.h_clipboard_has_image),
+    web.get("/api/clipboard/image", state.h_clipboard_image),
+    web.post("/api/clipboard/image", state.h_clipboard_image),
+    web.get("/api/focus", state.h_focus),   # a second copy asks the running one to show its window
         web.get("/api/system", state.h_system),
         web.get("/api/audio/info", state.h_audio_info),
         web.post("/api/audio/separate", state.h_audio_separate),

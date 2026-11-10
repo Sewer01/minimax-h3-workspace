@@ -1615,6 +1615,7 @@ equirements.txt</code><br>
       <div class="v-btns">
         <button class="btn pri" id="vwSave">Сохранить на компьютер</button>
         <button class="btn" id="vwCopy">Скопировать промпт</button>
+        <button class="btn" id="vwPic" title="Картинка, а у видео — кадр, который сейчас на экране, уйдёт в буфер обмена: вставляйте в любую программу">Копировать картинку</button>
         <button class="btn" id="vwRepeat">Повторить с этими настройками</button>
         <button class="btn pri" id="vwCmpBtn" hidden>Только результат</button>
         <button class="btn" id="vwUp" title="Увеличить разрешение и добавить чёткости (SeedVR2). Долго: минуты на каждые несколько секунд видео">Увеличить видео…</button>
@@ -1754,6 +1755,11 @@ const DROP_HOME = { audio: 'lipsync', video: 'swap', image: 'video' };   // ку
 async function handleDrop(e) {
   const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
   if (!files.length) return;
+  await routeFiles(files);
+}
+/* how a file gets into the section that is open now: used by a drag from Explorer and by a paste alike */
+async function routeFiles(files) {
+  if (!files.length) return;
   const view = activeView();
   if (!view || !dropBox(view)) { toast('Бросьте файлы в раздел генерации, в чат Агента или в окно увеличения'); return; }
   const r = await spreadFiles(files, view);
@@ -1769,6 +1775,84 @@ async function handleDrop(e) {
       });
   }
 }
+/* ---------- pictures and the clipboard ----------
+   Chromium does not let the page read or write the picture clipboard, so the program does it. */
+const PIC_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp',
+                  'image/gif': 'gif', 'image/bmp': 'bmp', 'image/avif': 'avif' };
+async function clipboardHasImage() {
+  try { const j = await (await fetch('/api/clipboard/has-image', { cache: 'no-store' })).json(); return j.have === true; }
+  catch { return false; }
+}
+async function pasteFromClipboard() {
+  try {
+    const r = await fetch('/api/clipboard/image', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const blob = await r.blob(), type = blob.type || 'image/png';
+    const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+    return new File([blob], `картинка-из-буфера-${stamp}.${PIC_EXT[type] || 'png'}`, { type });
+  } catch { return null; }
+}
+/* the clipboard holds PNG, so the picture is redrawn on a canvas first — the size stays exactly as it was */
+async function pngOf(source, w, h) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').drawImage(source, 0, 0, w, h);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+async function copyPictureToClipboard(it) {
+  const url = it && (it.url || it.thumb);
+  if (!url) { toast('Картинки ещё нет'); return; }
+  try {
+    const img = $('#viewer img'), vid = $('#viewer video');
+    let png = null;
+    if (it.kind !== 'image' && !vid.hidden && vid.videoWidth) png = await pngOf(vid, vid.videoWidth, vid.videoHeight);
+    else if (!img.hidden && img.complete && img.naturalWidth) png = await pngOf(img, img.naturalWidth, img.naturalHeight);
+    else {
+      const blob = await (await fetch(url)).blob();
+      if (blob.type === 'image/png') png = blob;
+      else { const bmp = await createImageBitmap(blob); png = await pngOf(bmp, bmp.width, bmp.height); bmp.close(); }
+    }
+    if (!png) { toast('Не удалось подготовить картинку'); return; }
+    const r = await fetch('/api/clipboard/image', { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: png });
+    toast(r.ok ? 'Картинка в буфере обмена — вставляйте в любую программу' : 'Буфер обмена не принял картинку');
+  } catch (e) { toast('Не удалось скопировать картинку: ' + (e.message || e)); }
+}
+let PASTE_AT = 0;   // when the browser hands the paste over itself, the key handler below stays out of the way
+document.addEventListener('paste', async e => {   // Ctrl+V: a picture goes into the open section, text stays text
+  PASTE_AT = Date.now();
+  const dt = e.clipboardData;
+  const direct = [...((dt && dt.files) || [])].filter(f => (f.type || '').startsWith('image/'));
+  if (direct.length) { e.preventDefault(); await routeFiles(direct); return; }
+  if (!(await clipboardHasImage())) return;
+  const el = e.target || {};
+  const inText = el.tagName === 'TEXTAREA' || el.isContentEditable || (el.tagName === 'INPUT' && el.type !== 'file');
+  if (inText && dt && [...((dt.types) || [])].includes('text/plain') && (dt.getData('text/plain') || '').trim()) return;
+  e.preventDefault();
+  const f = await pasteFromClipboard();
+  if (!f) { toast('Картинку из буфера обмена не удалось прочитать'); return; }
+  await routeFiles([f]);
+});
+
+/* WebView2 does not always hand a bare bitmap over as a paste (a screenshot, a copy from a viewer),
+   so if the browser stayed silent for a moment, the program reads the clipboard itself */
+addEventListener('keydown', e => {
+  if (!((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'v') || e.altKey) return;
+  const mark = Date.now();
+  setTimeout(async () => {
+    if (PASTE_AT >= mark) return;                       // the page already pasted what the browser gave
+    if (!(await clipboardHasImage())) return;           // plain text: the usual text paste has happened
+    const f = await pasteFromClipboard();
+    if (f) await routeFiles([f]);
+  }, 260);
+});
+
+/* F5 and Ctrl+R: the page reloads without restarting the program. The window has the browser's own
+   keys turned off, so the app catches them itself; the section you were working in comes back by the saved one */
+addEventListener('keydown', e => {
+  if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && !e.shiftKey && String(e.key).toLowerCase() === 'r')) {
+    e.preventDefault(); location.reload();
+  }
+});
+
 document.addEventListener('dragover', e => {
   const dt = e.dataTransfer; if (!dt || ![...(dt.types || [])].includes('Files')) return;
   if (e.target.closest('label.drop, label.ref, label.slot, #agAtt, #upDrop, #aDrop, .audio-empty')) return;   // эти зоны принимают файл сами
@@ -3645,6 +3729,7 @@ function openViewer(id, fallback) {
   const pic = it.kind === 'image';
   vwMedia(it);
   $('#vwCopy').hidden = !it.prompt;
+  $('#vwPic').hidden = !(it.url || it.thumb);
   img.style.cursor = pic && it.url ? 'zoom-in' : '';
   img.onload = () => { if (pic && !it.res && img.naturalWidth) $('#vwKv').insertAdjacentHTML('afterbegin', `<span>Разрешение</span><b>${dimTxt(img.naturalWidth, img.naturalHeight)}</b>`); };
   vid.onloadedmetadata = () => { if (!pic && !it.res && vid.videoWidth) $('#vwKv').insertAdjacentHTML('afterbegin', `<span>Разрешение</span><b>${dimTxt(vid.videoWidth, vid.videoHeight)}</b>`); };
@@ -3701,6 +3786,7 @@ function cmpCloseFull(back = true) {
   const it = byId(openId); if (back && it && !$('#vwCmp').hidden) cmpSet(true, it);
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#cmpFull')) { e.stopImmediatePropagation(); e.preventDefault(); cmpCloseFull(); } }, true);
+$('#vwPic').onclick = () => copyPictureToClipboard(openItem);
 $('#vwCmpBtn').onclick = () => { const it = byId(openId); if (it) cmpSet($('#vwCmp').hidden, it); };
 const dimTxt = (w, h) => `${w}×${h} · ${(w * h / 1e6).toFixed(1).replace('.', ',')} МП`;
 

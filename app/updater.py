@@ -106,9 +106,17 @@ async def download(session, info):
 
 
 def run(installer):
-    """Start the installer detached and quietly; it closes this app, replaces the files and opens the app again."""
-    flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-    subprocess.Popen([str(installer), "/SILENT", "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS", "/NORESTART"],
+    """Start the installer only after this app has exited, quietly; it replaces the files and opens the app again.
+
+    Launched straight away, the running exe is locked: Inno replaces everything else and the old program file
+    stays, so after an update the window says the new version while the binary is still the old one.
+    DETACHED_PROCESS is not used: with it PowerShell refuses to start.
+    """
+    flags = 0x08000000 | 0x00000200  # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+    inst = str(installer).replace("'", "''")
+    ps = (f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; "
+          f"& '{inst}' /SILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /NORESTART")
+    subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
                      creationflags=flags, close_fds=True)
 
 

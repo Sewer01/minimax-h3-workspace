@@ -1239,6 +1239,38 @@ class App:
         self.config.update(setup_done=False)
         return web.json_response({"ok": True})
 
+    def wake_comfy(self):
+        """Bring the local ComfyUI up if it is not up: the same path the app takes at start.
+           Runs in a worker thread, so it only touches the process, never the event loop."""
+        if self.config.get("engine") != "managed" or self.comfy_override or self.installer:
+            return False
+        if self.process and self.process.alive():
+            return False
+        self.start_managed()
+        return True
+
+    async def h_engine_start(self, _req):
+        """Start the local ComfyUI without restarting the whole program. Before this the core was
+           started exactly once, at the app start, so after a set-up reset — which stops it — the
+           screen said "engine not running" and the models list stayed empty until a restart."""
+        if not (self.config.configured or self.comfy_override):
+            return web.json_response({"error": "Сначала завершите настройку программы"}, status=409)
+        if self.config.get("engine") != "managed":
+            online = False
+            try:
+                await self.system_stats()
+                online = True
+            except Exception:
+                pass
+            return web.json_response({"ok": True, "online": online,
+                                      "note": "ComfyUI запускаете вы сами: он внешний. "
+                                              + ("Он отвечает." if online else "Он сейчас не отвечает.")})
+        started = await asyncio.to_thread(self.wake_comfy)
+        if started and self.missing_node_packs():   # node packs may be added by a newer app version
+            self.packs_task = asyncio.create_task(self.install_missing_packs())
+        return web.json_response({"ok": True, "starting": started,
+                                  "note": "Запускаю ComfyUI: обычно с полминуты." if started else "ComfyUI уже работает."})
+
     async def h_setup_restore(self, _req):
         """Cancel the wizard: the set-up that was in place before it was opened."""
         backup = self.config.get("setup_backup") or {}
@@ -1247,7 +1279,10 @@ class App:
         self.config.update(**{k: v for k, v in backup.items() if v is not None}, setup_done=True)
         self.config.data.pop("setup_backup", None)
         self.config.update()
-        return web.json_response({"ok": True})
+        # the reset stopped the core; without this the restored set-up would show an empty
+        # model list until the person restarted the program
+        await asyncio.to_thread(self.wake_comfy)
+        return web.json_response({"ok": True, "starting": True})
 
     # ---------- cloud (RunningHub) ----------
 
@@ -3183,6 +3218,7 @@ def build_app(comfy_override=None):
         web.post("/api/search-web", state.h_search_web),
                 web.post("/api/setup/reset", state.h_setup_reset),
     web.post("/api/setup/restore", state.h_setup_restore),
+    web.post("/api/engine/start", state.h_engine_start),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),

@@ -978,7 +978,7 @@ body.dropping::after{content:'Отпустите — программа разл
     </button>
 
     <div class="side-foot" id="sysBox" title="Нагрузка компьютера, обновляется каждые 2 секунды">
-      <div class="stat"><span><span class="dot" id="engDot"></span>Движок</span><b id="engTxt">запущен</b></div>
+      <div class="stat" id="engRow" title="Нажмите, чтобы запустить локальный ComfyUI, не перезапуская программу"><span><span class="dot" id="engDot"></span>Движок</span><b id="engTxt">запущен</b></div>
       <div class="stat"><span>Видеокарта</span><b id="gpuName">—</b></div>
       <div class="meter"><div class="stat"><span>Нагрузка GPU</span><b id="gpuLoad">—</b></div><div class="vram"><i id="gpuBar"></i></div></div>
       <div class="meter"><div class="stat"><span>Видеопамять</span><b id="vramTxt">—</b></div><div class="vram"><i id="vramBar"></i></div></div>
@@ -1898,6 +1898,13 @@ function connectEvents() {
   ws.onclose = () => { setEngine(false); setTimeout(connectEvents, 2000); };
 }
 let ENGINE_ON = true;
+async function startEngine(quiet) {
+  try {
+    const r = await postJSON('/api/engine/start', {});
+    if (!quiet) toast(r.note || 'ComfyUI уже запущен');
+  } catch (e) { toast(e.message); }
+}
+$('#engRow').onclick = () => { if ($('#engTxt').textContent.trim() !== 'подключён') startEngine(); };
 function setEngine(on) {
   ENGINE_ON = on;
   const cloudOn = typeof CLOUD !== 'undefined' && CLOUD.enabled;
@@ -3313,8 +3320,9 @@ function renderModels(s) {
   if (!s.models) {   // ComfyUI has not answered yet: an empty page looks like "you have no models at all"
     $('#mlist').innerHTML = `<div class="note"><span>${s.online
       ? 'Список моделей пока не пришёл. Нажмите «Проверить ещё раз».'
-      : 'ComfyUI сейчас не запущен, поэтому список пуст. Он появится сам, как только ComfyUI ответит; обычно это полминуты после запуска программы.'}</span></div>`;
+      : 'ComfyUI сейчас не запущен, поэтому список пуст. Он появится сам, как только ответит — обычно это полминуты. <button class="btn mini" id="mlistStart" type="button" style="margin-left:6px">Запустить ComfyUI</button>'}</span></div>`;
     $('#modelsBadge').hidden = true;
+    const st = $('#mlistStart'); if (st) st.onclick = () => startEngine();
     return;
   }
   if (!s.models) return;
@@ -3481,7 +3489,9 @@ function onMdl(m) {
     $('#mdDlN').textContent = `${GB(m.done)} из ${GB(m.total)}`;
   }
 }
-$('#mdOwnGo').onclick = () => $('#mdReset').click();
+$('#mdOwnGo').onclick = () => confirmBox('Перейти к настройке своего ComfyUI?',
+  'Откроется экран настройки: программа перестанет считать текущую конфигурацию готовой. Скачанные файлы не тронуты, кнопка «Вернуться к прежним настройкам» вернёт всё как было.',
+  'Показать экран настройки', () => $('#mdReset').click());
 // custom nodes the sections need, for people who use their own ComfyUI
 async function loadNodes() {
   const card = $('#mdNodesCard'), st = await (await fetch('/api/status')).json().catch(() => ({}));

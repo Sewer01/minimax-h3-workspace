@@ -144,6 +144,10 @@ VARIANTS = {
     "motion_repair_lora": {
         "v1": _m("JOKER141/MiniMax-H3-General-Motion-Continuity-Repair", "Motion_Repair.safetensors", 0.16, "loras"),
     },
+    # four-step speed-up of the teacher: the "Черновик" of Видеостудия runs on it
+    "dmad_lora": {
+        "v1": _m("Kijai/MiniMax-H3-experimental", "loras/minimax_h3_DMAD_4step_full_lora_avg_rank_39_bf16.safetensors", 0.34, "loras"),
+    },
     # Character swap (akatz-ai): replaces a person in a video with a character from a picture
     "swap_lora": {
         "v15": _m("akatz-ai/MiniMax-H3-Character-Swap-LoRA", "h3_character_swap_v1.5.safetensors", 0.16, "loras"),
@@ -354,6 +358,7 @@ ROLE_TITLES = {
     "action_upscaler": "Апскейлер SelfLift (экшн, точный режим)",
     "vocal_model": "Отделение голоса от музыки (MelBand RoFormer)",
     "realism_lora": "LoRA «Реализм людей» (по желанию)",
+    "dmad_lora": "Ускорение черновика (DMAD, 4 шага, по желанию)",
     "motion_repair_lora": "LoRA «Исправление движения» (по желанию)",
     "swap_lora": "LoRA «Замена персонажа» (akatz-ai)",
     "pika_lora": "LoRA Pika H3 Flex Turbo (ускорение для Референсов, хороший звук)",
@@ -406,7 +411,7 @@ MODE_OPTIONAL = {
     "actor": ["realism_lora"],
     "swap": ["pika_lora", "realism_lora", "motion_repair_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
-    "long": ["vocal_model"],
+    "long": ["vocal_model", "dmad_lora"],
 }
 ALL_ROLES = list(VARIANTS)
 
@@ -414,7 +419,7 @@ ALL_ROLES = list(VARIANTS)
 DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
                   "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
                   "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
-                  "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8", "swap_lora": "v15", "sla_lora": "bf16",
+                  "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8", "dmad_lora": "v1", "swap_lora": "v15", "sla_lora": "bf16",
                   "krea_unet": "int8", "krea_clip": "fp8", "krea_vae": "bf16", "kreareal_unet": "fp8", "kreareal_lora": "v2",
                   "qwen_unet": "int8", "qwen_clip": "int8", "qwen_vae": "bf16",
                   "flux_unet": "fp8", "flux_clip": "bf16", "flux_vae": "bf16",

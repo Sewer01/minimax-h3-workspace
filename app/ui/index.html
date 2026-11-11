@@ -373,7 +373,8 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 .agv .tg.unc{border-color:#b8742a;color:#e6a45c}
 .seg.seg-q{grid-template-columns:repeat(auto-fill,minmax(98px,1fr))}
 .seg.seg-q button small{white-space:normal}
-.seg{display:grid;grid-template-columns:repeat(4,1fr);background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.seg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--bg-2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.seg button{min-width:0;overflow-wrap:anywhere;text-align:center;align-content:center}
 .seg button{padding:9px 6px;border-radius:9px;font-weight:700;font-size:13px;color:var(--muted);display:grid;gap:1px}
 .seg button small{font-weight:500;font-size:11px;color:var(--dim)}
 .seg button.on{background:var(--grad);color:#fff;box-shadow:0 6px 18px rgba(var(--accent-rgb),.3)}
@@ -387,7 +388,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;heigh
 details summary{cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;list-style:none}
 details summary::before{content:'＋ '}
 details[open] summary::before{content:'－ '}
-.adv{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.adv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:12px}
 .field{display:grid;gap:6px;font-size:12px;color:var(--muted)}
 .field input,.field select{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;outline:none;font-family:var(--mono);font-size:12.5px}
 
@@ -400,7 +401,7 @@ details[open] summary::before{content:'－ '}
 .frame .res{font-family:var(--mono);font-size:13px;color:var(--muted);text-align:center;display:grid;gap:4px}
 .frame .res b{font-size:20px;color:var(--text);font-weight:500}
 .frame .bar{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--grad);transition:width .2s}
-.summary{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
 .sum{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .sum small{display:block;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
 .sum b{font-size:14px}
@@ -496,7 +497,7 @@ details[open] summary::before{content:'－ '}
 .step.done i{background:var(--ok);color:#06210f}
 .step.cur{color:var(--text);border-color:rgba(var(--accent-rgb),.45)}
 .step.cur i{background:var(--grad);color:#fff}
-.choose{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.choose{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-bottom:18px}
 .opt{text-align:left;padding:20px;border-radius:var(--radius);background:var(--surface);border:1.5px solid var(--line);display:grid;gap:8px;transition:.15s}
 .opt:hover{border-color:var(--line-2)}
 .opt.on{border-color:var(--accent);background:linear-gradient(180deg,rgba(var(--accent-rgb),.12),var(--surface))}
@@ -630,7 +631,7 @@ img.pr-media{object-position:center 38%}
 .pb.big i{display:block;height:100%;width:0;background:var(--grad);transition:width .4s}
 .pnow-s{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:6px}
 .m .st.opt{color:var(--dim)}
-@media (max-width:900px){.choose.three{grid-template-columns:1fr}.hw{grid-template-columns:1fr 1fr}}
+@media (max-width:900px){.choose.three{grid-template-columns:1fr}.hw{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 /* agent */
 :root{--aw:clamp(300px,24vw,480px)}
 .ag-grid{position:relative;display:grid;grid-template-columns:230px minmax(0,1fr) var(--aw);gap:16px;align-items:start}
@@ -679,7 +680,7 @@ img.pr-media{object-position:center 38%}
 .ag-att .vid img{width:100%;height:100%;object-fit:cover;display:block}
 .ag-att button[data-fr]{left:4px;right:auto;top:auto;bottom:4px;width:auto;height:auto;border-radius:6px;padding:2px 7px;font-size:10.5px}
 /* while a video is dragged into the chat, the screen splits in two: where it lands decides what it becomes */
-#agSplit{position:fixed;inset:0;z-index:780;display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;pointer-events:none;background:rgba(5,7,11,.74);backdrop-filter:blur(3px)}
+#agSplit{position:fixed;inset:0;z-index:780;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;padding:14px;pointer-events:none;background:rgba(5,7,11,.74);backdrop-filter:blur(3px)}
 #agSplit[hidden]{display:none}
 #agSplit .ds{border:2px dashed var(--line-2);border-radius:18px;display:grid;place-content:center;gap:10px;justify-items:center;text-align:center;padding:22px;background:rgba(var(--bg2-rgb),.55)}
 #agSplit .ds b{font-size:21px}
@@ -852,7 +853,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .card.fold.collapsed>*:not(.card-h){display:none!important}
 .card.fold.collapsed>.card-h{margin-bottom:0}
 .rent-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.ext-kind{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 14px}
+.ext-kind{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin:0 0 14px}
 .ext-kind button{display:grid;gap:3px;text-align:left;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line-2);background:var(--bg-2);color:inherit;cursor:pointer}
 .ext-kind button b{font-size:14px}.ext-kind button small{color:var(--dim);font-size:12px;line-height:1.4}
 .ext-kind button.on{border-color:var(--accent,#c0405a)}
@@ -920,7 +921,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .close:hover{background:var(--accent)}
 .confirm{width:min(420px,100%);padding:22px;display:grid;gap:10px}
 .confirm p{color:var(--muted)}
-.confirm .v-btns{grid-template-columns:1fr 1fr;margin-top:8px}
+.confirm .v-btns{grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:8px}
 .toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);opacity:0;background:var(--surface-2);border:1px solid var(--line-2);padding:11px 18px;border-radius:12px;font-weight:600;font-size:13px;transition:.25s;z-index:60;box-shadow:0 12px 30px rgba(0,0,0,.5);pointer-events:none;max-width:calc(100% - 32px)}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
@@ -941,6 +942,9 @@ body.dropping::after{content:'Отпустите — программа разл
 .mdl-pick .mp-src.std{background:var(--surface-2);color:var(--dim)}.mdl-pick .mp-src.own{background:#e08a1e;color:#111}
 .mdl-pick .mp-loras{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .mdl-pick .mp-l{font-size:12px;padding:2px 9px;border-radius:8px;background:var(--surface-2);word-break:break-all}.mdl-pick .mp-l.mine{background:rgba(224,138,30,.25)}.mdl-pick button.mp-l{border:0;cursor:pointer;color:inherit;font:inherit;font-size:12px}.mdl-pick .mp-l.tgl.off{background:var(--surface-2);text-decoration:line-through;opacity:.7}.mdl-pick .mp-l.no{background:rgba(229,72,77,.2);color:#e5484d}
+.mdl-pick .pm{flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mdl-pick .pm .pm-q{flex:1 1 160px;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;outline:none}
+.mdl-pick .pm select{flex:2 1 260px;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px}
 .mdl-pick .mp-notes{flex-basis:100%;display:grid;gap:4px;font-size:12.5px}.mdl-pick .mp-notes .bad{color:#e5484d}.mdl-pick .mp-notes .warn{color:#d6a13a}.mdl-pick .mp-notes .info{opacity:.8}
 </style>
 </head>
@@ -1135,7 +1139,7 @@ body.dropping::after{content:'Отпустите — программа разл
                 <div class="playhead" id="ph"></div>
               </div>
               <div class="a-tools">
-                <div class="seg a-mode" style="grid-template-columns:1fr 1fr">
+                <div class="seg a-mode" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
                   <button type="button" data-m="clip" class="on">Выбор фрагмента<small>что пойдёт в клип</small></button>
                   <button type="button" data-m="cut">Вырезание<small>убрать кусок из аудио</small></button>
                 </div>
@@ -1304,11 +1308,11 @@ body.dropping::after{content:'Отпустите — программа разл
           </div>
           <div class="card">
             <div class="card-h"><h3>Ответ агента</h3></div>
-            <div class="seg" id="agThink" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><button type="button" data-k="fast">Быстро<small>без долгих рассуждений</small></button><button type="button" data-k="deep">Думать глубже<small>дольше, для сложных историй</small></button></div>
+            <div class="seg" id="agThink" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:6px"><button type="button" data-k="fast">Быстро<small>без долгих рассуждений</small></button><button type="button" data-k="deep">Думать глубже<small>дольше, для сложных историй</small></button></div>
             <div class="hint" id="agThinkHint" style="margin-bottom:14px"></div>
             <div class="card-h"><h3>Промпт для</h3></div>
             <div class="hint" style="margin-bottom:6px">Видео</div>
-            <div class="seg" id="agTarget" style="grid-template-columns:1fr 1fr;grid-auto-rows:auto">
+            <div class="seg" id="agTarget" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-rows:auto">
               <button data-t="video" class="on">Image-to-Video<small>текст / кадры</small></button>
               <button data-t="lipsync">Lipsync<small>референсы + аудио</small></button>
               <button data-t="refs">Референсы<small>изображения, видео, аудио</small></button>
@@ -1318,7 +1322,7 @@ body.dropping::after{content:'Отпустите — программа разл
               <button data-t="long">Видеостудия<small>клип или ролик по сценам</small></button>
             </div>
             <div class="hint" style="margin:12px 0 6px">Изображения</div>
-            <div class="seg" id="agTarget2" style="grid-template-columns:1fr 1fr;grid-auto-rows:auto">
+            <div class="seg" id="agTarget2" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-rows:auto">
               <button data-t="plist">Список кадров<small>серия изображений</small></button>
               <button data-t="krea">Изображение по тексту<small>Krea 2</small></button>
               <button data-t="fluxt">Изображение по тексту<small>FLUX.2 klein</small></button>
@@ -1328,7 +1332,7 @@ body.dropping::after{content:'Отпустите — программа разл
               <button data-t="sheet">Лист персонажа<small>4 панели, Krea 2</small></button>
               <button data-t="sheet6">Лист персонажа ×6<small>6 панелей, Krea 2</small></button>
             </div>
-            <div class="seg" id="agStoryF" hidden style="grid-template-columns:1fr 1fr;margin-top:10px">
+            <div class="seg" id="agStoryF" hidden style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:10px">
               <button data-f="1">По кадрам<small>кадры отдельно + лист</small></button><button data-f="0">Одним листом<small>одно изображение сразу</small></button>
             </div>
             <div class="seg" id="agStoryM" hidden style="grid-template-columns:repeat(3,1fr);margin-top:10px">
@@ -2305,7 +2309,7 @@ function paramsCard(el, st, opts) {
       <summary>Дополнительно</summary>
       <div class="row" style="margin-top:14px">
         <div class="row-l">Seed — «номер варианта»</div>
-        <div class="seg seed-seg" style="grid-template-columns:1fr 1fr">
+        <div class="seg seed-seg" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
           <button data-sf="0">Случайный<small>каждый раз новое видео</small></button>
           <button data-sf="1">Фиксированный<small>тот же вариант снова</small></button>
         </div>
@@ -2875,7 +2879,7 @@ const vPrev = previewPanel($('#vPreview'), V, {
 $('#vLoop').onchange = () => { $('#dLast').style.opacity = $('#vLoop').checked ? .4 : ''; vPrev(); };
 const vUpd = paramsCard($('#vParams'), V, { n: 3, duration: true, onChange: () => { vPrev(); vMode(); },
   extraRow: `<div class="row"><div class="row-l">Ускорение <span class="hint">для слабых видеокарт</span></div>
-    <div class="seg v-accel" style="grid-template-columns:1fr 1fr"><button type="button" data-ac="normal">Обычное<small>как раньше</small></button><button type="button" data-ac="sla">Быстрый черновик<small>в 1,3 раза быстрее, качество ниже</small></button></div>
+    <div class="seg v-accel" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button type="button" data-ac="normal">Обычное<small>как раньше</small></button><button type="button" data-ac="sla">Быстрый черновик<small>в 1,3 раза быстрее, качество ниже</small></button></div>
     <div class="hint v-achint" hidden></div><div class="hint" style="margin-top:6px">«Быстрый черновик» нужен для проб: это скорость, а не увеличение размера. Для готового ролика выбирайте «Обычное».</div></div>` });
 function vAccUpd() { $$('.v-accel button').forEach(b => b.classList.toggle('on', (b.dataset.ac === 'sla') === (V.accel === 'sla'))); }
 async function vAccCheck() {
@@ -2956,7 +2960,7 @@ const lUpd = paramsCard($('#lParams'), L, {
   extraRow: `
     <div class="row">
       <div class="row-l">Точность переноса с изображений</div>
-      <div class="seg" style="grid-template-columns:1fr 1fr">
+      <div class="seg" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
         <button data-r="match">Быстро<small>изображения уменьшаются</small></button>
         <button data-r="max">Максимум<small>лучшее сходство</small></button>
       </div>
@@ -4464,9 +4468,9 @@ function makeRefMode(cfg) {
       <div class="tl" title="Фрагменты ролика по порядку. Нажмите на фрагмент, чтобы настроить его. Потяните его правый край, чтобы изменить длину"></div>
       <div class="hint" style="margin:-6px 0 10px;font-size:12px">Нажмите на фрагмент, чтобы открыть его. Потяните правый край фрагмента, чтобы сделать его короче или длиннее.</div>
       <div class="lm-scenes"></div>
-      <div class="seg lm-q" style="grid-template-columns:1fr 1fr;margin:10px 0 6px"><button type="button" data-mq="draft">Черновик<small>4 шага, быстро: посмотреть, что получится</small></button><button type="button" data-mq="final">Хорошее качество<small>8 шагов: итоговые сцены</small></button></div>
+      <div class="seg lm-q" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin:10px 0 6px"><button type="button" data-mq="draft">Черновик<small>4 шага, быстро: посмотреть, что получится</small></button><button type="button" data-mq="final">Хорошее качество<small>8 шагов: итоговые сцены</small></button></div>
       <div class="hint lm-q-hint" style="margin-bottom:10px"></div>
-      <div class="seg lm-mode" style="grid-template-columns:1fr 1fr;margin-bottom:6px"><button type="button" data-m="parts">По частям<small>сцена за сценой</small></button><button type="button" data-m="all">Весь ролик<small>одним файлом</small></button></div>
+      <div class="seg lm-mode" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:6px"><button type="button" data-m="parts">По частям<small>сцена за сценой</small></button><button type="button" data-m="all">Весь ролик<small>одним файлом</small></button></div>
       <div class="hint lm-mode-hint" style="margin-bottom:10px"></div>
       <button class="btn pri lm-chain" type="button" style="margin-bottom:12px;width:100%;padding:12px" title="Сцены считаются одна за другой сами: следующая запускается, когда предыдущая готова. Можно оставить компьютер на ночь: каждая сцена сохраняется в Библиотеку отдельным клипом.">▶ Сделать все сцены подряд (само, одну за другой)</button>
       <button class="btn pri lm-final" type="button" hidden style="margin-bottom:12px;width:100%;padding:12px" title="Все сцены считаются заново с теми же текстами и тем же seed, но на 8 шагах: детали станут лучше. Один в один они не будут.">✨ Всё готово? Сделать всё в хорошем качестве</button>
@@ -4933,7 +4937,7 @@ function makeRefMode(cfg) {
     const mus = document.createElement('div'); mus.className = 'card';
     root._snd = 'none';
     mus.innerHTML = `<div class="card-h"><h3><span class="n">3</span>Звук</h3></div>
-      <div class="seg lm-snd" style="grid-template-columns:1fr 1fr"><button type="button" data-s="none">Без аудио<small>звук придумает модель</small></button><button type="button" data-s="own">Своё аудио<small>песня или голос</small></button></div>
+      <div class="seg lm-snd" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button type="button" data-s="none">Без аудио<small>звук придумает модель</small></button><button type="button" data-s="own">Своё аудио<small>песня или голос</small></button></div>
       <div class="hint lm-snd-hint" style="margin:8px 0"></div>
       <div class="lm-own" hidden>
         <div class="mus-slot"></div>
@@ -5078,10 +5082,10 @@ function makeRefMode(cfg) {
     8: 'Высокая динамика: танцы, свободные взмахи руками, толпы, дождь, листва на фоне.',
   };
   const extraRow = cfg.swap ? `<div class="row"><div class="row-l">Скорость и качество</div>
-      <div class="seg rm-acc" style="grid-template-columns:1fr 1fr"><button data-x="pika">Pika Flex<small>8 шагов, рекомендуется</small></button><button data-x="old">Прежнее<small>другое ускорение</small></button></div>
+      <div class="seg rm-acc" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-x="pika">Pika Flex<small>8 шагов, рекомендуется</small></button><button data-x="old">Прежнее<small>другое ускорение</small></button></div>
       <div class="hint rm-acc-hint"></div></div>
     <div class="row"><div class="row-l">Звук и губы</div>
-      <div class="seg sw-snd" style="grid-template-columns:1fr 1fr 1fr"><button data-v="original">Звук видео<small>основной вариант</small></button><button data-v="lock">Подгонка губ<small>пробный, может сломать замену</small></button><button data-v="model">Звук модели<small>если в видео нет звука</small></button></div>
+      <div class="seg sw-snd" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr) 1fr"><button data-v="original">Звук видео<small>основной вариант</small></button><button data-v="lock">Подгонка губ<small>пробный, может сломать замену</small></button><button data-v="model">Звук модели<small>если в видео нет звука</small></button></div>
       <div class="hint sw-snd-hint"></div>
       <div class="sw-aend-row" hidden style="margin-top:8px"><label style="font-size:12.5px">Где первый герой замолкает, секунды <input class="sw-aend" inputmode="decimal" placeholder="например 1.75" style="width:110px"></label>
         <div class="hint">Только для «Подгонки губ» при смене плана: до этой секунды говорит первый герой, дальше он молчит и рот закрыт. Оставьте пустым, если не знаете.</div></div></div>
@@ -5093,14 +5097,14 @@ function makeRefMode(cfg) {
     <div class="note warn rm-swapneed" hidden><span>Для этого пресета нужен маленький файл (0,16 ГБ). <button class="btn mini pri" type="button" id="swapGet">Скачать</button></span></div>`
     : cfg.mode === 'refs' ? `
     <div class="row"><div class="row-l">Ускорение</div>
-      <div class="seg rm-acc" style="grid-template-columns:1fr 1fr"><button data-x="pika">Pika Flex<small>8 шагов, лучше звук</small></button><button data-x="old">Прежнее<small>4–8 шагов</small></button></div>
+      <div class="seg rm-acc" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-x="pika">Pika Flex<small>8 шагов, лучше звук</small></button><button data-x="old">Прежнее<small>4–8 шагов</small></button></div>
       <div class="hint rm-acc-hint"></div></div>
     <div class="row"><div class="row-l">Шаги</div>
       <div class="seg rm-steps" style="grid-template-columns:repeat(3,1fr)">
         <button data-s="4">4<small>быстро</small></button><button data-s="6">6 ★<small>баланс</small></button><button data-s="8">8<small>динамика</small></button>
       </div><div class="hint rm-steps-hint"></div></div>
     <div class="row"><div class="row-l">Точность переноса с изображений</div>
-      <div class="seg rm-rs" style="grid-template-columns:1fr 1fr"><button data-r="match">Быстро<small>изображения уменьшаются</small></button><button data-r="max">Максимум<small>лучшее сходство</small></button></div>
+      <div class="seg rm-rs" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-r="match">Быстро<small>изображения уменьшаются</small></button><button data-r="max">Максимум<small>лучшее сходство</small></button></div>
       <div class="hint rm-rs-hint"></div></div>
     <div class="rm-loras"></div>`
     : cfg.scenes ? `<details class="agvar" open><summary>Как работает</summary><div class="hint" style="font-size:12.5px;line-height:1.55">
@@ -5579,7 +5583,7 @@ $('#agLib').onclick = () => {
   const paint = () => {
     const items = LIB.filter(it => !it.missing && it.url && (tab === 'img' ? it.kind === 'image' : it.kind !== 'image')).sort((a, b) => b.date - a.date);
     m.innerHTML = '<div class="box" style="padding:20px"><div class="card-h"><h3>Из Библиотеки</h3><button class="btn" data-x type="button">Закрыть</button></div>'
-      + `<div class="seg" style="grid-template-columns:1fr 1fr;margin-bottom:12px"><button data-tab="img" class="${tab === 'img' ? 'on' : ''}">Изображения</button><button data-tab="snd" class="${tab === 'snd' ? 'on' : ''}">Звук из видео<small>голос или песня</small></button></div>`
+      + `<div class="seg" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:12px"><button data-tab="img" class="${tab === 'img' ? 'on' : ''}">Изображения</button><button data-tab="snd" class="${tab === 'snd' ? 'on' : ''}">Звук из видео<small>голос или песня</small></button></div>`
       + (items.length ? `<div class="cw-pickgrid">${items.map(it => `<button class="cw-th" data-id="${it.id}" type="button" title="${esc((it.label ? it.label + ' · ' : '') + (it.prompt || '').slice(0, 80))}">${it.kind === 'image' ? `<img src="${it.url}" alt="" loading="lazy">` : `<video src="${it.url}#t=0.5" preload="metadata" muted></video>`}</button>`).join('')}</div>`
         : `<div class="hint" style="padding:20px 4px">${tab === 'img' ? 'Изображений в Библиотеке пока нет.' : 'Видео в Библиотеке пока нет.'}</div>`)
       + (tab === 'snd' ? '<div class="hint" style="margin-top:10px">Слова из звука будут распознаны, как при загрузке аудио.</div>' : '') + '</div>';
@@ -6881,7 +6885,7 @@ function imgPanel(el, o) {
 function imgSeedBox(S) {
   return `<details style="margin-top:16px"><summary>Дополнительно</summary>
     <div class="row" style="margin-top:14px"><div class="row-l">Seed — «номер варианта»</div>
-      <div class="seg" style="grid-template-columns:1fr 1fr"><button data-sf="0">Случайный<small>каждый раз новое изображение</small></button><button data-sf="1">Фиксированный<small>тот же вариант снова</small></button></div>
+      <div class="seg" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-sf="0">Случайный<small>каждый раз новое изображение</small></button><button data-sf="1">Фиксированный<small>тот же вариант снова</small></button></div>
       <div class="path on" data-seedrow hidden><input data-seedin inputmode="numeric" spellcheck="false" placeholder="число, например 123456789"></div>
     </div></details>`;
 }
@@ -6901,7 +6905,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
       <div class="mode-pill"><i></i><span>Krea 2 · 1 МП</span></div></div>
     <div class="grid"><div class="col">
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Промпт</h3><span class="counter kr-count">0 символов</span><button class="btn mini kr-clear" type="button" title="Убрать промпт (или список промптов)">Очистить</button></div>
-        <div class="seg kr-bm" style="grid-template-columns:1fr 1fr;margin-bottom:8px"><button type="button" data-b="0" class="on">Один промпт</button><button type="button" data-b="1">Список промптов<small>серия картинок</small></button></div>
+        <div class="seg kr-bm" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:8px"><button type="button" data-b="0" class="on">Один промпт</button><button type="button" data-b="1">Список промптов<small>серия картинок</small></button></div>
         <textarea class="kr-prompt" placeholder="Опишите картинку: кто или что в кадре, где, какой свет, какой стиль (фото, иллюстрация, постер)…"></textarea>
         <div class="kr-batch" hidden style="margin-top:10px">
           <div class="hint" style="margin-bottom:6px">Вставьте промпты одним куском: каждый отделите <b>пустой строкой</b> (или пронумеруйте: «1.», «Кадр 2:»). Приложение само разделит текст и поставит каждое изображение в очередь. Модель, формат и размер общие для всех.</div>
@@ -6921,10 +6925,10 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         <div class="row kr-neg" hidden><div class="row-l">Негативный промпт <span class="hint">что не должно быть на изображении</span></div>
           <textarea class="kr-negtxt" rows="2" placeholder="Пусто — быстрее и легче для видеокарты. Если нужно, впишите, например: blurry, low quality, extra fingers, text, watermark"></textarea><div class="hint" style="margin-top:4px">Негативный промпт замедляет Qwen примерно вдвое и требует больше видеопамяти. Заполняйте, только если без него не получается.</div></div>
         <div class="row kr-stylerow"><div class="row-l">Стиль</div>
-          <div class="seg" style="grid-template-columns:1fr 1fr"><button data-st="plain">Обычный<small>быстро, любые изображения</small></button><button data-st="real">Реализм<small>люди и фото как с камеры, 2 прохода</small></button></div>
+          <div class="seg" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-st="plain">Обычный<small>быстро, любые изображения</small></button><button data-st="real">Реализм<small>люди и фото как с камеры, 2 прохода</small></button></div>
           <div class="hint kr-realhint" hidden></div></div>
         <div class="row kr-scale" hidden><div class="row-l">Размер результата</div>
-          <div class="seg" style="grid-template-columns:1fr 1fr"><button data-sc="2k">Около 2K<small>быстрее</small></button><button data-sc="4k">4K<small>дольше и нужно больше видеопамяти</small></button></div></div>
+          <div class="seg" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-sc="2k">Около 2K<small>быстрее</small></button><button data-sc="4k">4K<small>дольше и нужно больше видеопамяти</small></button></div></div>
         <div class="row"><div class="row-l">Формат <span class="resv"></span></div><div class="chips kr-asp"></div></div>
         ${SZ_ROW}
         ${imgSeedBox()}</div>
@@ -7070,21 +7074,21 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
         <div class="seg qw-kind" style="grid-template-columns:repeat(3,1fr)"><button data-k="edit">Править изображение<small>изменить по описанию</small></button><button data-k="sheet">Лист персонажа<small>4 или 6 видов с разных сторон</small></button><button data-k="story">Раскадровка<small>история по изображениям героя и места</small></button></div>
         <div class="qw-edit" style="margin-top:14px">
           <div class="row qw-storyopts" hidden style="margin-bottom:12px"><div class="row-l">Как рисовать</div>
-            <div class="seg qw-fr" style="grid-template-columns:1fr 1fr"><button data-fr="1">По кадрам<small>каждый кадр отдельно, лист склеит программа</small></button><button data-fr="0">Одним листом<small>одно изображение сразу</small></button></div>
+            <div class="seg qw-fr" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-fr="1">По кадрам<small>каждый кадр отдельно, лист склеит программа</small></button><button data-fr="0">Одним листом<small>одно изображение сразу</small></button></div>
             <div class="row qw-lnrow" style="margin-top:10px"><div class="row-l">Линия между кадрами</div>
               <div class="seg qw-ln" style="grid-template-columns:repeat(3,1fr)"><button data-ln="white">Тонкая белая</button><button data-ln="black">Тонкая чёрная</button><button data-ln="none">Без линии</button></div></div>
             <div class="hint" style="margin-top:6px">Кадры пишите по одному в строке: «1: ...», «2: ...» (2, 3, 4, 6, 8 или 9 кадров). Каждый кадр сохраняется отдельно в Библиотеку в полном размере. FLUX.2 рисует кадр за секунды, Qwen 2.1 заметно дольше (минуты на кадр).</div></div>
-          <div class="row" style="margin-bottom:12px"><div class="row-l">Модель</div><div class="seg qw-eng" style="grid-template-columns:1fr 1fr"><button data-e="qwen">Qwen 2.1<small>для творчества, не для коммерции</small></button><button data-e="flux">FLUX.2 klein<small>можно в коммерцию</small></button></div>
+          <div class="row" style="margin-bottom:12px"><div class="row-l">Модель</div><div class="seg qw-eng" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-e="qwen">Qwen 2.1<small>для творчества, не для коммерции</small></button><button data-e="flux">FLUX.2 klein<small>можно в коммерцию</small></button></div>
             <div class="hint qw-fluxhint" hidden></div></div>
           <textarea class="qw-prompt" placeholder="Что изменить и что оставить. Например: Этот человек сидит в кафе у окна и пьёт кофе. Лицо, причёска и одежда как на изображении."></textarea>
           <div class="ta-foot"><span class="hint">Скажите и что поменять, и что оставить прежним — так результат точнее</span></div>
           <div class="row qw-editonly" style="margin-top:12px"><div class="row-l">Формат кадра <span class="hint">по умолчанию как у вашего изображения</span></div><div class="chips qw-asp"></div></div>
           <div class="qw-szwrap" style="margin-top:12px">${SZ_ROW}</div>
-          <div class="row qw-editonly" style="margin-top:12px"><div class="row-l">Размер результата</div><div class="seg qw-size" style="grid-template-columns:1fr 1fr"><button data-s="1">Обычный<small>~1 МП, быстро</small></button><button data-s="2">Крупный<small>~2 МП, дольше</small></button></div></div></div>
+          <div class="row qw-editonly" style="margin-top:12px"><div class="row-l">Размер результата</div><div class="seg qw-size" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-s="1">Обычный<small>~1 МП, быстро</small></button><button data-s="2">Крупный<small>~2 МП, дольше</small></button></div></div></div>
         <div class="qw-sheet" style="margin-top:14px" hidden>
           <div class="note"><span>Нужен персонаж на изображении (лучше в полный рост, но портрет тоже подойдёт). Потом лист можно взять как референс в других разделах.</span></div>
-          <div class="row"><div class="row-l">Сколько видов</div><div class="seg qw-pn" style="grid-template-columns:1fr 1fr"><button data-p="4">4 панели<small>полный рост спереди и сзади, два портрета</small></button><button data-p="6">6 панелей<small>полный рост спереди, в 3/4, сбоку, сзади + 2 портрета</small></button></div></div>
-          <div class="row"><div class="row-l">Первая панель</div><div class="seg qw-head" style="grid-template-columns:1fr 1fr"><button data-h="1">Без головы<small>видна вся одежда</small></button><button data-h="0">С головой<small>для животных — так</small></button></div></div>
+          <div class="row"><div class="row-l">Сколько видов</div><div class="seg qw-pn" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-p="4">4 панели<small>полный рост спереди и сзади, два портрета</small></button><button data-p="6">6 панелей<small>полный рост спереди, в 3/4, сбоку, сзади + 2 портрета</small></button></div></div>
+          <div class="row"><div class="row-l">Первая панель</div><div class="seg qw-head" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-h="1">Без головы<small>видна вся одежда</small></button><button data-h="0">С головой<small>для животных — так</small></button></div></div>
           <div class="row"><div class="row-l">Фон</div><div class="seg qw-bg" style="grid-template-columns:repeat(3,1fr)"><button data-b="grey">Серый</button><button data-b="white">Белый</button><button data-b="black">Чёрный</button></div></div>
           <div class="row"><div class="row-l">Особые приметы <span class="hint">необязательно</span></div><div class="path on"><input class="qw-marks" spellcheck="false" placeholder="например: жёлтые очки, шрам на брови"></div></div></div>
         ${imgSeedBox()}
@@ -7805,7 +7809,7 @@ applyZoom();
       try {
         const r = await (await fetch('/api/models/files?role=' + role)).json();
         if (!r.files?.length) { toast(`ComfyUI не видит файлов в папке ${r.folder}`); return; }
-        sel.innerHTML = r.files.map(f => `<option>${esc(f)}</option>`).join(''); pm.hidden = false;
+        sel.innerHTML = r.files.map(f => `<option value="${esc(f)}" title="${esc(f)}">${esc(String(f).split(/[\\/]/).pop())}</option>`).join(''); pm.hidden = false;
       } catch { toast('ComfyUI не отвечает'); }
     };
     $('.pm-q', box).oninput = e => {

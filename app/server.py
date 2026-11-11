@@ -2375,9 +2375,11 @@ class App:
         if draft:
             pass   # a draft has the size the user chose (it may be enough for a clip that is only to be enlarged)
             _, loras = await self.comfy_json("GET", "/models/loras")
-            dmad = next((n for n in loras or [] if re.search(r"dmad[_\-\s]?4[_\-\s]?step", n, re.I)), None)
+            dmad = self.model_names.get("dmad_lora") if "dmad_lora" not in {m["role"] for m in self.missing} else None
+            dmad = dmad or next((n for n in loras or [] if re.search(r"dmad[_\-\s]?4[_\-\s]?step", n, re.I)), None)
             if not dmad:
-                raise web.HTTPBadRequest(text="Для черновика нужен файл minimax_h3_DMAD_4step_full_lora в папке loras. Или сделайте сцену сразу в хорошем качестве.")
+                raise web.HTTPBadRequest(text="Для черновика нужен файл ускорения DMAD на 4 шага. Скачайте его в разделе «Настройки», в списке моделей "
+                                              "(он помечен «по желанию»), или положите в папку loras вашего ComfyUI. Без него делайте сцену сразу в хорошем качестве.")
         scenes = [(wf.lipsync_prompt(p, len(own or images)), sec, own) for p, sec, own in scenes]
         part = form.get("part", "")
         if part.isdigit():  # one scene at a time: scene k continues from the saved tail of scene k-1

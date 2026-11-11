@@ -385,13 +385,13 @@ class App:
 
     async def system_stats(self):
         try:
-            status, data = await self.comfy_json("GET", "/system_stats", timeout=aiohttp.ClientTimeout(total=8))
+            status, data = await self.comfy_json("GET", "/system_stats", timeout=aiohttp.ClientTimeout(total=6))
             if status != 200 or not isinstance(data, dict) or "system" not in data:
                 raise ValueError("no stats")
         except Exception as e:
             # some builds hide or slow down /system_stats; a queue answer still means ComfyUI is alive
             try:
-                status, _ = await self.comfy_json("GET", "/queue", timeout=aiohttp.ClientTimeout(total=8))
+                status, _ = await self.comfy_json("GET", "/queue", timeout=aiohttp.ClientTimeout(total=4))
             except Exception as e2:
                 self.probe_note(False, f"{type(e2).__name__}: {e2}"[:200])
                 raise
@@ -702,11 +702,14 @@ class App:
 
     # ---------- HTTP handlers ----------
 
+    STATUS_BUDGET = 14.0   # seconds: the page gives up at 25, so the answer must be ready before that
+
     async def h_status(self, _req):
         base = {"configured": bool(self.config.configured or self.comfy_override),
                 "engine": self.config.get("engine"), "installing": bool(self.installer)}
+        deadline = time.monotonic() + self.STATUS_BUDGET
         try:
-            stats = await self.system_stats()
+            stats = await asyncio.wait_for(self.system_stats(), timeout=self.STATUS_BUDGET)
         except Exception:
             # ComfyUI is not up (yet): the page needs the flag and the mode list anyway, so that
             # «Настройки» is not an empty hole while the core is loading
@@ -731,7 +734,13 @@ class App:
             except Exception:
                 return None
 
-        relay, _ = await asyncio.gather(_relay(), _models())
+        try:
+            relay, _ = await asyncio.wait_for(asyncio.gather(_relay(), _models()),
+                                              timeout=max(1.0, deadline - time.monotonic()))
+        except asyncio.TimeoutError:
+            # the core is alive but busy: what we knew before is better than a page that gives up
+            relay, self.models_slow = None, True
+            applog("статус: ядро отвечает, но список файлов не отдал вовремя")
         missing = {m["role"] for m in self.missing}
         needed = catalog.roles_for(self.modes())
         models = [{"role": role, "title": catalog.ROLE_TITLES.get(role, role), "name": getattr(self, "model_names", {}).get(role, ""),
@@ -3266,9 +3275,23 @@ def _guard(state):
     return web.middleware(middleware)   # aiohttp 3.14: without the mark the handler gets (app, handler)
 
 
+def _slowlog():
+    """A line in app.log for every request of the page that took over three seconds. Long-lived
+       streams (the event socket, file downloads) are not slowness, they are their normal state."""
+    async def middleware(request, handler):
+        t0 = time.monotonic()
+        try:
+            return await handler(request)
+        finally:
+            dt = time.monotonic() - t0
+            if dt > 3 and request.path.startswith("/api/") and request.path not in ("/api/events",):
+                applog(f"{request.method} {request.path} — {dt:.1f} с")
+    return web.middleware(middleware)
+
+
 def build_app(comfy_override=None):
     state = App(comfy_override)
-    app = web.Application(client_max_size=300 * 1024 * 1024, middlewares=[_guard(state)])
+    app = web.Application(client_max_size=300 * 1024 * 1024, middlewares=[_slowlog(), _guard(state)])
     app.on_startup.append(state.start)
     app.on_cleanup.append(state.stop)
     app.add_routes([

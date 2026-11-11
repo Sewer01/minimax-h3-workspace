@@ -2065,8 +2065,10 @@ async function loadStatus() {
     if (box && document.querySelector('#view-models.active')) {
       const ok = window.PROBE_OK;
       box.innerHTML = `<div class="note warn"><span>${ok
-        ? 'ComfyUI отвечает, но список моделей не собрался за 25 секунд — он сейчас занят. Попробуйте «Проверить ещё раз»; страница переспрашивает сама.'
-        : 'ComfyUI не отвечает: он либо ещё загружается (это около полминуты), либо не запущен. Страница переспрашивает каждые четыре секунды.'}</span></div>`;
+        ? 'ComfyUI отвечает, но список моделей не собрался вовремя — он сейчас занят. Страница переспрашивает сама; можно нажать «Проверить ещё раз».'
+        : 'ComfyUI не отвечает: он либо ещё загружается (это около полминуты), либо не запущен. Страница переспрашивает каждые четыре секунды.'}
+        <button class="btn mini" id="coreLogBtn3" type="button">Показать журнал</button></span></div>`;
+      const cl = $('#coreLogBtn3'); if (cl) cl.onclick = showCoreLog;
       waitCore();
     }
   }

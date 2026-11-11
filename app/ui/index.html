@@ -813,9 +813,9 @@ body.dropping::after{content:'Отпустите — программа разл
 #mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
 @media (max-width:1100px){#mdStatus:not([hidden]){grid-template-columns:minmax(0,1fr)}}
 #mdStatus>.card,#mdStatus>details{margin-bottom:0!important;min-width:0}
-#mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdOwnCard,#mdStatus>#mdNodesCard,#mdStatus>details{grid-column:1/-1}
+#mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdNodesCard,#mdStatus>details{grid-column:1/-1}
 @media (min-width:1240px){#mdStatus:not([hidden]){grid-template-columns:repeat(3,minmax(0,1fr))}}
-  @media (max-width:1239px){#mdStatus>#clCard{grid-column:1/-1}}
+  @media (max-width:1239px){#mdStatus>#clCard,#mdStatus>#mdOwnCard{grid-column:1/-1}}
 .card.fold>.card-h{cursor:pointer;user-select:none}
 .card.fold>.card-h h3::before{content:'▾';display:inline-block;width:18px;color:var(--dim);transition:transform .15s}
 .card.fold.collapsed>.card-h h3::before{transform:rotate(-90deg)}
@@ -1575,24 +1575,24 @@ body.dropping::after{content:'Отпустите — программа разл
           <div class="rent-row"><button class="btn pri" type="button" data-rent="how">Как это работает</button><button class="btn" type="button" data-rent="connect">Подключить арендованный сервер</button></div>
         </div>
 
-        <div class="card" id="clCard" style="margin-bottom:16px" hidden>
-          <div class="card-h"><h3>Свои LoRA <small style="color:var(--muted);font-weight:500">· для тех, кто знает ComfyUI</small></h3><span><button class="btn" id="clRe" type="button">Обновить список</button> <button class="btn pri" id="clAdd" type="button">+ Добавить LoRA</button></span></div>
-          <div class="hint" style="margin-bottom:10px">Положите файл LoRA в папку <b>ComfyUI\models\loras</b>, нажмите «Обновить список» и добавьте её. Она подключится ко всем разделам сразу после основной модели. Новичкам ничего менять не нужно: всё уже готово. Свои VAE и модели меняются кнопкой «Заменить…» в списке ниже.</div>
-          <div class="mlist" id="clList"></div>
-        </div>
         <div class="card" id="mdOwnCard" style="margin-bottom:16px" hidden>
-          <div class="card-h"><h3>Хочешь всё настроить сам?</h3></div>
+          <div class="card-h"><h3>Изменить настройки</h3></div>
           <div class="hint" style="font-size:13px;line-height:1.6">
             Сейчас программа работает в простом режиме: она сама поставила ComfyUI и всё нужное, и в ней только готовые разделы. Тонкие настройки (шаги, свои схемы, свои ноды) здесь <b>недоступны</b>, так задумано.<br><br>
             Если умеешь работать в ComfyUI и хочешь загружать свои workflow, сделай так:
             <ol style="margin:6px 0 6px 18px;padding:0;display:grid;gap:4px">
               <li>Установи и запусти <b>свой</b> ComfyUI (отдельно от этой программы) и настрой в нём нужный workflow, чтобы он работал там без ошибок.</li>
-              <li>Нажми кнопку ниже и выбери вариант <b>«У меня уже есть ComfyUI и модели»</b>.</li>
+              <li>Нажми «Перейти к настройке своего ComfyUI» и выбери вариант <b>«У меня уже есть ComfyUI и модели»</b>.</li>
               <li>Появится раздел <b>«Свои workflow»</b>. Загрузи в него файл, сохранённый в ComfyUI через <b>Workflow → Export (API)</b>.</li>
             </ol>
             Если не уверен, что это нужно, ничего не нажимай: в простом режиме всё работает без настроек.
           </div>
           <button class="btn" id="mdOwnGo" type="button" style="margin-top:10px">Перейти к настройке своего ComfyUI</button>
+        </div>
+        <div class="card" id="clCard" style="margin-bottom:16px" hidden>
+          <div class="card-h"><h3>Свои LoRA <small style="color:var(--muted);font-weight:500">· для тех, кто знает ComfyUI</small></h3><span><button class="btn" id="clRe" type="button">Обновить список</button> <button class="btn pri" id="clAdd" type="button">+ Добавить LoRA</button></span></div>
+          <div class="hint" style="margin-bottom:10px">Положите файл LoRA в папку <b>ComfyUI\models\loras</b>, нажмите «Обновить список» и добавьте её. Она подключится ко всем разделам сразу после основной модели. Новичкам ничего менять не нужно: всё уже готово. Свои VAE и модели меняются кнопкой «Заменить…» в списке ниже.</div>
+          <div class="mlist" id="clList"></div>
         </div>
         <div class="card" id="mdNodesCard" style="margin-bottom:16px" hidden>
           <div class="card-h"><h3>Ноды ComfyUI</h3><button class="btn" id="mdNodesRe" type="button">Проверить ещё раз</button></div>

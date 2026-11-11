@@ -669,6 +669,9 @@ img.pr-media{object-position:center 38%}
 .ag-att b{position:absolute;left:4px;top:4px;font-size:10px;font-family:var(--mono);background:rgba(var(--ov-rgb),.8);padding:1px 5px;border-radius:5px}
 .ag-att button{position:absolute;right:-6px;top:-6px;width:20px;height:20px;border-radius:50%;background:var(--surface-2);font-size:11px}
 .ag-comp{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;padding:12px 18px 14px}
+/* the prompt field gets a line of its own over the buttons: squeezed between them it was a
+   three-line window, and shrinking the buttons to give it room would make them harder to hit */
+#agIn{flex:1 0 100%;order:-1;height:96px;min-height:70px}
 .ag-comp textarea{order:-2;min-height:56px;max-height:180px;flex:1 1 0;min-width:0}
 .ag-comp #agSend{order:-1}
 .ag-comp .ag-clip,.ag-comp #agClear{padding:6px 10px;min-height:0;font-size:12.5px;border-radius:9px}

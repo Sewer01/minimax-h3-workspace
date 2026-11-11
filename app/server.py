@@ -715,13 +715,26 @@ class App:
                                       "can_restore": bool(self.config.get("setup_backup")),
                                       "probe": getattr(self, "probe", {"url": self.comfy})})
         dev = (stats.get("devices") or [{}])[0]
-        try:
-            await self.resolve_models()
-        except Exception as e:      # a broken list is shown as a broken list, not as "no models"
-            self.model_names, self.missing, self.models_error = getattr(self, "model_names", {}), [], f"{type(e).__name__}: {e}"
+        self.models_error = None
+
+        async def _models():
+            try:
+                await asyncio.wait_for(self.resolve_models(), timeout=12)
+            except asyncio.TimeoutError:
+                self.models_slow = True          # keep whatever we knew before rather than hang the page
+            except Exception as e:               # a broken list is shown as a broken list, not as "no models"
+                self.model_names, self.missing, self.models_error = {}, [], f"{type(e).__name__}: {e}"
+
+        async def _relay():
+            try:
+                return await asyncio.wait_for(self.relay_ready(), timeout=5)
+            except Exception:
+                return None
+
+        relay, _ = await asyncio.gather(_relay(), _models())
         missing = {m["role"] for m in self.missing}
         needed = catalog.roles_for(self.modes())
-        models = [{"role": role, "title": catalog.ROLE_TITLES[role], "name": self.model_names[role],
+        models = [{"role": role, "title": catalog.ROLE_TITLES.get(role, role), "name": getattr(self, "model_names", {}).get(role, ""),
                    "category": catalog.VARIANTS[role][variant]["category"],
                    "folder": catalog.VARIANTS[role][variant]["category"], "marks": catalog.marks_text(role),
                    "file": catalog.VARIANTS[role][variant]["file"], "url": engine.mirrored(catalog.VARIANTS[role][variant]["url"]),
@@ -749,7 +762,7 @@ class App:
             "gpu": gpu_name(dev.get("name", "")),
             "vram_total": dev.get("vram_total"), "vram_free": dev.get("vram_free"),
             "comfy_version": stats["system"].get("comfyui_version"),
-            "relay_ok": await self.relay_ready(),  # the UI offers the fast upscale only when the nodes exist
+            "relay_ok": relay,   # the UI offers the fast upscale only when the nodes exist
             "output_dir": str(self.output_dir) if self.output_dir else None,
             "paths": {"install": self.config.get("install_dir"), "models": self.config.get("models_dir"),
                       "ext_models": self.config.get("ext_models_dir"),

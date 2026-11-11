@@ -1955,6 +1955,7 @@ function coreLogHint() {
 function paintProbe(s) {
   const el = $('#engProbe'); if (!el) return;
   const p = s.probe || {}, url = p.url || s.comfy || '—';
+  window.PROBE_OK = !!p.ok;
   el.innerHTML = (p.ok
     ? `ComfyUI отвечает: <b>${esc(url)}</b> · проверено в ${esc(p.at || '—')}`
     : `ComfyUI не отвечает: <b>${esc(url)}</b> · ${esc(p.err || 'нет ответа')} · попыток подряд: ${p.fails || 1}`)
@@ -2058,11 +2059,14 @@ async function loadStatus() {
     askSavedQueue();
     offerNewModes(s);
   } catch (e) {
-    setEngine(false);
+    /* the page gave up waiting for OUR answer; that says nothing about ComfyUI, so the engine line
+       keeps whatever the last real contact showed instead of being flipped to "not running" */
     const box = $('#mlist');
     if (box && document.querySelector('#view-models.active')) {
-      box.innerHTML = `<div class="note warn"><span>Программа не дождалась ответа от ComfyUI за 25 секунд. Он сейчас ${
-        $('#engTxt').textContent.trim() || 'не запущен'}. Попробуйте «Проверить ещё раз» — пока ComfyUI загружается, список обновится сам.</span></div>`;
+      const ok = window.PROBE_OK;
+      box.innerHTML = `<div class="note warn"><span>${ok
+        ? 'ComfyUI отвечает, но список моделей не собрался за 25 секунд — он сейчас занят. Попробуйте «Проверить ещё раз»; страница переспрашивает сама.'
+        : 'ComfyUI не отвечает: он либо ещё загружается (это около полминуты), либо не запущен. Страница переспрашивает каждые четыре секунды.'}</span></div>`;
       waitCore();
     }
   }
@@ -3394,7 +3398,7 @@ function renderModels(s) {
   if (!s.models) {   // ComfyUI has not answered yet: an empty page looks like "you have no models at all"
     $('#mlist').innerHTML = `<div class="note"><span>${s.online
       ? 'Список моделей пока не пришёл. Нажмите «Проверить ещё раз».'
-      : 'ComfyUI сейчас не запущен, поэтому список пуст. Он появится сам, как только ответит — обычно это полминуты. <button class="btn mini" id="mlistStart" type="button" style="margin-left:6px">Запустить ComfyUI</button>'}</span></div>`;
+      : 'ComfyUI ещё не отвечает — после запуска он загружается около полминуты. Список появится сам, страницу закрывать не нужно. <button class="btn mini" id="mlistStart" type="button" style="margin-left:6px">Запустить ComfyUI</button>'}</span></div>`;
     $('#modelsBadge').hidden = true;
     const st = $('#mlistStart'); if (st) st.onclick = () => startEngine();
     return;

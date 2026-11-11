@@ -672,7 +672,7 @@ img.pr-media{object-position:center 38%}
 .ag-att .vid img{width:100%;height:100%;object-fit:cover;display:block}
 .ag-att button[data-fr]{left:4px;right:auto;top:auto;bottom:4px;width:auto;height:auto;border-radius:6px;padding:2px 7px;font-size:10.5px}
 /* while a video is dragged into the chat, the screen splits in two: where it lands decides what it becomes */
-#agSplit{position:fixed;inset:0;z-index:780;display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;background:rgba(5,7,11,.74);backdrop-filter:blur(3px)}
+#agSplit{position:fixed;inset:0;z-index:780;display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;pointer-events:none;background:rgba(5,7,11,.74);backdrop-filter:blur(3px)}
 #agSplit[hidden]{display:none}
 #agSplit .ds{border:2px dashed var(--line-2);border-radius:18px;display:grid;place-content:center;gap:10px;justify-items:center;text-align:center;padding:22px;background:rgba(var(--bg2-rgb),.55)}
 #agSplit .ds b{font-size:21px}
@@ -1926,28 +1926,45 @@ document.addEventListener('drop', e => {
 });
 
 /* dragging a video into the chat splits the screen: the left half turns it into frames, the right
-   keeps it a file; pictures and sound go where they always went */
+   keeps it a file; pictures and sound go where they always went.
+
+   The veil never receives pointer events - it only shows where the file would land, which half is
+   meant is read from the cursor position. That also means a click can never get stuck under it, and
+   it disappears on every way a drag can end: a drop, an escape, a tab switch, a window losing focus,
+   or simply the pointer stopping moving over it. */
 (() => {
   const veil = $('#agSplit'); if (!veil) return;
+  let watchdog = 0;
+  const show = on => {
+    veil.hidden = !on;
+    clearTimeout(watchdog);
+    if (on) watchdog = setTimeout(() => { veil.hidden = true; }, 500);   // no events for half a second: the drag is over
+  };
   const wanted = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files') && activeView() === 'agent';
-  document.addEventListener('dragenter', e => { if (wanted(e)) veil.hidden = false; });
+  const half = e => (e.clientX <= innerWidth / 2 ? 'frames' : 'file');
+  const paint = e => $$('#agSplit .ds').forEach(x => x.classList.toggle('hot', x.dataset.how === half(e)));
+  document.addEventListener('dragenter', e => { if (wanted(e)) { show(true); paint(e); } });
   document.addEventListener('dragover', e => {
     if (veil.hidden || !wanted(e)) return;
-    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
-    const p = e.target.closest('.ds'); $$('#agSplit .ds').forEach(x => x.classList.toggle('hot', x === p));
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; show(true); paint(e);
   }, true);
-  document.addEventListener('dragleave', e => { if (!e.relatedTarget) veil.hidden = true; });
   document.addEventListener('drop', async e => {
     if (veil.hidden) return;
-    const p = e.target.closest('.ds'); veil.hidden = true;
-    if (!p) return;                       // past the halves: the usual unpacking as usual
-    e.preventDefault(); e.stopPropagation();
+    const how = half(e); show(false);
     const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
-    const how = p.dataset.how;
+    if (!files.length) return;
+    e.preventDefault(); e.stopPropagation();
     const vids = files.filter(f => fileKind(f) === 'video'), rest = files.filter(f => fileKind(f) !== 'video');
     for (const f of vids) { if (how === 'frames') await agFramesFromFile(f); else await agVideoFile(f); }
     if (rest.length) await routeFiles(rest);
   }, true);
+  ['dragend', 'dragexit'].forEach(ev => document.addEventListener(ev, () => show(false), true));
+  addEventListener('blur', () => show(false));
+  addEventListener('keyup', e => { if (e.key === 'Escape') show(false); });
+  let lastView = activeView();
+  new MutationObserver(() => { const v = activeView(); if (v !== lastView) { lastView = v; show(false); } })
+    .observe(document.querySelector('.main') || document.body, { attributes: true, attributeFilter: ['class'], subtree: true });
+  document.addEventListener('click', e => { if (e.target.closest('.nav, #modeBar, #sbToggle')) show(false); }, true);
 })();
 
 /* ---------- local server (real ComfyUI) or offline demo ---------- */

@@ -39,6 +39,7 @@ import engine
 import monitor
 import report
 import single
+import updates
 import speech
 import updater
 from version import APP_VERSION

@@ -3674,7 +3674,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
   if (!API) return;
   const s = await (await fetch('/api/status')).json();
   if (!s.configured) { showRestore(!!s.can_restore); openSetup(); }
-  else { showSetupPane('status'); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false).then(() => { $('#mdCloudBox').open = !!CLOUD.enabled; }); loadNodes(); }
+  else { showSetupPane('status'); foldOnOpen(); setupInfo = setupInfo || await (await fetch('/api/setup/info')).json(); renderModels(s); mountCloud($('#mdCloud'), false).then(() => { $('#mdCloudBox').open = !!CLOUD.enabled; }); loadNodes(); }
 });
 
 /* ---------- LIBRARY ---------- */
@@ -5060,6 +5060,11 @@ document.addEventListener('click', e => { if (e.target.closest('.nav')) setTimeo
 setTimeout(fitTopBar, 60);
 
 /* settings: every block folds (the state is remembered); the long rarely needed ones start folded */
+const FOLD_ON_OPEN = ['mdEngineCard', 'mdRentCard', 'mdOwnCard', 'clCard', 'mdNodesCard'];
+/* «Настройки» - справочная страница: она открывается короткой, а что раскрывать, решает человек.
+   Его клики работают, пока он здесь; при следующем открытии список снова свёрнут */
+function foldOnOpen() { FOLD_ON_OPEN.forEach(id => document.getElementById(id)?.classList.add('collapsed')); }
+
 (function () {
   const KEY = 'h3-fold', def = { mdEngineCard: 1, mdRentCard: 1, mdOwnCard: 1, clCard: 1, mdNodesCard: 1 }; let st = {};
   try { st = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}

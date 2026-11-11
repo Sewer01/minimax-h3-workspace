@@ -217,7 +217,7 @@ body.nosb-on #sbRs{display:none}
 .opt[data-opt="cloud"],#optCloudShow,#mdCloudBox{display:none!important}
 body.cloud-on #mdCloudBox{display:block!important}
 /* pinned bar of all sections (video, images): switch without going back to «Главная» */
-#modeBar{position:fixed;top:10px;left:calc(var(--sbw,248px) + 104px);right:300px;z-index:34;height:34px;display:flex;align-items:center;gap:4px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+#modeBar{position:fixed;top:10px;left:calc(var(--sbw,248px) + 104px);right:24px;z-index:34;height:34px;display:flex;align-items:center;gap:4px;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
 #modeBar::-webkit-scrollbar{display:none}
 body.nosb-on #modeBar{left:112px}
 #modeBar .mb{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;opacity:.85}
@@ -525,7 +525,7 @@ body.first-run .pr-first{display:flex}
 .pr-first b{display:block;font-size:15px;margin-bottom:3px}.pr-first span{font-size:13px;line-height:1.45;color:var(--mut,#9a8d93)}
 .pr-first .btn{flex:none;margin-left:auto}
 .nav.sub{display:none!important}
-.st-bar{position:relative;display:flex;justify-content:flex-end;gap:8px;margin:-40px 0 14px;height:34px;align-items:center}
+.st-bar{position:relative;display:flex;justify-content:flex-end;gap:8px;margin:-40px 18px 14px 0;height:34px;align-items:center;z-index:35}
 .st-bar .btn{height:32px;padding:0 14px;font-size:12.5px;white-space:nowrap}
 .st-bar .st-save{background:var(--accent,#c0405a);border-color:var(--accent,#c0405a);color:#fff}
 .st-bar .st-list b{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin:0 2px;border-radius:99px;background:rgba(255,255,255,.12);font-size:11px}
@@ -805,7 +805,9 @@ body.dropping::after{content:'Отпустите — программа разл
 #mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
 @media (max-width:1100px){#mdStatus:not([hidden]){grid-template-columns:minmax(0,1fr)}}
 #mdStatus>.card,#mdStatus>details{margin-bottom:0!important;min-width:0}
-#mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdOwnCard{grid-column:1/-1}
+#mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdOwnCard,#mdStatus>#mdNodesCard,#mdStatus>details{grid-column:1/-1}
+@media (min-width:1240px){#mdStatus:not([hidden]){grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (max-width:1239px){#mdStatus>#clCard{grid-column:1/-1}}
 .card.fold>.card-h{cursor:pointer;user-select:none}
 .card.fold>.card-h h3::before{content:'▾';display:inline-block;width:18px;color:var(--dim);transition:transform .15s}
 .card.fold.collapsed>.card-h h3::before{transform:rotate(-90deg)}
@@ -3405,15 +3407,15 @@ function renderModels(s) {
     const st = $('#mlistStart'); if (st) st.onclick = () => startEngine();
     return;
   }
-  if (!s.models) return;
   MD_ENGINE = s.engine;
   const have = s.models.filter(m => m.have).length;
   $('#modelsBadge').textContent = `${have} / ${s.models.length}`; $('#modelsBadge').hidden = false;
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
+    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн', long: 'Видеостудия', krea: 'Изображение по тексту', kreareal: 'Изображение: реализм', qwen: 'Правка изображения', flux: 'Правка: FLUX.2', upscale: 'Увеличение', relayvsr: 'Быстрое увеличение' })[x] || x).join(', ') || 'дополнительно';
 
-    return `<div class="m"><b>${esc(m.name.split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${m.lic ? `<span class="licb ${m.lic}" title="${esc(m.lic_note || '')}">${({ nc: 'нельзя в коммерцию', unknown: 'лицензия не указана', mixed: 'ролик можно, модель — нет', h3: 'MiniMax H3: условия' })[m.lic] || 'лицензия'}</span>` : ''}${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
+    return `<div class="m"><b>${esc((m.name || m.file || '').split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${m.lic ? `<span class="licb ${m.lic}" title="${esc(m.lic_note || '')}">${({ nc: 'нельзя в коммерцию', unknown: 'лицензия не указана', mixed: 'ролик можно, модель — нет', h3: 'MiniMax H3: условия' })[m.lic] || 'лицензия'}</span>` : ''}${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   MD_EXT = s.engine === 'external';
@@ -3423,6 +3425,7 @@ function renderModels(s) {
   MD_NEED = need.map(m => m.role);
   $('#mdFixExt').hidden = s.engine !== 'external' || !need.length;
   if (need.length) $('#mdModelsCard').classList.remove('collapsed');   // a missing file has to be seen, not hidden behind a folded card
+  fitTopBar();
   $('#mdFixExt').textContent = `Скачать недостающие (${need.length}, ${GB(need.reduce((a, m) => a + m.size, 0))})`;
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн-сцены', long: 'Видеостудия', krea: 'Изображение по тексту', kreareal: 'Изображение: реализм', qwen: 'Правка изображения', flux: 'Правка изображения: FLUX.2 (в коммерцию)', upscale: 'Увеличение видео и изображений', relayvsr: 'Быстрое увеличение видео (RelayVSR)' };
   $('#mdAdd').innerHTML = s.engine === 'managed' || s.engine === 'external' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
@@ -4973,6 +4976,18 @@ function prRows() {
   g.style.setProperty('--k', Math.max(1, Math.ceil(n / rows)));
 }
 new ResizeObserver(() => prRows()).observe($('#view-presets'));
+/* the strip of section tabs and the «этап» buttons share one line: the strip stops where the
+   buttons begin, otherwise the last tab hides under them */
+function fitTopBar() {
+  const mb = $('#modeBar'); if (!mb) return;
+  const bar = document.querySelector('.view.active .st-bar');
+  const w = bar && bar.offsetParent ? Math.ceil(bar.getBoundingClientRect().width) : 0;
+  mb.style.right = (w ? w + 18 : 24) + 'px';
+}
+addEventListener('resize', fitTopBar);
+document.addEventListener('click', e => { if (e.target.closest('.nav')) setTimeout(fitTopBar, 30); }, true);
+setTimeout(fitTopBar, 60);
+
 /* settings: every block folds (the state is remembered); the long rarely needed ones start folded */
 (function () {
   const KEY = 'h3-fold', def = { mdOwnCard: 1, clCard: 1, mdNodesCard: 1 }; let st = {};

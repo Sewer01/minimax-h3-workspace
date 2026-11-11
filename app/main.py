@@ -176,16 +176,11 @@ def main():
     port = free_port()
     busy = single.hold(server.DATA_DIR, port)  # a second copy over the same folder spoils settings, queue and ComfyUI
     if busy is not None:
-        if not (busy and show_running_window(busy)):
-            try:
-                ctypes.windll.user32.MessageBoxW(
-                    0, "Программа уже работает с этой папкой данных: окно найдите на другом экране или "
-                       "в панели задач.\n\nЕсли окна нигде нет, а это окно появляется при каждом запуске, "
-                       "завершите процесс Minimax H3 Workspace в диспетчере задач и запустите программу "
-                       "заново: окно закрывается не всегда честно, а процесс остаётся и держит папку.",
-                    "Minimax H3 Workspace", 0x40)
-            except Exception:
-                pass
+        # Two copies never run over one folder - that much stays. But a person should not be sent to
+        # the task manager either: if another copy is alive, its window is brought forward, and a
+        # windowless ghost is closed by single.py before this line is ever reached. When we still
+        # cannot show a window, this copy simply steps aside without a word.
+        show_running_window(busy)
         return
     srv = ServerThread(port)
     srv.start()

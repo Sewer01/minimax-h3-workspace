@@ -105,6 +105,40 @@ def has_window(pid):
     return bool(found)
 
 
+def our_processes():
+    """[(pid, started_seconds_ago)] of processes with our own executable name, ours excluded.
+
+    Used only when the folder is locked and the lock file cannot be trusted: a copy that died
+    badly leaves neither a pid nor a readable lock behind, and such a ghost must not be the
+    reason the program refuses to start.
+    """
+    import json as _json
+    me = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).name
+    base = Path(me).stem
+    ps = ("$ErrorActionPreference='SilentlyContinue'; Get-Process -Name '" + base + "' | "
+          "Where-Object { $_.Id -ne " + str(os.getpid()) + " } | "
+          "ForEach-Object { [pscustomobject]@{ id = $_.Id; age = [int](((Get-Date) - $_.StartTime).TotalSeconds) } } | ConvertTo-Json -Compress")
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
+                           text=True, timeout=25, creationflags=0x08000000)
+        data = _json.loads((r.stdout or "").strip() or "[]")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return []
+    if isinstance(data, dict):
+        data = [data]
+    return [(int(d["id"]), int(d.get("age") or 0)) for d in data if isinstance(d, dict) and d.get("id")]
+
+
+def _kill(pid):
+    try:
+        subprocess.run(["taskkill", "/PID", str(int(pid)), "/T", "/F"], capture_output=True, timeout=25,
+                       creationflags=0x08000000)
+        time.sleep(1.2)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def sweep_zombie(data_dir):
     """Close a copy that holds this folder without a window, so a new start is possible.
 
@@ -124,17 +158,13 @@ def sweep_zombie(data_dir):
         return 0
     if age < _zombie_after:
         return 0
-    me = Path(sys.argv[0] if not getattr(sys, "frozen", False) else sys.executable).name.lower()
+    me = Path(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]).name.lower()
     exe = _process_exe(pid)
     if exe and Path(exe).name.lower() != me:
         return 0                                    # the pid belongs to something else entirely
-    try:
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=25,
-                       creationflags=0x08000000)   # CREATE_NO_WINDOW: whole tree, its ComfyUI included
-        time.sleep(1.2)
+    if _kill(pid):                                  # whole tree: its ComfyUI child goes too
         return pid
-    except (OSError, subprocess.SubprocessError):
-        return 0
+    return 0
 
 
 def _process_exe(pid):
@@ -171,6 +201,13 @@ def hold(data_dir, port=None):
     h = claim()
     if h is None:
         sweep_zombie(data_dir)         # a copy with no window and no answer must not lock the folder away
+        # the lock file may itself be the casualty of a hard kill: no pid inside. Then every process
+        # with our own name that has no window and does not answer its port is a ghost, and closing
+        # it is what makes this start possible without asking the person anything.
+        if not running(data_dir):
+            for pid, age in our_processes():
+                if age > 20 and not has_window(pid):
+                    _kill(pid)
         h = claim()
     if h is None:
         return running(data_dir)

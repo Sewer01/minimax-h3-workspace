@@ -1564,10 +1564,11 @@ body.dropping::after{content:'Отпустите — программа разл
           <div id="mdCloud" style="margin-top:10px"></div>
         </details>
         <div class="card" id="mdEngineCard" style="margin-bottom:16px">
-          <div class="card-h"><h3>Движок</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mdUpd" type="button" title="Спросить на GitHub, есть ли новая версия программы">Проверить обновление</button><button class="btn" id="mdReset">Изменить настройки</button></span></div>
+          <div class="card-h"><h3>Движок</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mdUpd" type="button" title="Спросить на GitHub, есть ли новая версия программы">Проверить программу</button><button class="btn" id="mdEngUpd" type="button" title="Спросить GitHub, вышла ли новая версия ComfyUI, и обновить её, не трогая модели и ноды">Проверить движок</button><button class="btn" id="mdReset">Изменить настройки</button></span></div>
           <div class="kv" id="mdEngine"></div>
           <div class="hint" id="engProbe" style="margin-top:8px"></div>
           <div class="hint" id="mdUpdState" style="margin-top:6px"></div>
+          <div class="hint" id="mdEngState" style="margin-top:6px"></div>
         </div>
         <div class="card" id="mdRentCard">
           <div class="card-h"><h3>Аренда мощного компьютера</h3></div>
@@ -1615,9 +1616,10 @@ equirements.txt</code><br>
           <div class="hint" id="mdDlN" style="margin-top:6px"></div>
         </div>
         <div class="card" id="mdModelsCard">
-          <div class="card-h"><h3>Модели</h3><span><button class="btn mini" id="mdRecheck" type="button" title="Спросить ComfyUI ещё раз, какие файлы он видит">Проверить ещё раз</button> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button> <button class="btn pri" id="mdFixExt" hidden>Скачать недостающие</button></span></div>
+          <div class="card-h"><h3>Модели</h3><span><button class="btn mini" id="mdNodesUpd" type="button" title="Сравнить закреплённые в программе версии нод с последними в их репозиториях">Проверить обновления нод</button> <button class="btn mini" id="mdRecheck" type="button" title="Спросить ComfyUI ещё раз, какие файлы он видит">Проверить ещё раз</button> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button> <button class="btn pri" id="mdFixExt" hidden>Скачать недостающие</button></span></div>
           <div id="mdAdd" class="rent-row" style="margin:0 0 12px"></div>
           <label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px;cursor:pointer" title="Те же файлы, но с другого сервера. Помогает, когда Hugging Face грузит медленно или не открывается."><input type="checkbox" id="mdMirror" style="margin-top:3px"><span>Если Hugging Face грузит медленно: скачивать через зеркало <b>hf-mirror.com</b>. Файлы те же. Скачивание можно закрыть и продолжить позже, оно докачается с того же места.</span></label>
+          <div class="mlist" id="nodesUpd" hidden style="margin-bottom:12px"></div>
           <div class="mlist" id="mlist"></div>
         </div>
       </div>
@@ -3589,6 +3591,73 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
         await postJSON('/api/update/install', {});
         say('Устанавливаем. Программа закроется сама, установщик подождёт её выхода и закончит обновление — около минуты.');
       } catch (err) { say('Не получилось: ' + esc(err.message)); e.target.disabled = false; }
+    };
+  };
+})();
+/* ---------- updates of the engine and of the node packs (not of the program itself) ---------- */
+(() => {
+  const b = $('#mdEngUpd'), st = $('#mdEngState'); if (!b) return;
+  const say = html => { st.innerHTML = html; };
+  const roll = () => `<button class="btn mini" id="mdEngBack" type="button" style="margin-left:6px">Вернуть прежнюю версию</button>`;
+  async function poll() {
+    let s = {};
+    try { s = await (await fetch('/api/updates/state', { cache: 'no-store' })).json(); } catch { return false; }
+    if (s.stage === 'downloading') say(`Скачиваем ComfyUI ${esc(s.version || '')}… ${s.pct || 0}%`);
+    else if (s.stage === 'backup') say('Сохраняем резервную копию файлов ядра…');
+    else if (s.stage === 'installing') say('Ставим новые файлы ядра; модели, ноды и ваши данные не трогаем…');
+    else if (s.stage === 'done') { say(`Готово: ядро обновлено до ${esc(s.version || '')}, файлов ${s.files || 0}. ComfyUI сейчас перезапустится.${roll()}`); wire(); loadStatus(); return true; }
+    else if (s.stage === 'error') { say('Не вышло: ' + esc(s.error || '') + roll()); wire(); return true; }
+    else return true;
+    setTimeout(poll, 2000);
+    return false;
+  }
+  function wire() { const rb = $('#mdEngBack'); if (rb) rb.onclick = async () => {
+    rb.disabled = true; say('Возвращаем прежнюю версию ядра…');
+    try { await postJSON('/api/updates/core/rollback', {}); say('Прежняя версия на месте, ComfyUI перезапускается.'); loadStatus(); }
+    catch (e) { say('Не удалось вернуть: ' + esc(e.message)); rb.disabled = false; }
+  }; }
+  b.onclick = async () => {
+    b.disabled = true; say('Спрашиваю GitHub…');
+    let c = null;
+    try { c = await (await fetch('/api/updates/check', { cache: 'no-store' })).json(); }
+    catch (e) { say('Интернет не отвечает: ' + esc(e.message)); b.disabled = false; return; }
+    b.disabled = false;
+    const core = c.core || {};
+    if (!core.installed) { say('Не видно, какая версия ядра установлена: ComfyUI не запущен.'); return; }
+    if (!core.newer) { say(`ComfyUI у вас ${esc(core.installed)} — это последняя версия.`); return; }
+    say(`Вышел ComfyUI <b>${esc(core.latest)}</b> (у вас ${esc(core.installed)}). Обновим только код ядра (несколько десятков мегабайт): модели, ноды и папка вывода не меняются, а перезаписываемые файлы уйдут в резерв, из которого можно вернуть.
+      <button class="btn pri mini" id="mdEngGo" type="button" style="margin-left:6px">Обновить движок</button>${roll()}`);
+    $('#mdEngGo').onclick = async e => {
+      if ((window.QUEUE || []).some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация: дождитесь конца'); return; }
+      e.target.disabled = true;
+      try { await postJSON('/api/updates/core', { version: core.latest }); poll(); }
+      catch (err) { say('Не получилось начать: ' + esc(err.message)); }
+    };
+  };
+})();
+(() => {   // node packs: the program pins a commit on purpose, so this only reports and offers a swap
+  const b = $('#mdNodesUpd'), box = $('#nodesUpd'); if (!b || !box) return;
+  b.onclick = async () => {
+    b.disabled = true; box.hidden = false; box.innerHTML = '<div class="note"><span>Сравниваем закреплённые версии нод с их репозиториями…</span></div>';
+    let c = null;
+    try { c = await (await fetch('/api/updates/check', { cache: 'no-store' })).json(); }
+    catch (e) { box.innerHTML = `<div class="note warn"><span>Интернет не отвечает: ${esc(e.message)}</span></div>`; b.disabled = false; return; }
+    b.disabled = false;
+    const packs = c.packs || [];
+    box.innerHTML = `<b style="font-size:13px">Ноды: что вышло новее</b><div class="hint" style="margin:2px 0 8px">Программа держит ноды на проверенных коммитах. Новее — не значит лучше: если после обновления перестанет считываться раздел, жмите «Вернуть».</div>` +
+      packs.map(p => `<div class="m"><b>${esc(p.name)}<small>${p.installed ? 'стоит' : 'не установлена'} · закреплено за ${esc(p.pinned)}${p.backup ? ' · есть копия ' + esc(p.backup) : ''}</small></b><span class="hint sz">${p.newer ? 'новее от ' + esc(p.date || '') : ''}</span><span class="st ${p.newer ? 'miss' : 'ok'}">${p.newer ? 'есть ' + esc(p.latest) : 'актуальна'}</span><div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${p.newer && p.installed ? `<button class="btn mini" data-np="${esc(p.name)}" type="button">Обновить ноду</button>` : ''}${p.backup ? `<button class="btn mini" data-nb="${esc(p.name)}" type="button">Вернуть</button>` : ''}</div></div>`).join('');
+    box.onclick = async e => {
+      const u = e.target.closest('[data-np]'), r = e.target.closest('[data-nb]');
+      if (u) {
+        if ((window.QUEUE || []).some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация: дождитесь конца'); return; }
+        u.disabled = true; u.textContent = 'Обновляем…';
+        try { const j = await postJSON('/api/updates/pack', { name: u.dataset.np }); toast(`Нода ${u.dataset.np} на коммите ${j.commit}`); b.onclick(); }
+        catch (err) { toast(err.message); u.disabled = false; u.textContent = 'Обновить ноду'; }
+      } else if (r) {
+        r.disabled = true;
+        try { await postJSON('/api/updates/pack/rollback', { name: r.dataset.nb }); toast('Прежняя нода на месте'); b.onclick(); }
+        catch (err) { toast(err.message); r.disabled = false; }
+      }
     };
   };
 })();

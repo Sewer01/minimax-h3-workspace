@@ -1302,6 +1302,131 @@ class App:
         self.start_managed()
         return True
 
+    # ---------- updates of the engine and of the node packs ----------
+
+    async def h_updates_check(self, _req):
+        """What is newer upstream: ComfyUI itself and the node packs pinned in the catalog."""
+        return web.json_response(await updates.check(self.session, self.comfy_root()))
+
+    async def h_updates_state(self, _req):
+        return web.json_response(getattr(self, "update_state", None) or {"stage": "idle"})
+
+    async def h_updates_core(self, req):
+        """Update the core code from the release tag, keeping models, nodes and user data.
+
+        The portable package is two gigabytes and unpacking it over the install would also replace
+        custom_nodes; the source of the same release is tens of megabytes and is exactly what a
+        manual ComfyUI install updates itself with. Files we are about to overwrite go into a zip
+        in the data folder first, and the same place offers to put them back.
+        """
+        if not self.comfy_root():
+            return web.json_response({"error": "Папка ComfyUI не найдена"}, status=409)
+        if self.installer:
+            return web.json_response({"error": "Сначала дождитесь конца установки"}, status=409)
+        if self.jobs:
+            return web.json_response({"error": "Идёт генерация: дождитесь её конца"}, status=409)
+        body = {}
+        try:
+            body = await req.json()
+        except Exception:
+            pass                      # an empty body is fine: the newest release is the target
+        self.core_update_task = asyncio.create_task(self.run_core_update(str(body.get("version") or "")))
+        return web.json_response({"ok": True})
+
+    async def h_updates_core_rollback(self, _req):
+        root = self.comfy_root()
+        if not root:
+            return web.json_response({"error": "Папка ComfyUI не найдена"}, status=409)
+        if self.process:
+            await asyncio.to_thread(self.process.stop)
+            self.process = None
+        try:
+            name = await asyncio.to_thread(updates.rollback, root, DATA_DIR)
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        await asyncio.to_thread(self.wake_comfy)
+        applog(f"ядро возвращено из копии {name}")
+        return web.json_response({"ok": True, "from": name})
+
+    async def run_core_update(self, want):
+        root = self.comfy_root()
+        st = self.update_state = {"stage": "checking", "pct": 0, "error": None, "version": want}
+        try:
+            if not st["version"]:
+                rel = await updates.gh_json(self.session, "/repos/Comfy-Org/ComfyUI/releases/latest")
+                ver = updates.version_of((rel or {}).get("tag_name"))
+                if not ver:
+                    raise RuntimeError("GitHub не отдал версию")
+                st["version"] = ".".join(map(str, ver))
+            st["stage"] = "downloading"
+            archive = DATA_DIR / "tmp" / f"comfyui-{st['version']}.tar.gz"
+            archive.parent.mkdir(parents=True, exist_ok=True)
+
+            async def progress(got, total):
+                st["pct"] = round(got * 100 / total) if total else 0
+
+            await updates.download(self.session, updates.source_url(st["version"]), archive, progress)
+            st["stage"] = "backup"
+            mark = await asyncio.to_thread(updates.backup_source, root, DATA_DIR)
+            st["backup"] = mark.name
+            if self.process:
+                await asyncio.to_thread(self.process.stop)
+                self.process = None
+            st["stage"] = "installing"
+            files = await asyncio.to_thread(updates.apply_source, root, archive)
+            archive.unlink(missing_ok=True)
+            st.update(stage="done", pct=100, files=files)
+            await asyncio.to_thread(self.wake_comfy)
+            applog(f"ядро обновлено до {st['version']}: файлов {files}, копия {mark.name}")
+        except Exception as e:
+            st.update(stage="error", error=f"{type(e).__name__}: {str(e)[:260]}")
+            applog(f"обновление ядра не удалось: {type(e).__name__}: {str(e)[:200]}")
+            await asyncio.to_thread(self.wake_comfy)
+
+    async def h_updates_pack(self, req):
+        """One node pack to the newest commit of its repository, keeping the old folder."""
+        body = await req.json()
+        name = str(body.get("name") or "")
+        pack = next((x for x in catalog.NODE_PACKS if x["name"] == name), None)
+        root = self.comfy_root()
+        if not pack or not root:
+            return web.json_response({"error": "Неизвестная нода или нет папки ComfyUI"}, status=400)
+        if self.jobs:
+            return web.json_response({"error": "Идёт генерация: дождитесь её конца"}, status=409)
+        head = await updates.gh_json(self.session, f"/repos/{pack['repo']}/commits?per_page=1")
+        sha = ((head or [{}])[0]).get("sha") or ""
+        if not sha:
+            return web.json_response({"error": "GitHub не ответил"}, status=502)
+        archive = root / "downloads" / f'{pack["name"]}-{sha[:8]}.zip'
+        try:
+            await updates.download(self.session, f"https://github.com/{pack['repo']}/archive/{sha}.zip", archive)
+        except Exception as e:
+            return web.json_response({"error": f"Скачать не удалось: {e}"}, status=502)
+        if self.process:
+            await asyncio.to_thread(self.process.stop)
+            self.process = None
+        try:
+            kept = await asyncio.to_thread(updates.update_pack, root, pack, sha)
+        except Exception as e:
+            await asyncio.to_thread(self.wake_comfy)
+            return web.json_response({"error": str(e)}, status=500)
+        await asyncio.to_thread(self.wake_comfy)
+        applog(f"нода {name} обновлена до {sha[:10]}" + (f", старая копия {kept}" if kept else ""))
+        return web.json_response({"ok": True, "commit": sha[:10], "backup": kept})
+
+    async def h_updates_pack_rollback(self, req):
+        body = await req.json()
+        try:
+            back = await asyncio.to_thread(updates.rollback_pack, self.comfy_root(), str(body.get("name") or ""))
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=404)
+        if self.process:
+            await asyncio.to_thread(self.process.stop)
+            self.process = None
+        await asyncio.to_thread(self.wake_comfy)
+        applog(f"нода {body.get('name')} возвращена из {back}")
+        return web.json_response({"ok": True, "from": back})
+
     async def h_core_log(self, _req):
         """The last lines of the ComfyUI log and of the program's own log: the screen says only
            "no answer", these two say why."""
@@ -3323,6 +3448,12 @@ def build_app(comfy_override=None):
     web.post("/api/setup/restore", state.h_setup_restore),
     web.post("/api/engine/start", state.h_engine_start),
     web.get("/api/core-log", state.h_core_log),
+    web.get("/api/updates/check", state.h_updates_check),
+    web.get("/api/updates/state", state.h_updates_state),
+    web.post("/api/updates/core", state.h_updates_core),
+    web.post("/api/updates/core/rollback", state.h_updates_core_rollback),
+    web.post("/api/updates/pack", state.h_updates_pack),
+    web.post("/api/updates/pack/rollback", state.h_updates_pack_rollback),
     web.post("/api/window_mode", state.h_window_mode),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),

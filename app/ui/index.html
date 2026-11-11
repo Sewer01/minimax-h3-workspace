@@ -1563,10 +1563,11 @@ body.dropping::after{content:'Отпустите — программа разл
           </summary>
           <div id="mdCloud" style="margin-top:10px"></div>
         </details>
-        <div class="card" style="margin-bottom:16px">
-          <div class="card-h"><h3>Движок</h3><button class="btn" id="mdReset">Изменить настройки</button></div>
+        <div class="card" id="mdEngineCard" style="margin-bottom:16px">
+          <div class="card-h"><h3>Движок</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mdUpd" type="button" title="Спросить на GitHub, есть ли новая версия программы">Проверить обновление</button><button class="btn" id="mdReset">Изменить настройки</button></span></div>
           <div class="kv" id="mdEngine"></div>
           <div class="hint" id="engProbe" style="margin-top:8px"></div>
+          <div class="hint" id="mdUpdState" style="margin-top:6px"></div>
         </div>
         <div class="card" id="mdRentCard">
           <div class="card-h"><h3>Аренда мощного компьютера</h3></div>
@@ -3567,6 +3568,30 @@ $('#wzRestore').onclick = async () => {
   };
 })();
 setTimeout(fitTopBar, 700);   // the pills are built a moment after the page opens
+(() => {   // a manual update check: the same two server calls as the banner, from the settings card
+  const b = $('#mdUpd'), st = $('#mdUpdState'); if (!b) return;
+  const say = html => { st.innerHTML = html; };
+  b.onclick = async () => {
+    b.disabled = true; say('Проверяю…');
+    let u = null;
+    try { u = await (await fetch('/api/update/check', { cache: 'no-store' })).json(); }
+    catch (e) { say('Интернет не отвечает: ' + esc(e.message)); b.disabled = false; return; }
+    if (u.error) { say(esc(u.error)); b.disabled = false; return; }
+    if (!u.available) { say(`У вас последняя версия — ${esc(u.current || '')}.`); b.disabled = false; return; }
+    if (!u.can_update) { say(`Вышла ${esc(u.version)}, но установить её отсюда нельзя: проверьте, что папка программы доступна для записи.`); b.disabled = false; return; }
+    say(`Вышла <b>${esc(u.version)}</b> (у вас ${esc(u.current)}), ${GB(u.size || 0)}. Настройки, Библиотека и модели не меняются: скачается только установщик, он дождётся выхода программы и поставит новые файлы сам.
+      <button class="btn pri mini" id="mdUpdGo" type="button" style="margin-left:6px">Скачать и установить</button>`);
+    b.disabled = false;
+    $('#mdUpdGo').onclick = async e => {
+      if (QUEUE.some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация: дождитесь конца и нажмите снова'); return; }
+      e.target.disabled = true; say('Скачиваем обновление, файл проверяется по контрольной сумме. Не закрывайте программу.');
+      try {
+        await postJSON('/api/update/install', {});
+        say('Устанавливаем. Программа закроется сама, установщик подождёт её выхода и закончит обновление — около минуты.');
+      } catch (err) { say('Не получилось: ' + esc(err.message)); e.target.disabled = false; }
+    };
+  };
+})();
 $('#mdRecheck').onclick = async () => { const b = $('#mdRecheck'); b.disabled = true;
   try { await loadStatus(); toast('Проверили ещё раз'); } finally { b.disabled = false; } };
 $('#mdReset').onclick = async () => {
@@ -5036,7 +5061,7 @@ setTimeout(fitTopBar, 60);
 
 /* settings: every block folds (the state is remembered); the long rarely needed ones start folded */
 (function () {
-  const KEY = 'h3-fold', def = { mdOwnCard: 1, clCard: 1, mdNodesCard: 1 }; let st = {};
+  const KEY = 'h3-fold', def = { mdEngineCard: 1, mdRentCard: 1, mdOwnCard: 1, clCard: 1, mdNodesCard: 1 }; let st = {};
   try { st = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}
   $$('#mdStatus > .card').forEach((c, i) => {
     if (c.id === 'mdDl') return;

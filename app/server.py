@@ -45,6 +45,17 @@ import speech
 import updater
 from version import APP_VERSION
 
+def build_stamp():
+    """Date and time of this build, for the sidebar: the number changes only at a release, so
+    without the stamp of the exe itself a person cannot tell yesterday's build from today's."""
+    from datetime import datetime
+    try:
+        p = Path(sys.executable) if getattr(sys, "frozen", False) else Path(__file__)
+        return datetime.fromtimestamp(p.stat().st_mtime).strftime("%d.%m.%Y %H:%M")
+    except (OSError, ValueError):
+        return ""
+
+
 def split_frames(text):
     """One frame per line / numbered item: "1: ...", "Frame 2. ...", "Кадр 3 - ..."."""
     parts = re.split(r"(?m)^\s*(?:frame|кадр)?\s*\d+\s*[:.)\-–]\s*", text.strip(), flags=re.I)
@@ -3504,7 +3515,7 @@ def build_app(comfy_override=None):
         web.post("/api/upscale", state.h_upscale),
         web.post("/api/upscale_file", state.h_upscale_file),
         web.post("/api/grain", state.h_grain),
-        web.get("/api/version", lambda _req: web.json_response({"version": APP_VERSION})),
+        web.get("/api/version", lambda _req: web.json_response({"version": APP_VERSION, "built": build_stamp()})),
         web.get("/api/update/check", state.h_update_check),
         web.post("/api/update/install", state.h_update_install),
         web.post("/api/generate/qwen", state.h_generate_qwen),

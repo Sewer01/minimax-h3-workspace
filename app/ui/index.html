@@ -1415,7 +1415,7 @@ body.dropping::after{content:'Отпустите — программа разл
         <button class="btn" id="bulkSave" hidden>Сохранить выбранные</button>
         <button class="btn danger" id="bulkDel" hidden>Удалить выбранные</button>
         <span class="zoom-btns" title="Размер значков (или Ctrl + колесо мыши)"><button class="btn" id="libSm" type="button">−</button><button class="btn" id="libLg" type="button">+</button></span>
-        <button class="btn" id="selToggle">Выбрать</button>
+        <button class="btn" id="selAll" type="button" hidden title="Выбрать всё, что видно в этом разделе (с учётом фильтра)">Выбрать все</button> <button class="btn" id="selToggle">Выбрать</button>
       </div>
       <div class="lib" id="lib"></div>
     </section>
@@ -2754,6 +2754,51 @@ function fitSlot(r, img) {
 }
 function resetSlot(r) { r.style.aspectRatio = ''; r.classList.remove('wide'); }
 
+/* ---------- cells of pictures ----------
+   dragging a filled cell onto another swaps them: the order of the cells is the order of
+   Picture 1, 2… in the prompt, and re-uploading a picture to change its place is annoying */
+function slotShow(r, src, file) {
+  const img = $('img', r), plus = $('.plus', r), tag = $('.tag', r);
+  if (!src) {
+    if (img) img.remove();
+    r._file = null; r.classList.remove('filled'); resetSlot(r);
+    if (plus) plus.hidden = false;
+    if (tag) tag.hidden = true;
+    return;
+  }
+  const el = img || document.createElement('img');
+  if (!img) r.prepend(el);
+  el.src = src;
+  if (file !== undefined) r._file = file;
+  r.classList.add('filled');
+  if (plus) plus.hidden = true;
+  fitSlot(r, el);
+}
+function wireSlotSwap(zones, after) {
+  let from = null;
+  zones.forEach(z => {
+    z.draggable = true;
+    z.addEventListener('dragstart', e => {
+      if (!z._file) { e.preventDefault(); return; }
+      from = z;
+      try { e.dataTransfer.setData('text/plain', 'h3-slot'); e.dataTransfer.effectAllowed = 'move'; } catch {}
+    });
+    z.addEventListener('dragend', () => { from = null; });
+    z.addEventListener('dragover', e => { if (from && from !== z) { e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch {} } });
+    z.addEventListener('drop', e => {
+      if (!from || from === z) return;
+      e.preventDefault(); e.stopPropagation();
+      const a = from, b = z;
+      const fa = a._file, pa = slotShowPicture(a), fb = b._file, pb = slotShowPicture(b);
+      slotShow(b, pa, fa); slotShow(a, pb, fb);
+      from = null;
+      if (after) after();
+    });
+  });
+}
+const slotShowPicture = r => ($('img', r) || {}).src || '';
+const clearSlots = zones => zones.forEach(z => { const x = $('.x', z); if (x) x.click(); });
+
 // pick the format closest to a picture's proportions once it has loaded
 function fitAspect(st, img, upd, force) {
   if ((st.userAspect && !force) || (st.locked && st.locked())) return;
@@ -4008,8 +4053,11 @@ function renderLib() {
       <div class="li-b"><p>${esc(it.prompt) || '<span style="color:var(--dim)">без промпта</span>'}</p><small>${[it.res, it.aspect, fmtDate(it.date)].filter(Boolean).join(' · ')}</small></div>
     </div>`).join('')
     : `<div class="empty" style="grid-column:1/-1">${LIB.length ? 'В этом разделе пока пусто' : 'Здесь появятся ваши видео после первой генерации'}</div>`;
-  $('#selCount').hidden = $('#bulkSave').hidden = $('#bulkDel').hidden = !selecting;
+  $('#selCount').hidden = $('#bulkSave').hidden = $('#bulkDel').hidden = $('#selAll').hidden = !selecting;
   $('#selCount').textContent = `выбрано: ${selected.size}`;
+  $('#selAll').textContent = items.length && items.every(it => selected.has(it.id)) ? 'Снять выбор' : `Выбрать все (${items.length})`;
+  $('#selAll').disabled = !items.length;
+  $('#selAll')._shown = items;   // what the filter shows now: choosing all means these, not everything
   $('#bulkSave').disabled = $('#bulkDel').disabled = !selected.size;
   $('#selToggle').textContent = selecting ? 'Готово' : 'Выбрать';
   $('#selToggle').classList.toggle('on', selecting);
@@ -4164,6 +4212,12 @@ $('#libFilter').onclick = e => {
   const c = e.target.closest('.chip'); if (!c) return;
   libFilter = c.dataset.f; $$('#libFilter .chip').forEach(x => x.classList.toggle('on', x === c)); renderLib();
 };
+$('#selAll').onclick = () => {
+  const shown = $('#selAll')._shown || [];
+  const all = shown.length && shown.every(it => selected.has(it.id));
+  shown.forEach(it => all ? selected.delete(it.id) : selected.add(it.id));
+  renderLib();
+};
 $('#selToggle').onclick = () => { selecting = !selecting; selected.clear(); renderLib(); };
 $('#bulkSave').onclick = () => saveItems([...selected].map(byId));
 $('#bulkDel').onclick = () => askDelete([...selected]);
@@ -4228,7 +4282,7 @@ function makeRefMode(cfg) {
     <div class="head"><div><h1>${cfg.title}</h1><p>${cfg.sub}</p></div><div class="mode-pill"><i></i><span class="rm-pill">${cfg.pill}</span></div></div>
     <div class="grid"><div class="col">
       <div class="card">
-        <div class="card-h"><h3><span class="n">1</span>Референсы</h3><span class="counter rm-count"></span>
+        <div class="card-h"><h3><span class="n">1</span>Референсы</h3><span class="counter rm-count"></span> <button class="btn mini rm-clr" type="button" title="Убрать все изображения сразу">Очистить всё</button>
           <button class="btn mini rm-clear" type="button" title="Убрать все картинки, видео, аудио и промпт этого раздела">Очистить</button></div>
         <div class="refs rm-imgs"></div>
         <div class="rm-media">
@@ -4284,6 +4338,9 @@ function makeRefMode(cfg) {
     r.addEventListener('drop', e => { e.preventDefault(); set(e.dataTransfer.files[0]); });
     $('.x', r).onclick = e => { e.preventDefault(); e.stopPropagation(); $('img', r)?.remove(); input.value = ''; r._file = null; resetSlot(r); r.classList.remove('filled'); $('.plus', r).hidden = false; $('.tag', r).hidden = true; changed(); };
   }
+  wireSlotSwap($$('.ref', imgsEl), changed);
+  $('.rm-clr', root)?.addEventListener('click', () => clearSlots($$('.ref', imgsEl)));
+
   // video / audio slots
   const mkSlots = (el, n, accept, icon, label) => {
     for (let i = 0; i < n; i++) {
@@ -7097,7 +7154,7 @@ const imgSeedForm = (S, fd) => { if (S.seedFixed && S.seed) fd.append('seed', S.
 })();
 
 
-fetch('/api/version').then(r => r.json()).then(v => { $('#appVer').textContent = 'Версия ' + v.version; }).catch(() => {});
+fetch('/api/version').then(r => r.json()).then(v => { $('#appVer').textContent = 'Версия ' + v.version + (v.built ? ' · сборка ' + v.built : ''); }).catch(() => {});
 /* ---------- updates: a new release on GitHub -> a bar with "Обновить" ---------- */
 (() => {
   if (!API) return;

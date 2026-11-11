@@ -5438,8 +5438,7 @@ function renderAssistant(el, m) {
     const closed = i < parts.length - 1;
     const text = m.edits?.[i] ?? p.replace(/\n$/, '');
     html += `<div class="pblock"><pre${closed ? ` contenteditable="plaintext-only" spellcheck="false" data-b="${i}" title="Текст можно править прямо здесь"` : ''}>${esc(text)}</pre>${closed ? `<div class="pb-act">
-      <button class="btn pri" data-send="${m.to || AG.target}">В ${AG_NAMES[m.to || AG.target]}</button>
-      <button class="btn pri" data-send="${AG.target}">В ${AG_NAMES[AG.target]}</button>
+      <button class="btn pri" data-send="${m.to || AG.target}" title="Промпт уйдёт в раздел, который выбрал ваш запрос">В ${AG_NAMES[m.to || AG.target] || 'раздел'}</button>
       <button class="btn" data-ru title="Русский перевод только для чтения: в модель уходит английский текст">Показать по-русски</button><button class="btn" data-copy>Копировать</button><button class="btn" data-paste title="Вставить скопированный текст на место выделенного (или в конец)">Вставить</button><small class="pb-n">${text.length} симв.</small></div>` : ''}${m.ru?.[i] ? `<div class="pb-ru"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px"><b>По-русски (только для чтения):</b><button class="btn" data-copy-ru type="button" style="padding:3px 10px;font-size:12px">Копировать русский</button></div><span class="pb-ru-t">${esc(m.ru[i]).replace(/\n/g, '<br>')}</span></div>` : ''}</div>`;
   });
   if (m.status && !m.content) html += `<div class="st">${esc(m.status)}</div>`;

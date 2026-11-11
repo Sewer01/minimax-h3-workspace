@@ -1564,10 +1564,9 @@ body.dropping::after{content:'Отпустите — программа разл
           <div id="mdCloud" style="margin-top:10px"></div>
         </details>
         <div class="card" id="mdEngineCard" style="margin-bottom:16px">
-          <div class="card-h"><h3>Движок</h3><span style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="mdUpd" type="button" title="Спросить на GitHub, есть ли новая версия программы">Проверить программу</button><button class="btn" id="mdEngUpd" type="button" title="Спросить GitHub, вышла ли новая версия ComfyUI, и обновить её, не трогая модели и ноды">Проверить движок</button><button class="btn" id="mdReset">Изменить настройки</button></span></div>
+          <div class="card-h"><h3>Движок</h3><button class="btn" id="mdEngUpd" type="button" title="Спросить GitHub, вышла ли новая версия ComfyUI, и обновить её, не трогая модели и ноды">Проверить движок</button></div>
           <div class="kv" id="mdEngine"></div>
           <div class="hint" id="engProbe" style="margin-top:8px"></div>
-          <div class="hint" id="mdUpdState" style="margin-top:6px"></div>
           <div class="hint" id="mdEngState" style="margin-top:6px"></div>
         </div>
         <div class="card" id="mdRentCard">
@@ -1621,6 +1620,15 @@ equirements.txt</code><br>
           <label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px;cursor:pointer" title="Те же файлы, но с другого сервера. Помогает, когда Hugging Face грузит медленно или не открывается."><input type="checkbox" id="mdMirror" style="margin-top:3px"><span>Если Hugging Face грузит медленно: скачивать через зеркало <b>hf-mirror.com</b>. Файлы те же. Скачивание можно закрыть и продолжить позже, оно докачается с того же места.</span></label>
           <div class="mlist" id="nodesUpd" hidden style="margin-bottom:12px"></div>
           <div class="mlist" id="mlist"></div>
+        </div>
+        <div class="card" id="mdServiceCard" style="margin-bottom:16px">
+          <div class="card-h"><h3>Обслуживание</h3></div>
+          <div class="hint">Здесь то, что к выбранному режиму относится косвенно: обновление самой программы и полный сброс.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" id="mdUpd" type="button" title="Спросить на GitHub, есть ли новая версия программы">Проверить обновление программы</button></div>
+          <div class="hint" id="mdUpdState" style="margin-top:6px"></div>
+          <div class="note warn" style="margin-top:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 9v4M12 17h0M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            <span><b>Сброс настроек</b> остановит ComfyUI и вернёт на стартовый экран: программа заново спросит папку, соберёт список моделей и нод. Видео в Библиотеке и очередь останутся на месте.</span></div>
+          <button class="btn" id="mdReset" type="button" style="margin-top:10px">Сброс настроек</button>
         </div>
       </div>
     </section>
@@ -3597,7 +3605,10 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
 /* ---------- updates of the engine and of the node packs (not of the program itself) ---------- */
 (() => {
   const b = $('#mdEngUpd'), st = $('#mdEngState'); if (!b) return;
-  const say = html => { st.innerHTML = html; };
+  const say = html => {
+    st.innerHTML = html;
+    const card = b.closest('.card'); if (card && html) card.classList.remove('collapsed');   // the answer must not stay folded
+  };
   const roll = () => `<button class="btn mini" id="mdEngBack" type="button" style="margin-left:6px">Вернуть прежнюю версию</button>`;
   async function poll() {
     let s = {};
@@ -3617,14 +3628,15 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
     catch (e) { say('Не удалось вернуть: ' + esc(e.message)); rb.disabled = false; }
   }; }
   b.onclick = async () => {
-    b.disabled = true; say('Спрашиваю GitHub…');
+    b.disabled = true; say('Спрашиваю GitHub…'); toast('Проверяю версию ComfyUI…');
     let c = null;
     try { c = await (await fetch('/api/updates/check', { cache: 'no-store' })).json(); }
     catch (e) { say('Интернет не отвечает: ' + esc(e.message)); b.disabled = false; return; }
     b.disabled = false;
     const core = c.core || {};
-    if (!core.installed) { say('Не видно, какая версия ядра установлена: ComfyUI не запущен.'); return; }
-    if (!core.newer) { say(`ComfyUI у вас ${esc(core.installed)} — это последняя версия.`); return; }
+    if (!core.installed) { say('Не видно, какая версия ядра установлена: ComfyUI не запущен.'); toast('Не видно версии ComfyUI: он сейчас не запущен'); return; }
+    if (!core.newer) { say(`ComfyUI у вас ${esc(core.installed)} — это последняя версия, обновлять нечего.`); toast(`ComfyUI ${esc(core.installed)} — обновлений нет`); return; }
+    toast(`Вышел ComfyUI ${esc(core.latest)} — можно обновить`);
     say(`Вышел ComfyUI <b>${esc(core.latest)}</b> (у вас ${esc(core.installed)}). Обновим только код ядра (несколько десятков мегабайт): модели, ноды и папка вывода не меняются, а перезаписываемые файлы уйдут в резерв, из которого можно вернуть.
       <button class="btn pri mini" id="mdEngGo" type="button" style="margin-left:6px">Обновить движок</button>${roll()}`);
     $('#mdEngGo').onclick = async e => {
@@ -3663,8 +3675,18 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
 })();
 $('#mdRecheck').onclick = async () => { const b = $('#mdRecheck'); b.disabled = true;
   try { await loadStatus(); toast('Проверили ещё раз'); } finally { b.disabled = false; } };
+async function doReset() {   // the menu item "настройки экрана" needs the action itself, not a click on the armed button
+  await postJSON('/api/setup/reset'); setNavLocked(true); openSetup();
+}
 $('#mdReset').onclick = async () => {
-  try { await postJSON('/api/setup/reset'); setNavLocked(true); openSetup(); } catch (e) { toast(e.message); }
+  const b = $('#mdReset');
+  if (b.dataset.armed !== '1') {
+    b.dataset.armed = '1'; b.textContent = 'Точно сбросить? Нажмите ещё раз'; toast('Сброс остановит ComfyUI и откроет стартовый экран');
+    setTimeout(() => { if (b.dataset.armed === '1') { b.dataset.armed = ''; b.textContent = 'Сброс настроек'; } }, 6000);
+    return;
+  }
+  b.dataset.armed = ''; b.textContent = 'Сброс настроек'; b.disabled = true;
+  try { await doReset(); } catch (e) { toast(e.message); b.disabled = false; }
 };
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-websearch]'); if (!b) return;
@@ -3709,7 +3731,7 @@ function onMdl(m) {
 }
 $('#mdOwnGo').onclick = () => confirmBox('Перейти к настройке своего ComfyUI?',
   'Откроется экран настройки: программа перестанет считать текущую конфигурацию готовой. Скачанные файлы не тронуты, кнопка «Вернуться к прежним настройкам» вернёт всё как было.',
-  'Показать экран настройки', () => $('#mdReset').click());
+  'Показать экран настройки', () => doReset());
 // custom nodes the sections need, for people who use their own ComfyUI
 async function loadNodes() {
   const card = $('#mdNodesCard'), st = await (await fetch('/api/status')).json().catch(() => ({}));
@@ -5129,7 +5151,7 @@ document.addEventListener('click', e => { if (e.target.closest('.nav')) setTimeo
 setTimeout(fitTopBar, 60);
 
 /* settings: every block folds (the state is remembered); the long rarely needed ones start folded */
-const FOLD_ON_OPEN = ['mdEngineCard', 'mdRentCard', 'mdOwnCard', 'clCard', 'mdNodesCard'];
+const FOLD_ON_OPEN = ['mdEngineCard', 'mdRentCard', 'mdOwnCard', 'clCard', 'mdNodesCard', 'mdServiceCard'];
 /* «Настройки» - справочная страница: она открывается короткой, а что раскрывать, решает человек.
    Его клики работают, пока он здесь; при следующем открытии список снова свёрнут */
 function foldOnOpen() { FOLD_ON_OPEN.forEach(id => document.getElementById(id)?.classList.add('collapsed')); }
@@ -5151,7 +5173,7 @@ function foldOnOpen() { FOLD_ON_OPEN.forEach(id => document.getElementById(id)?.
 /* rent a powerful computer: a short explanation for beginners + the way to connect */
 function connectRent() {
   goTo('models');
-  setTimeout(() => { const r = $('#mdReset'); if (r && !$('#mdStatus').hidden) r.click(); setTimeout(() => { $('.opt[data-opt="external"]')?.click(); extKind('rent'); }, 250); }, 250);
+  setTimeout(() => { const r = $('#mdReset'); if (r && !$('#mdStatus').hidden) doReset(); setTimeout(() => { $('.opt[data-opt="external"]')?.click(); extKind('rent'); }, 250); }, 250);
 }
 function openRent() {
   let m = $('#rentMenu'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'rentMenu'; document.body.append(m); }

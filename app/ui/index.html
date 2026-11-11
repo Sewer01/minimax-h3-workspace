@@ -1562,7 +1562,7 @@ body.dropping::after{content:'Отпустите — программа разл
           <div id="mdCloud" style="margin-top:10px"></div>
         </details>
         <div class="card" id="mdEngineCard" style="margin-bottom:16px">
-          <div class="card-h"><h3>Движок</h3><button class="btn" id="mdEngUpd" type="button" title="Спросить GitHub, вышла ли новая версия ComfyUI, и обновить её, не трогая модели и ноды">Проверить движок</button></div>
+          <div class="card-h"><h3>Движок</h3><button class="btn" id="mdEngUpd" type="button" title="Спросить GitHub, вышла ли новая версия ComfyUI, и обновить её, не трогая модели и ноды">Проверить обновление</button></div>
           <div class="kv" id="mdEngine"></div>
           <div class="hint" id="engProbe" style="margin-top:8px"></div>
           <div class="hint" id="mdEngState" style="margin-top:6px"></div>
@@ -3608,7 +3608,7 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
     const card = b.closest('.card'); if (card && html) card.classList.remove('collapsed');   // the answer must not stay folded
   };
   const roll = (core) => !core || !core.backup ? '' :
-    `<button class="btn mini" id="mdEngBack" type="button" style="margin-left:6px" title="В папке данных есть копия файлов ComfyUI от ${esc(core.backup_version || 'прежней версии')}">Вернуть ${esc(core.backup_version || 'прежнюю версию')}</button>`;
+    `<button class="btn mini" id="mdEngBack" type="button" style="margin-left:6px" title="В папке данных есть копия файлов ComfyUI: вернём ${esc(core.backup_version || 'прежнюю версию')}">Откатить к ${esc(core.backup_version || 'прежней версии')}</button>`;
   async function poll() {
     let s = {};
     try { s = await (await fetch('/api/updates/state', { cache: 'no-store' })).json(); } catch { return false; }
@@ -3623,7 +3623,7 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
   }
   let lastCore = null;   // the last check answer: the rollback button lives as long as the backup does
   function wire() { const rb = $('#mdEngBack'); if (rb) rb.onclick = async () => {
-    rb.disabled = true; say('Возвращаем прежнюю версию ядра…');
+    rb.disabled = true; say('Откатываем ядро к прежней версии…');
     try { await postJSON('/api/updates/core/rollback', {}); say('Прежняя версия на месте, ComfyUI перезапускается.'); loadStatus(); }
     catch (e) { say('Не удалось вернуть: ' + esc(e.message)); rb.disabled = false; }
   }; }

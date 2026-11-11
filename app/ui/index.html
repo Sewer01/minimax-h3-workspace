@@ -802,7 +802,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-lib{resize:vertical;min-height:90px}
 .mt-zoom{margin-left:auto;display:flex;gap:6px}
 /* settings page: blocks in two columns, each one folds */
-#mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+#mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
 @media (max-width:1100px){#mdStatus:not([hidden]){grid-template-columns:minmax(0,1fr)}}
 #mdStatus>.card,#mdStatus>details{margin-bottom:0!important;min-width:0}
 #mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdOwnCard,#mdStatus>#mdNodesCard,#mdStatus>details{grid-column:1/-1}
@@ -1562,16 +1562,16 @@ body.dropping::after{content:'Отпустите — программа разл
           <div class="rent-row"><button class="btn pri" type="button" data-rent="how">Как это работает</button><button class="btn" type="button" data-rent="connect">Подключить арендованный сервер</button></div>
         </div>
         <div class="card" id="mdOwnCard" style="margin-bottom:16px" hidden>
-          <div class="card-h"><h3>Хотите настраивать всё самому?</h3></div>
+          <div class="card-h"><h3>Хочешь всё настроить сам?</h3></div>
           <div class="hint" style="font-size:13px;line-height:1.6">
             Сейчас программа работает в простом режиме: она сама поставила ComfyUI и всё нужное, и в ней только готовые разделы. Тонкие настройки (шаги, свои схемы, свои ноды) здесь <b>недоступны</b>, так задумано.<br><br>
-            Если вы умеете работать в ComfyUI и хотите загружать свои workflow, нужно сделать так:
+            Если умеешь работать в ComfyUI и хочешь загружать свои workflow, сделай так:
             <ol style="margin:6px 0 6px 18px;padding:0;display:grid;gap:4px">
-              <li>Установите и запустите <b>свой</b> ComfyUI (отдельно от этой программы) и настройте в нём нужный workflow, чтобы он работал там без ошибок.</li>
-              <li>Нажмите кнопку ниже и выберите вариант <b>«У меня уже есть ComfyUI и модели»</b>.</li>
-              <li>Появится раздел <b>«Свои workflow»</b>. Загрузите в него файл, сохранённый в ComfyUI через <b>Workflow → Export (API)</b>.</li>
+              <li>Установи и запусти <b>свой</b> ComfyUI (отдельно от этой программы) и настрой в нём нужный workflow, чтобы он работал там без ошибок.</li>
+              <li>Нажми кнопку ниже и выбери вариант <b>«У меня уже есть ComfyUI и модели»</b>.</li>
+              <li>Появится раздел <b>«Свои workflow»</b>. Загрузи в него файл, сохранённый в ComfyUI через <b>Workflow → Export (API)</b>.</li>
             </ol>
-            Если вы не уверены, что это вам нужно, ничего не нажимайте: в простом режиме всё работает без настроек.
+            Если не уверен, что это нужно, ничего не нажимай: в простом режиме всё работает без настроек.
           </div>
           <button class="btn" id="mdOwnGo" type="button" style="margin-top:10px">Перейти к настройке своего ComfyUI</button>
         </div>
@@ -2047,11 +2047,27 @@ function offerNewModes(s) {
   setTimeout(show, 2000);
 }
 async function loadStatus() {
+  let s;
+  const ctrl = new AbortController();
+  const kill = setTimeout(() => ctrl.abort(), 25000);   // a core that does not answer must not hang the page
   try {
-    const ctrl = new AbortController();
-    const kill = setTimeout(() => ctrl.abort(), 25000);   // a core that does not answer must not hang the page
-    let s;
-    try { s = await (await fetch('/api/status', { signal: ctrl.signal })).json(); } finally { clearTimeout(kill); }
+    s = await (await fetch('/api/status', { signal: ctrl.signal })).json();
+  } catch (e) {
+    /* the answer never came: say who is silent, and never erase the cards that are already shown */
+    const box = $('#mlist');
+    if (box && document.querySelector('#view-models.active') && !box.querySelector('.m')) {
+      box.innerHTML = `<div class="note warn"><span>${window.PROBE_OK
+        ? 'ComfyUI отвечает, но список моделей не собрался вовремя — он сейчас занят. Страница переспрашивает сама; можно нажать «Проверить ещё раз».'
+        : 'ComfyUI не отвечает: он либо ещё загружается (это около полминуты), либо не запущен. Страница переспрашивает каждые четыре секунды.'}
+        <button class="btn mini" id="coreLogBtn3" type="button">Показать журнал</button></span></div>`;
+      const cl = $('#coreLogBtn3'); if (cl) cl.onclick = showCoreLog;
+      waitCore();
+    }
+    return;
+  }
+  try {
+    /* the answer is in hand, so everything that fails below is OUR mistake — reporting it as
+       "ComfyUI is busy" is exactly how an empty list was blamed on the core for two days */
     $('#setCustomBox').hidden = s.engine !== 'external';
     setEngine(s.online);
     paintProbe(s);
@@ -2061,18 +2077,13 @@ async function loadStatus() {
     askSavedQueue();
     offerNewModes(s);
   } catch (e) {
-    /* the page gave up waiting for OUR answer; that says nothing about ComfyUI, so the engine line
-       keeps whatever the last real contact showed instead of being flipped to "not running" */
+    console.error('Не удалось показать список моделей:', e);
     const box = $('#mlist');
-    if (box && document.querySelector('#view-models.active')) {
-      const ok = window.PROBE_OK;
-      box.innerHTML = `<div class="note warn"><span>${ok
-        ? 'ComfyUI отвечает, но список моделей не собрался вовремя — он сейчас занят. Страница переспрашивает сама; можно нажать «Проверить ещё раз».'
-        : 'ComfyUI не отвечает: он либо ещё загружается (это около полминуты), либо не запущен. Страница переспрашивает каждые четыре секунды.'}
-        <button class="btn mini" id="coreLogBtn3" type="button">Показать журнал</button></span></div>`;
-      const cl = $('#coreLogBtn3'); if (cl) cl.onclick = showCoreLog;
-      waitCore();
-    }
+    if (box && !box.querySelector('.m')) {
+      box.innerHTML = `<div class="note warn"><span>Программа не смогла показать список моделей: ${esc((e && e.message) || e)}.
+        <button class="btn mini" id="coreLogBtn4" type="button">Показать журнал</button></span></div>`;
+      const b = $('#coreLogBtn4'); if (b) b.onclick = showCoreLog;
+    } else { toast('Список моделей не обновился: ' + ((e && e.message) || e)); }
   }
 }
 

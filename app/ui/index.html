@@ -507,7 +507,9 @@ details[open] summary::before{content:'－ '}
 .btn:hover{border-color:var(--accent)}
 .btn.pri{background:var(--grad);border:0;color:#fff}
 .mlist{display:grid;gap:8px}
-.m{display:grid;grid-template-columns:1fr 150px 110px;gap:14px;align-items:center;padding:12px 14px;border-radius:12px;background:var(--bg-2);border:1px solid var(--line)}
+.m{display:grid;grid-template-columns:minmax(0,1fr) 78px 126px;gap:10px 14px;align-items:start;padding:12px 14px;border-radius:12px;background:var(--bg-2);border:1px solid var(--line)}
+.m .sz{text-align:right;justify-self:end;white-space:nowrap;padding-top:2px}
+.m>.st{text-align:right;justify-self:end;font-weight:700;font-size:12.5px;padding-top:2px;line-height:1.35}
 .m b{font-family:var(--mono);font-size:12.5px;font-weight:500;word-break:break-all}
 .m small{display:block;color:var(--dim);font-size:11.5px;font-family:Manrope}
 .m .pb{height:5px;border-radius:9px;background:var(--surface-2);overflow:hidden}
@@ -685,9 +687,11 @@ img.pr-media{object-position:center 38%}
 .ag-edit button.on{border-color:var(--accent);background:rgba(var(--accent-rgb),.14);color:var(--text);font-weight:700}
 .ag-edit small{font-size:11.5px;color:var(--dim)}
 /* лицензионная метка модели: видно сразу, можно ли ролик в коммерцию */
-.licb{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap}
-.licb.nc{color:#ffd7d7;border-color:rgba(255,92,120,.55);background:rgba(255,92,120,.14)}
-.licb.unknown{color:var(--warn);border-color:rgba(255,181,71,.5);background:rgba(255,181,71,.12)}
+.licb{font-size:12px;font-weight:600;color:var(--muted);white-space:normal;max-width:260px;margin-left:auto;align-self:center;text-align:right}
+.licb::before{content:'ⓘ ';font-weight:700}
+.licb.nc::before,.licb.unknown::before,.licb.mixed::before{content:'⚠ ';font-weight:700}
+.licb.nc{color:#ff9aab}
+.licb.unknown{color:var(--warn)}
 .licb.h3,.licb.mixed{color:var(--muted)}
 /* окно подсвечивается, когда из проводника тащат файлы: их можно бросить в любое место */
 body.dropping{outline:3px dashed var(--accent);outline-offset:-10px}
@@ -1565,6 +1569,12 @@ body.dropping::after{content:'Отпустите — программа разл
           <div class="hint" style="font-size:13px;line-height:1.55">Нет сильной видеокарты или нужно сделать что-то тяжёлое быстро? Можно арендовать в интернете мощный компьютер и платить только за время работы. Это пока новая функция: подробности и шаги ниже.</div>
           <div class="rent-row"><button class="btn pri" type="button" data-rent="how">Как это работает</button><button class="btn" type="button" data-rent="connect">Подключить арендованный сервер</button></div>
         </div>
+
+        <div class="card" id="clCard" style="margin-bottom:16px" hidden>
+          <div class="card-h"><h3>Свои LoRA <small style="color:var(--muted);font-weight:500">· для тех, кто знает ComfyUI</small></h3><span><button class="btn" id="clRe" type="button">Обновить список</button> <button class="btn pri" id="clAdd" type="button">+ Добавить LoRA</button></span></div>
+          <div class="hint" style="margin-bottom:10px">Положите файл LoRA в папку <b>ComfyUI\models\loras</b>, нажмите «Обновить список» и добавьте её. Она подключится ко всем разделам сразу после основной модели. Новичкам ничего менять не нужно: всё уже готово. Свои VAE и модели меняются кнопкой «Заменить…» в списке ниже.</div>
+          <div class="mlist" id="clList"></div>
+        </div>
         <div class="card" id="mdOwnCard" style="margin-bottom:16px" hidden>
           <div class="card-h"><h3>Хочешь всё настроить сам?</h3></div>
           <div class="hint" style="font-size:13px;line-height:1.6">
@@ -1592,11 +1602,7 @@ body.dropping::after{content:'Отпустите — программа разл
 equirements.txt</code><br>
               Затем снова перезапустите ComfyUI. Без ноды <b>VideoHelperSuite</b> не работает референс-видео (ошибка «VHS_LoadVideo not found»).</span></div>
         </div>
-        <div class="card" id="clCard" style="margin-bottom:16px" hidden>
-          <div class="card-h"><h3>Свои LoRA <small style="color:var(--muted);font-weight:500">· для тех, кто знает ComfyUI</small></h3><span><button class="btn" id="clRe" type="button">Обновить список</button> <button class="btn pri" id="clAdd" type="button">+ Добавить LoRA</button></span></div>
-          <div class="hint" style="margin-bottom:10px">Положите файл LoRA в папку <b>ComfyUI\models\loras</b>, нажмите «Обновить список» и добавьте её. Она подключится ко всем разделам сразу после основной модели. Новичкам ничего менять не нужно: всё уже готово. Свои VAE и модели меняются кнопкой «Заменить…» в списке ниже.</div>
-          <div class="mlist" id="clList"></div>
-        </div>
+
         <div class="card" id="mdDl" hidden style="margin-bottom:16px">
           <div class="card-h"><h3>Скачивание в вашу папку моделей</h3><button class="btn" id="mdDlStop" type="button">Остановить</button></div>
           <div class="hint" id="mdDlL" style="margin-bottom:8px"></div>
@@ -3427,10 +3433,10 @@ function renderModels(s) {
   $('#modelsBadge').textContent = `${have} / ${s.models.length}`; $('#modelsBadge').hidden = false;
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
-    const st = m.have ? '<span class="st ok">✓ есть</span>' : optional ? '<span class="st opt">необязательно</span>' : '<span class="st miss">нет</span>';
+    const st = m.have ? '<span class="st ok">✓ загружено</span>' : optional ? '<span class="st opt">по желанию</span>' : '<span class="st miss">нет файла</span>';
     const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн', long: 'Видеостудия', krea: 'Изображение по тексту', kreareal: 'Изображение: реализм', qwen: 'Правка изображения', flux: 'Правка: FLUX.2', upscale: 'Увеличение', relayvsr: 'Быстрое увеличение' })[x] || x).join(', ') || 'дополнительно';
 
-    return `<div class="m"><b>${esc((m.name || m.file || '').split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint">${GB(m.size)}</span>${m.lic ? `<span class="licb ${m.lic}" title="${esc(m.lic_note || '')}">${({ nc: 'нельзя в коммерцию', unknown: 'лицензия не указана', mixed: 'ролик можно, модель — нет', h3: 'MiniMax H3: условия' })[m.lic] || 'лицензия'}</span>` : ''}${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}</div></div>`;
+    return `<div class="m"><b>${esc((m.name || m.file || '').split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint sz">${GB(m.size)}</span>${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${s.engine === 'external' && !m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать сюда (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}${m.lic ? `<span class="licb ${m.lic}" title="${esc(m.lic_note || '')}">${({ nc: 'нельзя в коммерцию', unknown: 'лицензия не указана', mixed: 'ролик можно, модель — нет', h3: 'MiniMax H3: условия' })[m.lic] || 'лицензия'}</span>` : ''}</div></div>`;
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   MD_EXT = s.engine === 'external';

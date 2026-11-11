@@ -2011,7 +2011,7 @@ class App:
                 raise web.HTTPBadRequest(text="Для быстрого режима нужен файл Turbo-SLA (около 2 ГБ). Нажмите «Скачать» под переключателем «Ускорение» "
                                               "или выберите «Обычное».")
             fast = self.model_names["sla_lora"]
-        graph, stages = wf.video_graph(self.model_names, prompt, width, height, seconds, seed, first, last, self.custom_loras(), fast)
+        graph, stages = wf.video_graph(self.model_names, prompt, width, height, seconds, seed, first, last, self.custom_loras("video"), fast)
         sub = "Зацикленное видео" if loop else "Кадр → кадр" if last else "Изображение → видео" if first else "Текст → видео"
         if fast:
             sub += " · быстрый черновик"
@@ -2036,7 +2036,7 @@ class App:
         scale = wf.lipsync_scale(quality)
         out_w, out_h = wf.resolution(aspect, quality, form)
         width, height = wf.r32(out_w / scale), wf.r32(out_h / scale)
-        extra = self.optional_loras(form, (("realism", "realism_lora"),)) + self.custom_loras()
+        extra = self.optional_loras(form, (("realism", "realism_lora"),)) + self.custom_loras("lipsync")
         graph, stages = wf.lipsync_graph(self.model_names, wf.lipsync_prompt(prompt, len(refs)), width, height,
                                          seconds, seed, files["audio"], refs, scale, ref_size, extra)
         speed = "максимум" if ref_size == "max" else "быстро"
@@ -2058,18 +2058,51 @@ class App:
         seconds = min(MAX_SECONDS, max(3.0, float(form.get("duration", 6))))
         return form, prompt, aspect, quality, seed, images, videos, audios, seconds
 
-    def custom_loras(self):
-        """(file, strength) for the LoRAs the user added by hand on the Models screen (not used with the cloud)."""
+    def custom_loras(self, mode=None):
+        """(file, strength) for the LoRAs the user added by hand on the Models screen (not used with the cloud).
+
+        A LoRA can be switched off in one mode only - from the «Модель» row of that mode; the modes
+        it skips live in its `skip` list.
+        """
         if self.rh():
             return []
-        return [(x["file"], float(x["strength"])) for x in self.config.get("custom_loras") or [] if x.get("on", True) and x.get("file")]
+        return [(x["file"], float(x["strength"])) for x in self.unique_loras()
+                if x.get("on", True) and x.get("file") and mode not in (x.get("skip") or [])]
+
+    def unique_loras(self):
+        """The user's own LoRAs, one entry per file: older versions let the same file be added
+        twice, and then it was mixed into the picture again and again."""
+        seen, out = set(), []
+        for x in self.config.get("custom_loras") or []:
+            key = str(x.get("file") or "").replace("/", "\\").lower()
+            if key and key not in seen:
+                seen.add(key)
+                out.append(x)
+        return out
+
+    async def h_loras_custom_mode(self, req):
+        """Switch an own LoRA on / off for ONE mode (from the «Модель» row of that mode)."""
+        body = await req.json()
+        file, mode = body.get("file"), body.get("mode")
+        if mode not in catalog.MODE_ROLES:
+            raise web.HTTPBadRequest(text="Неизвестный режим")
+        items = self.unique_loras()
+        hit = next((x for x in items if x.get("file") == file), None)
+        if not hit:
+            raise web.HTTPBadRequest(text="Такой LoRA нет в списке")
+        skip = [m for m in (hit.get("skip") or []) if m != mode]
+        if not body.get("on"):
+            skip.append(mode)
+        hit["skip"] = skip
+        self.config.update(custom_loras=items)
+        return web.json_response({"ok": True})
 
     async def h_loras_custom(self, _req):
         try:
             _, files = await self.comfy_json("GET", "/models/loras")
         except Exception:
             raise web.HTTPServiceUnavailable(text="ComfyUI не отвечает")
-        return web.json_response({"files": files or [], "items": self.config.get("custom_loras") or []})
+        return web.json_response({"files": files or [], "items": self.unique_loras()})
 
     async def h_loras_custom_set(self, req):
         items = []
@@ -2078,8 +2111,10 @@ class App:
                 strength = max(-4.0, min(4.0, float(x.get("strength", 0.8))))
             except (TypeError, ValueError):
                 strength = 0.8
+            skip = [m for m in (x.get("skip") or []) if isinstance(m, str)][:20]
             if isinstance(x.get("file"), str) and x["file"]:
-                items.append({"file": x["file"], "strength": strength, "on": bool(x.get("on", True))})
+                items.append({"file": x["file"], "strength": strength, "on": bool(x.get("on", True)),
+                              **({"skip": skip} if skip else {})})
         self.config.update(custom_loras=items)
         return web.json_response({"ok": True})
 
@@ -2099,7 +2134,7 @@ class App:
         steps = int(form.get("steps", 6)) if form.get("steps", "6").isdigit() else 6
         steps = min(8, max(4, steps))
         ref_size = form.get("ref_size") if form.get("ref_size") in ("match", "max") else "max"
-        extra = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora"))) + self.custom_loras()
+        extra = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora"))) + self.custom_loras("refs")
         width, height = wf.resolution(aspect, quality, form)
         pika = None
         if form.get("accel") == "pika":
@@ -2351,7 +2386,7 @@ class App:
                                                   "Верните прежний формат и качество или переделайте сцену 1 в новом.")
                 state = await self.upload_state(src, f"h3s_long_{run}_{k - 1}.latent")
             graph, stages = wf.long_part_graph(self.model_names, scenes, k, width, height, seed, images, audio, start,
-                                               dmad if draft else self.model_names["pika_lora"], self.custom_loras(), "match", vocals, state,
+                                               dmad if draft else self.model_names["pika_lora"], self.custom_loras("long"), "match", vocals, state,
                                                await self.preview_opts(), cont, form.get("src_project") == "1", fresh, draft)
             plan = wf.long_plan([sc[1] for sc in scenes], cont_first=bool(cont) or form.get("src_project") == "1", fresh=fresh)
             sub = f"сцена {k + 1} из {len(scenes)}" + (" · музыка" if audio else " · звук от модели")
@@ -2360,7 +2395,7 @@ class App:
                 "len": round((plan[k]["total"] - plan[k]["ov"]) / wf.FPS, 1), "res": f"{width}×{height}", "seed": seed,
                 "long": {"run": run, "part": k, "n": len(scenes), "draft": draft, "test": test}})
         graph, stages = wf.long_graph(self.model_names, scenes, width, height, seed, images, audio, start,
-                                      dmad if draft else self.model_names["pika_lora"], self.custom_loras(), "match", vocals, await self.preview_opts(), fresh, False, draft)
+                                      dmad if draft else self.model_names["pika_lora"], self.custom_loras("long"), "match", vocals, await self.preview_opts(), fresh, False, draft)
         run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]
         self._long_run = run
         total = wf.long_plan([sc[1] for sc in scenes], fresh=fresh)[-1]["acc"] / wf.FPS
@@ -2511,7 +2546,7 @@ class App:
             realism = (self.model_names["realism_lora"], v)
         width, height = wf.resolution(aspect, quality, form)
         graph, stages = wf.actor_graph(self.model_names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed,
-                                       images, audios, realism, self.custom_loras())
+                                       images, audios, realism, self.custom_loras("actor"))
         sub = f"{len(images)} карт." + (f", голос ({len(audios)})" if audios else ", без голоса") + " · 10 шагов"
         return await self.queue(graph, stages, {
             "mode": "actor", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
@@ -2564,7 +2599,7 @@ class App:
             names = {**self.model_names, "lipsync_unet": pick}
         width, height = wf.resolution(aspect, quality, form)
         seconds = min(15.0, max(3.0, seconds))
-        loras = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora"))) + self.custom_loras()
+        loras = self.optional_loras(form, (("realism", "realism_lora"), ("motion", "motion_repair_lora"))) + self.custom_loras("swap")
         if shots:
             snd = form.get("sound") if form.get("sound") in ("original", "lock") else "original"
             graph, stages = wf.swap_shots_graph(names, shots, width, height, seed, images, videos[0],
@@ -2622,7 +2657,7 @@ class App:
             v = lora_strength(form, key, default)  # the user can switch them off or change the strength
             if name and v is not None:
                 loras.append((name, v))
-        loras += self.custom_loras()
+        loras += self.custom_loras("action")
         names = dict(self.model_names)
         width, height = wf.resolution(aspect, quality, form)
         graph, stages = wf.action_graph(names, wf.lipsync_prompt(prompt, len(images)), width, height, seconds, seed, images, audios,
@@ -3534,6 +3569,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/custom", state.h_generate_custom),
         web.get("/api/loras/custom", state.h_loras_custom),
         web.post("/api/loras/custom", state.h_loras_custom_set),
+        web.post("/api/loras/custom/mode", state.h_loras_custom_mode),
         web.post("/api/generate/refs", state.h_generate_refs),
         web.post("/api/generate/actor", state.h_generate_actor),
         web.post("/api/generate/swap", state.h_generate_swap),

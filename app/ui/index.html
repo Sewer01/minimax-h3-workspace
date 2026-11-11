@@ -879,6 +879,10 @@ body.dropping::after{content:'Отпустите — программа разл
 .v-info{padding:22px;display:grid;gap:14px;align-content:start}
 .v-info h3{font-size:16px;padding-right:30px}
 .kv{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:6px 14px;font-size:12.5px}
+#mdEngine{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+#mdEngine span{color:var(--dim);font-size:11.5px;margin-top:10px}
+#mdEngine>span:first-child{margin-top:0}
+#mdEngine b{font-family:var(--mono);font-weight:500;font-size:12px;line-height:1.4;margin-top:1px;overflow-wrap:anywhere}
 .kv span{color:var(--dim)}.kv b{font-family:var(--mono);font-weight:500;min-width:0;overflow-wrap:anywhere}
 .v-prompt{font-size:13px;color:var(--muted);background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:160px;overflow:auto;white-space:pre-wrap}
 .v-btns{display:grid;gap:8px}
@@ -2119,7 +2123,8 @@ async function pollSystem() {
     } else $('#gpuName').textContent = 'не найдена';
     meter('#cpuTxt', '#cpuBar', s.cpu, s.cpu != null ? `${Math.round(s.cpu)} %` : '—');
     meter('#ramTxt', '#ramBar', s.ram.used_gb / s.ram.total_gb * 100, `${g1(s.ram.used_gb)} / ${g1(s.ram.total_gb)} ГБ`);
-    if (s.disk) { $('#diskName').textContent = s.disk.drive; $('#diskTxt').textContent = `свободно ${s.disk.free_gb} ГБ`; }
+    if (s.disk) { $('#diskName').textContent = s.disk.drive; $('#diskTxt').textContent = `свободно ${s.disk.free_gb} ГБ`;
+    window.DISK_FREE = +s.disk.free_gb; window.DISK_DRIVE = s.disk.drive; }
   } catch { /* the server is restarting; try again on the next tick */ }
 }
 setInterval(pollSystem, 2000);
@@ -3415,6 +3420,11 @@ async function afterSetup() {
 /* status after setup */
 let MD_ENGINE = '', MD_EXTDIR = '', MD_NEED = [];
 let MD_EXT = false;
+function diskNote() {   // сколько осталось на диске с настройками, а не вечная страшилка "мало места"
+  const n = window.DISK_FREE;
+  if (typeof n !== 'number' || !isFinite(n)) return '';
+  return n < 30 ? ` · свободно ${n} ГБ, место на исходе` : ` · свободно ${n} ГБ`;
+}
 function renderModels(s) {
   if (s.models_error) {
     $('#mlist').innerHTML = `<div class="note warn"><span>Список моделей не собрался: ${esc(s.models_error)}. ComfyUI отвечает, но не отдаёт файлы — попробуйте «Проверить ещё раз» или перезапустите его кнопкой «Движок» слева внизу.</span></div>`;
@@ -3462,7 +3472,7 @@ function renderModels(s) {
   const P = s.paths || {};
   $('#mdEngine').insertAdjacentHTML('beforeend', (P.models ? `<span>Модели</span><b>${esc(P.models)}</b>` : '')
     + (P.assistant ? `<span>Помощник (агент)</span><b>${esc(P.assistant)}</b>` : '')
-    + `<span>Настройки и список Библиотеки</span><b>${esc(P.data || '')} (мало места)</b>`);
+    + `<span>Настройки и список Библиотеки</span><b>${esc(P.data || '')}${diskNote()}</b>`);
 }
 $('#mdMirror').onchange = async e => {
   try { await postJSON('/api/settings/mirror', { on: e.target.checked }); toast(e.target.checked ? 'Скачивание через зеркало hf-mirror.com включено' : 'Зеркало выключено, скачиваем с Hugging Face'); loadStatus(); } catch (err) { toast(err.message); }

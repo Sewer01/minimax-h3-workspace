@@ -1936,7 +1936,7 @@ document.addEventListener('drop', e => {
    it did, and the program stayed in the "a file is being dragged" state after the drop: dashed
    frames hung over the whole window and the top buttons stopped answering. Where the file lands is
    remembered from the cursor position and read later by the ordinary unpacking below. */
-let AGENT_DROP_HALF = 'file';
+let AGENT_DROP_HALF = 'frames';   // a paste, or a drop with no visible drag, works as before: frames
 (() => {
   const veil = $('#agSplit');
   const wanted = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files') && activeView() === 'agent';

@@ -925,6 +925,24 @@ class App:
         webbrowser.open(url)
         return web.json_response({"ok": True, "url": url})
 
+    async def h_models_compat(self, req):
+        """Does an own model file fit the mode it is picked in (the speed-up files are made for one family of models)."""
+        role, name, mode = req.query.get("role", ""), req.query.get("name", ""), req.query.get("mode", "")
+        if role not in catalog.VARIANTS:
+            raise web.HTTPBadRequest(text="Неизвестная модель")
+        if self.hw is None:
+            self.hw = await asyncio.to_thread(engine.detect_hardware)
+        notes = catalog.compat_notes(mode, role, name or self.model_names.get(role, ""), self.hw.get("compute_cap") or 0)
+        missing = {m["role"] for m in self.missing}
+        picked = self.config.get("model_pick") or {}
+        loras = [{"title": catalog.ROLE_TITLES.get(r, r), "name": self.model_names.get(r, ""), "have": r not in missing,
+                  "must": r in catalog.MODE_ROLES.get(mode, []), "mine": r in picked}
+                 for r in catalog.MODE_ROLES.get(mode, []) + catalog.MODE_OPTIONAL.get(mode, []) if r.endswith("_lora") and r in self.model_names]
+        loras += [{"title": "Своя LoRA", "name": x["file"], "have": True, "must": False, "mine": True, "custom": True, "off": mode in (x.get("skip") or [])}
+                  for x in self.unique_loras() if x.get("on", True)]
+        return web.json_response({"notes": [{"level": lv, "text": t} for lv, t in notes], "loras": loras,
+                                  "picked": picked.get(role), "name": self.model_names.get(role)})
+
     async def h_models_pick(self, req):
         body = await req.json()
         role, name = body.get("role"), body.get("name") or ""
@@ -3557,6 +3575,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/lipsync", state.h_generate_lipsync),
         web.get("/api/nodes", state.h_nodes),
         web.get("/api/models/files", state.h_models_files),
+        web.get("/api/models/compat", state.h_models_compat),
         web.post("/api/models/pick", state.h_models_pick),
         web.post("/api/models/open", state.h_models_open),
         web.post("/api/models/download", state.h_models_download),

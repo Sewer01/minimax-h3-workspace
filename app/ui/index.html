@@ -934,6 +934,14 @@ body.dropping::after{content:'Отпустите — программа разл
   .frames{grid-template-columns:1fr}.arrow{display:none}
   .viewer{grid-template-columns:1fr}
 }
+.mdl-pick{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px;padding:9px 14px;border:1px solid var(--line);border-radius:12px;font-size:13px}
+.mdl-pick.own{border-color:#e08a1e;background:rgba(224,138,30,.10);box-shadow:inset 4px 0 0 #e08a1e}
+.mdl-pick .mp-cur{font-weight:800;font-size:14px;word-break:break-all}
+.mdl-pick .mp-src{font-size:11px;font-weight:800;padding:2px 9px;border-radius:99px;letter-spacing:.04em}
+.mdl-pick .mp-src.std{background:var(--surface-2);color:var(--dim)}.mdl-pick .mp-src.own{background:#e08a1e;color:#111}
+.mdl-pick .mp-loras{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mdl-pick .mp-l{font-size:12px;padding:2px 9px;border-radius:8px;background:var(--surface-2);word-break:break-all}.mdl-pick .mp-l.mine{background:rgba(224,138,30,.25)}.mdl-pick button.mp-l{border:0;cursor:pointer;color:inherit;font:inherit;font-size:12px}.mdl-pick .mp-l.tgl.off{background:var(--surface-2);text-decoration:line-through;opacity:.7}.mdl-pick .mp-l.no{background:rgba(229,72,77,.2);color:#e5484d}
+.mdl-pick .mp-notes{flex-basis:100%;display:grid;gap:4px;font-size:12.5px}.mdl-pick .mp-notes .bad{color:#e5484d}.mdl-pick .mp-notes .warn{color:#d6a13a}.mdl-pick .mp-notes .info{opacity:.8}
 </style>
 </head>
 <body>
@@ -7767,6 +7775,64 @@ applyZoom();
   });
   rs.addEventListener('dblclick', () => { root.style.removeProperty('--sbw'); try { localStorage.removeItem(KEY); } catch {} });
 })();
+// An own main model in the mode itself: pick a file ComfyUI sees; the app says whether it fits the rest of the mode (speed-up LoRAs, format, video card)
+(() => {
+  const MAIN = { video: 'fast_unet', lipsync: 'lipsync_unet', refs: 'lipsync_unet', actor: 'lipsync_unet', swap: 'lipsync_unet', long: 'lipsync_unet', action: 'action_unet', krea: 'krea_unet', qwen: 'qwen_unet' };
+  const refresh = async box => {
+    const { mode, role } = box.dataset;
+    try {
+      const r = await (await fetch(`/api/models/compat?role=${role}&mode=${mode}`)).json();
+      $('.mp-cur', box).textContent = (r.name || '').split(/[\\/]/).pop() || 'не найдена';
+      const src = $('.mp-src', box); src.textContent = r.picked ? 'СВОЯ МОДЕЛЬ' : 'встроенная'; src.className = 'mp-src ' + (r.picked ? 'own' : 'std');
+      box.classList.toggle('own', !!r.picked);
+      $('.mp-reset', box).hidden = !r.picked;
+      $('.mp-loras', box).innerHTML = (r.loras || []).length
+        ? '<span class="hint">LoRA:</span>' + r.loras.map(l => l.custom
+          ? `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA в этом режиме">${l.off ? '✕ выключена' : '✓ включена'} здесь: ${esc(String(l.name).split(/[\\/]/).pop())}</button>`
+          : `<span class="mp-l${l.have ? '' : ' no'}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}: ${esc(String(l.name).split(/[\\/]/).pop())}${l.have ? '' : ' (файла нет)'}</span>`).join('')
+        : '<span class="hint">LoRA: нет</span>';
+      $('.mp-notes', box).innerHTML = r.picked ? r.notes.map(n => `<div class="${n.level}">${n.level === 'bad' ? '✕ ' : n.level === 'warn' ? '⚠ ' : 'ⓘ '}${esc(n.text)}</div>`).join('') : '';
+    } catch { /* ComfyUI is off: the block stays as it is */ }
+  };
+  const ensure = view => {
+    const mode = view.id.replace('view-', ''), role = MAIN[mode];
+    if (!role || $('.mdl-pick', view)) return;
+    const head = $('.head', view); if (!head) return;
+    head.insertAdjacentHTML('afterend', `<div class="mdl-pick card" data-mode="${mode}" data-role="${role}"><span>Модель:</span><span class="mp-cur">…</span><span class="mp-src"></span><button class="btn mini mp-change" type="button" title="Выбрать другой файл модели из папки вашего ComfyUI">Выбрать свою…</button><button class="btn mini mp-reset" type="button" hidden>Вернуть встроенную</button><div class="pm" hidden><input type="search" class="pm-q" placeholder="Поиск по имени…" spellcheck="false"><select></select><button class="btn mini pri mp-ok" type="button">Выбрать</button><button class="btn mini mp-no" type="button">Отмена</button></div><div class="mp-loras"></div><div class="mp-notes"></div></div>`);
+    const box = $('.mdl-pick', view), pm = $('.pm', box), sel = $('select', pm);
+    refresh(box);
+    $('.mp-change', box).onclick = async () => {
+      try {
+        const r = await (await fetch('/api/models/files?role=' + role)).json();
+        if (!r.files?.length) { toast(`ComfyUI не видит файлов в папке ${r.folder}`); return; }
+        sel.innerHTML = r.files.map(f => `<option>${esc(f)}</option>`).join(''); pm.hidden = false;
+      } catch { toast('ComfyUI не отвечает'); }
+    };
+    $('.pm-q', box).oninput = e => {
+      const words = e.target.value.toLowerCase().split(/\s+/).filter(Boolean);
+      $$('option', sel).forEach(o => { o.hidden = !words.every(w => o.textContent.toLowerCase().includes(w)); });
+      const first = $$('option', sel).find(o => !o.hidden); if (words.length && first) first.selected = true;
+    };
+    $('.mp-no', box).onclick = () => { pm.hidden = true; };
+    $('.mp-loras', box).onclick = async e => {
+      const b = e.target.closest('.tgl'); if (!b) return;
+      try { await postJSON('/api/loras/custom/mode', { file: b.dataset.file, mode, on: b.classList.contains('off') }); refresh(box); } catch (err) { toast(err.message); }
+    };
+    $('.mp-ok', box).onclick = async () => {
+      const name = sel.value; if (!name) return;
+      const done = async () => { pm.hidden = true; await loadStatus(); $$('.mdl-pick').forEach(refresh); toast('Модель выбрана'); };
+      try {
+        const r = await postJSON('/api/models/pick', { role, name });
+        if (r && r.warn) { confirmBox('Это точно тот файл?', r.warn, 'Всё равно выбрать', async () => { await postJSON('/api/models/pick', { role, name, force: true }); await done(); }); return; }
+        await done();
+      } catch (e) { toast(e.message); }
+    };
+    $('.mp-reset', box).onclick = async () => { try { await postJSON('/api/models/pick', { role, name: '' }); await loadStatus(); $$('.mdl-pick').forEach(refresh); toast('Снова встроенная модель'); } catch (e) { toast(e.message); } };
+  };
+  const watch = view => { new MutationObserver(() => { if (view.classList.contains('active')) ensure(view); }).observe(view, { attributes: true, attributeFilter: ['class'] }); if (view.classList.contains('active')) ensure(view); };
+  $$('.view').forEach(watch);
+})();
+
 </script>
 </body>
 </html>

@@ -809,13 +809,11 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-vh{height:16px;margin-top:2px;cursor:ns-resize;display:grid;place-items:center;touch-action:none}.mt-vh i{width:64px;height:4px;border-radius:3px;background:var(--line-2);transition:.15s}.mt-vh:hover i{background:var(--accent,#c0405a);width:90px}
 .mt-lib{resize:vertical;min-height:90px}
 .mt-zoom{margin-left:auto;display:flex;gap:6px}
-/* settings page: blocks in two columns, each one folds */
-#mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
-@media (max-width:1100px){#mdStatus:not([hidden]){grid-template-columns:minmax(0,1fr)}}
+/* Настройки: карточки делят ширину между собой - сколько влезает при текущем масштабе,
+   столько и встаёт в ряд, четвёртая не падает на пустую строку */
+#mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:stretch}
 #mdStatus>.card,#mdStatus>details{margin-bottom:0!important;min-width:0}
 #mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdNodesCard,#mdStatus>details{grid-column:1/-1}
-@media (min-width:1240px){#mdStatus:not([hidden]){grid-template-columns:repeat(3,minmax(0,1fr))}}
-  @media (max-width:1239px){#mdStatus>#clCard,#mdStatus>#mdOwnCard{grid-column:1/-1}}
 .card.fold>.card-h{cursor:pointer;user-select:none}
 .card.fold>.card-h h3::before{content:'▾';display:inline-block;width:18px;color:var(--dim);transition:transform .15s}
 .card.fold.collapsed>.card-h h3::before{transform:rotate(-90deg)}
@@ -1570,8 +1568,8 @@ body.dropping::after{content:'Отпустите — программа разл
           <div class="hint" id="mdEngState" style="margin-top:6px"></div>
         </div>
         <div class="card" id="mdRentCard">
-          <div class="card-h"><h3>Аренда мощного компьютера</h3></div>
-          <div class="hint" style="font-size:13px;line-height:1.55">Нет сильной видеокарты или нужно сделать что-то тяжёлое быстро? Можно арендовать в интернете мощный компьютер и платить только за время работы. Это пока новая функция: подробности и шаги ниже.</div>
+          <div class="card-h"><h3>Аренда сервера</h3></div>
+          <div class="hint" style="font-size:13px;line-height:1.55">Нет сильной видеокарты или нужно сделать что-то тяжёлое быстро? Можно арендовать сервер в интернете и платить только за время работы. Это пока новая функция: подробности и шаги ниже.</div>
           <div class="rent-row"><button class="btn pri" type="button" data-rent="how">Как это работает</button><button class="btn" type="button" data-rent="connect">Подключить арендованный сервер</button></div>
         </div>
 
@@ -5180,8 +5178,8 @@ function connectRent() {
 function openRent() {
   let m = $('#rentMenu'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'rentMenu'; document.body.append(m); }
   m.hidden = false;
-  m.innerHTML = `<div class="box" style="padding:22px;max-width:580px;max-height:calc(var(--vh,1vh)*90);overflow:auto"><div class="card-h"><h3>Аренда мощного компьютера</h3><button class="btn" data-x type="button">Закрыть</button></div>
-    <div class="note"><span>Вы арендуете в интернете компьютер с мощной видеокартой и платите за время, пока он включён. Эта программа остаётся у вас и управляет им. <b>Функция новая и проверяется</b>: если что-то не получится, напишите разработчику.</span></div>
+  m.innerHTML = `<div class="box" style="padding:22px;max-width:580px;max-height:calc(var(--vh,1vh)*90);overflow:auto"><div class="card-h"><h3>Аренда сервера</h3><button class="btn" data-x type="button">Закрыть</button></div>
+    <div class="note"><span>Вы арендуете в интернете сервер с мощной видеокартой и платите за время, пока он включён. Эта программа остаётся у вас и управляет им. <b>Функция новая и проверяется</b>: если что-то не получится, напишите разработчику.</span></div>
     <ol class="rent-steps">
       <li><b>Выберите сервис.</b> Например, Immers.Cloud (российский, оплата в рублях, посекундная). Для H3 нужна видеокарта с 48 ГБ памяти и больше (A100 80 ГБ, H100 и т. п.) и образ с ComfyUI.</li>
       <li><b>Создайте отдельный диск</b> на 150–200 ГБ и подключите к машине. Тогда модели останутся, когда вы удалите машину, а в следующий раз скачивать их заново не придётся. Хранение диска оплачивается отдельно.</li>
@@ -5205,7 +5203,7 @@ $('#view-presets').innerHTML = `<div class="pr-steps" id="prSteps"><span class="
     <button class="pr-type" type="button" data-t="image"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.7"/><path d="m21 16-5-5L6 20"/></svg></span><b>Изображение</b><p>Создать по описанию, изменить готовое, карта героя, раскадровка</p></button>
     <button class="pr-type" type="button" data-t="video"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="13" height="14" rx="2.5"/><path d="m16 10 5-3v10l-5-3"/><path d="m8.5 10.5 3 1.5-3 1.5z" fill="currentColor"/></svg></span><b>Видео</b><p>Оживить изображение, озвучить, сменить героя, снять сцены</p></button>
     <button class="pr-type" type="button" data-go="upfile"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7"/></svg></span><b>Увеличить</b><p>Сделать видео или фото чётче и крупнее</p></button>
-    <button class="pr-rent" type="button" id="prRent"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><span><b>Нет мощной видеокарты? Арендуйте мощный компьютер</b><small>Платите только за время работы, ничего не нужно покупать. Подробно и по шагам</small></span><i>Как это работает →</i></button>
+    <button class="pr-rent" type="button" id="prRent"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></span><span><b>Нет мощной видеокарты? Арендуйте сервер</b><small>Платите только за время работы, ничего не нужно покупать. Подробно и по шагам</small></span><i>Как это работает →</i></button>
   </div>
   <div id="prList" hidden>
     <div class="pr-bar"><button class="pr-back" id="prBack" type="button">← Назад</button></div>

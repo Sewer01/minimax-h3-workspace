@@ -1613,7 +1613,7 @@ equirements.txt</code><br>
           <div class="hint" id="mdDlN" style="margin-top:6px"></div>
         </div>
         <div class="card" id="mdModelsCard">
-          <div class="card-h"><h3>Модели</h3><span><button class="btn mini" id="mdNodesUpd" type="button" title="Сравнить закреплённые в программе версии нод с последними в их репозиториях">Проверить обновления нод</button> <button class="btn mini" id="mdRecheck" type="button" title="Спросить ComfyUI ещё раз, какие файлы он видит">Проверить ещё раз</button> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button> <button class="btn pri" id="mdFixExt" hidden>Скачать недостающие</button></span></div>
+          <div class="card-h"><h3>Модели</h3><span><button class="btn mini" id="mdNodesUpd" type="button" title="Сравнить закреплённые в программе версии нод с последними в их репозиториях">Проверить обновления нод</button> <button class="btn mini" id="mdRecheck" type="button" title="Вы добавили файл в папку моделей — перечитать, что ComfyUI видит прямо сейчас">Обновить список</button> <button class="btn pri" id="mdFix" hidden>Докачать недостающие</button> <button class="btn pri" id="mdFixExt" hidden>Скачать недостающие</button></span></div>
           <div id="mdAdd" class="rent-row" style="margin:0 0 12px"></div>
           <label class="hint" style="display:flex;gap:8px;align-items:flex-start;margin:0 0 10px;cursor:pointer" title="Те же файлы, но с другого сервера. Помогает, когда Hugging Face грузит медленно или не открывается."><input type="checkbox" id="mdMirror" style="margin-top:3px"><span>Если Hugging Face грузит медленно: скачивать через зеркало <b>hf-mirror.com</b>. Файлы те же. Скачивание можно закрыть и продолжить позже, оно докачается с того же места.</span></label>
           <div class="mlist" id="nodesUpd" hidden style="margin-bottom:12px"></div>
@@ -3436,12 +3436,12 @@ function diskNote() {   // сколько осталось на диске с н
 }
 function renderModels(s) {
   if (s.models_error) {
-    $('#mlist').innerHTML = `<div class="note warn"><span>Список моделей не собрался: ${esc(s.models_error)}. ComfyUI отвечает, но не отдаёт файлы — попробуйте «Проверить ещё раз» или перезапустите его кнопкой «Движок» слева внизу.</span></div>`;
+    $('#mlist').innerHTML = `<div class="note warn"><span>Список моделей не собрался: ${esc(s.models_error)}. ComfyUI отвечает, но не отдаёт файлы — попробуйте «Обновить список» или перезапустите его кнопкой «Движок» слева внизу.</span></div>`;
     return;
   }
   if (!s.models) {   // ComfyUI has not answered yet: an empty page looks like "you have no models at all"
     $('#mlist').innerHTML = `<div class="note"><span>${s.online
-      ? 'Список моделей пока не пришёл. Нажмите «Проверить ещё раз».'
+      ? 'Список моделей пока не пришёл. Нажмите «Обновить список».'
       : 'ComfyUI ещё не отвечает — после запуска он загружается около полминуты. Список появится сам, страницу закрывать не нужно. <button class="btn mini" id="mlistStart" type="button" style="margin-left:6px">Запустить ComfyUI</button>'}</span></div>`;
     $('#modelsBadge').hidden = true;
     const st = $('#mlistStart'); if (st) st.onclick = () => startEngine();
@@ -3674,7 +3674,7 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
   };
 })();
 $('#mdRecheck').onclick = async () => { const b = $('#mdRecheck'); b.disabled = true;
-  try { await loadStatus(); toast('Проверили ещё раз'); } finally { b.disabled = false; } };
+  try { await loadStatus(); toast('Список перечитан'); } finally { b.disabled = false; } };
 async function doReset() {   // the menu item "настройки экрана" needs the action itself, not a click on the armed button
   await postJSON('/api/setup/reset'); setNavLocked(true); openSetup();
 }

@@ -349,7 +349,11 @@ textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft
 .chip.on .ar{color:var(--accent);opacity:1}
 .chip small{color:var(--muted);font-weight:500;font-size:11.5px}
 .agbig{border-radius:14px;padding:16px 18px;margin:4px 0 12px;border:2px solid var(--line-2)}
-.agbig .t{font-size:26px;font-weight:800;line-height:1.1}
+.agbig .h{font-size:13px;font-weight:700;color:var(--muted);margin-bottom:8px}
+.agbig .r{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:12.5px;margin-top:5px}
+.agbig .r span{color:var(--dim);flex:none}
+.agbig .r b{text-align:right;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.agbig .t{font-size:14px;font-weight:700;line-height:1.25;margin-top:10px}
 .agbig .n{font-size:15px;margin-top:6px;word-break:break-all}
 .agbig.ok{border-color:#3fd18b;background:rgba(63,209,139,.12)} .agbig.ok .t{color:#3fd18b}
 .agbig.bad{border-color:#ff6b6b;background:rgba(255,107,107,.10)} .agbig.bad .t{color:#ff6b6b}
@@ -717,12 +721,20 @@ img.pr-media{object-position:center 38%}
 body.dropping{outline:3px dashed var(--accent);outline-offset:-10px}
 body.dropping::after{content:'Отпустите — программа разложит файлы по местам';position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:99;padding:9px 16px;border-radius:999px;background:var(--accent);color:#fff;font-size:13px;font-weight:700;box-shadow:0 8px 26px rgba(0,0,0,.35);pointer-events:none}
 .sk-list{display:grid;gap:8px;margin-bottom:10px}
+.sk-top{display:flex;align-items:center;gap:8px;min-width:0}
+.sk-top>b{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sk-top .slot{flex:none;width:116px;display:flex;justify-content:flex-end;align-items:center;gap:6px}
+.sk-top .slot select{width:100%;font-size:11.5px;padding:3px 6px}
+.sk-top .slot .hint{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.sk-foot{display:flex;align-items:center;gap:8px;min-height:31px}
+.sk-foot input{flex:1 1 auto;min-width:0}
+.sk-foot small{flex:none;margin-left:auto}
 .sk{padding:10px 12px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);display:grid;gap:6px}
 .sk-top{display:flex;align-items:center;gap:8px}
 .sk-top b{font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sk-top select{background:var(--surface);border:1px solid var(--line-2);border-radius:8px;padding:4px 6px;font-size:12px;outline:none}
 .sk-top .x{width:24px;height:24px;border-radius:7px;background:var(--surface-2);font-size:11px}
-.sk p{font-size:11.5px;color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sk p{font-size:11.5px;color:var(--dim);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.7em;margin:0}
 .sk input{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:11.5px;outline:none;font-family:var(--mono)}
 @media (max-width:1300px){.ag-grid{grid-template-columns:200px minmax(0,1fr)}.ag-grid>.col{grid-column:1/-1}.ag-grid .gresize{display:none}}
 @media (max-width:900px){.ag-grid{grid-template-columns:1fr}.ag-chat,.ag-hist{height:auto}.ag-chat{height:calc(var(--vh,1vh)*70)}.ag-hlist{max-height:200px}}
@@ -5438,7 +5450,7 @@ function renderAssistant(el, m) {
     const closed = i < parts.length - 1;
     const text = m.edits?.[i] ?? p.replace(/\n$/, '');
     html += `<div class="pblock"><pre${closed ? ` contenteditable="plaintext-only" spellcheck="false" data-b="${i}" title="Текст можно править прямо здесь"` : ''}>${esc(text)}</pre>${closed ? `<div class="pb-act">
-      <button class="btn pri" data-send="${m.to || AG.target}" title="Промпт уйдёт в раздел, который выбрал ваш запрос">В ${AG_NAMES[m.to || AG.target] || 'раздел'}</button>
+      <button class="btn pri" data-send="${m.to || AG.target}" title="${m.to ? 'Промпт делался для этого раздела и туда же попадёт' : 'Раздел не записан в этом сообщении: уйдёт в тот, что выбран сейчас'}">${m.to ? 'В ' + (AG_NAMES[m.to] || m.to) : 'В выбранный раздел'}</button>
       <button class="btn" data-ru title="Русский перевод только для чтения: в модель уходит английский текст">Показать по-русски</button><button class="btn" data-copy>Копировать</button><button class="btn" data-paste title="Вставить скопированный текст на место выделенного (или в конец)">Вставить</button><small class="pb-n">${text.length} симв.</small></div>` : ''}${m.ru?.[i] ? `<div class="pb-ru"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px"><b>По-русски (только для чтения):</b><button class="btn" data-copy-ru type="button" style="padding:3px 10px;font-size:12px">Копировать русский</button></div><span class="pb-ru-t">${esc(m.ru[i]).replace(/\n/g, '<br>')}</span></div>` : ''}</div>`;
   });
   if (m.status && !m.content) html += `<div class="st">${esc(m.status)}</div>`;
@@ -5898,8 +5910,14 @@ async function agStatus() {
   $('#agState').className = 'verdict ' + st[0]; $('#agState').textContent = st[1];
   const big = $('#agBig'), curName = s.custom ? s.title : ((s.variants || []).find(o => o.current) || {}).title || s.title;
   big.className = 'agbig ' + (s.installing ? 'wait' : s.installed ? 'ok' : 'bad');
-  big.innerHTML = `<div class="t">${s.installing ? '⏳ Скачивается…' : s.installed ? '✓ ГОТОВО' : '✗ Не скачана'}</div>`
-    + `<div class="n"><b>${esc(curName || '')}</b>${s.installed ? (s.running ? ' — работает сейчас' : ' — запустится, когда нужна') : s.installing ? '' : ' — нажмите «Скачать» ниже'}</div>`;
+  const curVar = (s.variants || []).find(o => o.current);
+  const light = s.custom ? 'своя модель' : curVar ? (/лёгк|e4b|light|mini|small/i.test(curVar.title || '') ? 'облегчённая' : 'полная') : '—';
+  const cenz = s.custom ? 'по файлу вашей модели' : curVar ? (curVar.uncensored ? 'нет (без цензуры)' : 'есть') : '—';
+  big.innerHTML = `<div class="h">Подключенная модель агента</div>
+    <div class="r"><span>Модель</span><b>${esc(curName || '—')}</b></div>
+    <div class="r"><span>Исполнение</span><b>${light}</b></div>
+    <div class="r"><span>Цензура</span><b>${cenz}</b></div>
+    <div class="t">${s.installing ? '⏳ Скачивается…' : s.installed ? '✓ Скачана' + (s.running ? ', работает сейчас' : ', запустится, когда понадобится') : '✗ Не скачана — нажмите «Скачать» ниже'}</div>`;
   $('#agModel').innerHTML = s.custom
     ? `<b style="color:var(--text)">${esc(s.title)}</b> — ваша модель<br><span style="font-family:var(--mono);font-size:11px;word-break:break-all">${esc(s.custom.model)}</span><br>`
       + (s.vision ? 'Изображения видит (найден mmproj). ' : '<span class="warn-t">Файла mmproj нет — изображения агент не увидит.</span> ')
@@ -5907,11 +5925,11 @@ async function agStatus() {
     : `<b style="color:var(--text)">${esc(s.title)}</b> — бесплатная локальная модель (Apache 2.0), понимает русский и изображения. `
       + (s.installed ? 'Пока агент работает, генерация видео ждёт: обе модели вместе не помещаются в видеопамять — приложение переключает их само.' : `Нужно скачать один раз: ~${(s.size / 1e9).toFixed(1)} ГБ.`);
   const nReady = (s.variants || []).filter(o => o.have).length + (s.my_model ? 1 : 0);
-  $('#agVarBox > summary').textContent = `Выбор моделей агента (готово: ${nReady} из ${(s.variants || []).length + (s.my_model ? 1 : 0)})`;
-  $('#agVariants').innerHTML = (s.my_model ? `<button class="agv${s.my_model.current ? ' on' : ''}" type="button" data-my="1"><b>Моя модель: ${esc(s.my_model.title)}</b><span class="tg">ваша</span><span class="rd ok">✓ ГОТОВО${s.my_model.current ? ' · ВЫБРАНА' : ''}</span></button>` : '')
+  $('#agVarBox > summary').textContent = `Выбор моделей агента (скачано: ${nReady} из ${(s.variants || []).length + (s.my_model ? 1 : 0)})`;
+  $('#agVariants').innerHTML = (s.my_model ? `<button class="agv${s.my_model.current ? ' on' : ''}" type="button" data-my="1"><b>Моя модель: ${esc(s.my_model.title)}</b><span class="tg">ваша</span><span class="rd ok">✓ скачано${s.my_model.current ? ' · выбрана' : ''}</span></button>` : '')
     + (s.variants || []).map(o => `<button class="agv${o.current ? ' on' : ''}" type="button" data-v="${o.key}"><b>${esc(o.title)}</b>`
       + `<span class="tg${o.uncensored ? ' unc' : ''}">${o.uncensored ? 'без цензуры' : 'обычная'}</span>`
-      + `<span class="rd ${o.have ? 'ok' : 'no'}">${o.have ? '✓ ГОТОВО' : `Нужно скачать · ${(o.size / 1e9).toFixed(1)} ГБ`}${o.current ? ' · ВЫБРАНА' : ''}</span>`
+      + `<span class="rd ${o.have ? 'ok' : 'no'}">${o.have ? '✓ скачано' : `Нужно скачать · ${(o.size / 1e9).toFixed(1)} ГБ`}${o.current ? ' · ВЫБРАНА' : ''}</span>`
       + (o.min_vram && !o.fits ? `<small>⚠ нужно от ${o.min_vram} ГБ видеопамяти: у вас может быть медленно</small>` : '') + `</button>`).join('')
     + ((s.variants || []).some(o => o.current && o.uncensored) ? `<div class="hint" style="margin-top:8px">Эта модель не отказывается писать любые описания. Вы отвечаете за содержание: не используйте её для запрещённого и для людей без их согласия. Сам MiniMax H3 часть запросов всё равно может отклонить.</div>` : '');
   const needModel = !s.installed;
@@ -5991,12 +6009,12 @@ const AG_SK_IMG = { 'storyboard': 'Раскадровка', 'krea-2': 'Изоб�
 function renderSkills(list) {
   $('#skCnt').textContent = `(${list.length})`;
   $('#skList').innerHTML = list.map(s => `<div class="sk" data-id="${esc(s.id)}">
-    <div class="sk-top"><b title="${esc(s.name)}">${esc(s.name)}</b>
+    <div class="sk-top"><b title="${esc(s.name)}">${esc(s.name)}</b><span class="slot">
       ${AG_SK_IMG[s.id] ? `<span class="hint" title="Подключается сама, когда выбрана кнопка «${AG_SK_IMG[s.id]}» в «Промпт для»">${AG_SK_IMG[s.id]}</span>` : `<select>${Object.entries(SK_MODES).map(([k, v]) => `<option value="${k}" ${k === s.mode ? 'selected' : ''}>${v}</option>`).join('')}</select>`}
-      ${s.builtin ? '' : '<button class="x" title="Удалить скилл">✕</button>'}</div>
+      ${s.builtin ? '' : '<button class="x" title="Удалить скилл">✕</button>'}</span></div>
     <p title="${esc(s.description)}">${esc(s.description)}</p>
-    ${s.mode === 'auto' && !AG_SK_IMG[s.id] ? `<input value="${esc(s.keywords.join(', '))}" placeholder="слова через запятую">` : ''}
-    <small class="hint">${s.refs.length ? `+ справочники: ${s.refs.length}` : ''}</small></div>`).join('');
+    <div class="sk-foot">${s.mode === 'auto' && !AG_SK_IMG[s.id] ? `<input value="${esc(s.keywords.join(', '))}" placeholder="слова через запятую">` : ''}
+      ${s.refs.length ? `<small class="hint">+ справочники: ${s.refs.length}</small>` : ''}</div></div>`).join('');
 }
 function skShow(on) { $('#skList').hidden = !on; $('#skArr').textContent = on ? '▾' : '▸'; try { localStorage.setItem('h3-sk-open', on ? '1' : ''); } catch {} }
 $('#skToggle').onclick = () => skShow($('#skList').hidden);

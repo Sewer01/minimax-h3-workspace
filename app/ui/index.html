@@ -1791,6 +1791,10 @@ async function spreadFiles(files, view) {
   for (const kind of ['image', 'video', 'audio']) {
     const list = byKind[kind]; if (!list.length) continue;
     if (!dropAccepts(view).includes(kind)) { nofit.push({ kind, list }); continue; }
+    if (view === 'agent' && kind === 'video') {   // куда бросили: слева - кадры, справа - файл
+      for (const f of list) { if (AGENT_DROP_HALF === 'frames') await agFramesFromFile(f); else await agVideoFile(f); placed++; }
+      continue;
+    }
     const slots = dropSlots(view, kind);
     for (let i = 0; i < list.length; i++) {
       if (!slots[i]) { left.push(list[i].name); continue; }
@@ -1925,46 +1929,38 @@ document.addEventListener('drop', e => {
   handleDrop(e);
 });
 
-/* dragging a video into the chat splits the screen: the left half turns it into frames, the right
-   keeps it a file; pictures and sound go where they always went.
+/* Dragging a video into the chat splits the screen in two: left means "cut it into frames", right
+   means "keep it a file".
 
-   The veil never receives pointer events - it only shows where the file would land, which half is
-   meant is read from the cursor position. That also means a click can never get stuck under it, and
-   it disappears on every way a drag can end: a drop, an escape, a tab switch, a window losing focus,
-   or simply the pointer stopping moving over it. */
+   This code only LOOKS at the drag. It never calls preventDefault and never stops the event - once
+   it did, and the program stayed in the "a file is being dragged" state after the drop: dashed
+   frames hung over the whole window and the top buttons stopped answering. Where the file lands is
+   remembered from the cursor position and read later by the ordinary unpacking below. */
+let AGENT_DROP_HALF = 'file';
 (() => {
-  const veil = $('#agSplit'); if (!veil) return;
-  let watchdog = 0;
-  const show = on => {
-    veil.hidden = !on;
-    clearTimeout(watchdog);
-    if (on) watchdog = setTimeout(() => { veil.hidden = true; }, 500);   // no events for half a second: the drag is over
-  };
+  const veil = $('#agSplit');
   const wanted = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files') && activeView() === 'agent';
-  const half = e => (e.clientX <= innerWidth / 2 ? 'frames' : 'file');
-  const paint = e => $$('#agSplit .ds').forEach(x => x.classList.toggle('hot', x.dataset.how === half(e)));
+  const paint = e => {
+    AGENT_DROP_HALF = e.clientX <= innerWidth / 2 ? 'frames' : 'file';
+    if (veil) $$('#agSplit .ds').forEach(x => x.classList.toggle('hot', x.dataset.how === AGENT_DROP_HALF));
+  };
+  let hide = 0;
+  const show = on => {
+    if (!veil) return;
+    veil.hidden = !on;
+    clearTimeout(hide);
+    if (on) hide = setTimeout(() => { veil.hidden = true; }, 600);   // no events for half a second: the drag is over
+  };
   document.addEventListener('dragenter', e => { if (wanted(e)) { show(true); paint(e); } });
-  document.addEventListener('dragover', e => {
-    if (veil.hidden || !wanted(e)) return;
-    e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; show(true); paint(e);
-  }, true);
-  document.addEventListener('drop', async e => {
-    if (veil.hidden) return;
-    const how = half(e); show(false);
-    const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
-    if (!files.length) return;
-    e.preventDefault(); e.stopPropagation();
-    const vids = files.filter(f => fileKind(f) === 'video'), rest = files.filter(f => fileKind(f) !== 'video');
-    for (const f of vids) { if (how === 'frames') await agFramesFromFile(f); else await agVideoFile(f); }
-    if (rest.length) await routeFiles(rest);
-  }, true);
-  ['dragend', 'dragexit'].forEach(ev => document.addEventListener(ev, () => show(false), true));
-  addEventListener('blur', () => show(false));
-  addEventListener('keyup', e => { if (e.key === 'Escape') show(false); });
+  document.addEventListener('dragover', e => { if (!veil || veil.hidden) return; if (!wanted(e)) return; paint(e); });
+  const off = () => { show(false); document.body.classList.remove('dropping'); };
+  ['dragend', 'dragexit'].forEach(ev => document.addEventListener(ev, off, true));
+  document.addEventListener('drop', off, true);          // does not touch the event: the program unpacks it itself
+  addEventListener('blur', off);
+  addEventListener('keyup', e => { if (e.key === 'Escape') off(); });
   let lastView = activeView();
   new MutationObserver(() => { const v = activeView(); if (v !== lastView) { lastView = v; show(false); } })
     .observe(document.querySelector('.main') || document.body, { attributes: true, attributeFilter: ['class'], subtree: true });
-  document.addEventListener('click', e => { if (e.target.closest('.nav, #modeBar, #sbToggle')) show(false); }, true);
 })();
 
 /* ---------- local server (real ComfyUI) or offline demo ---------- */

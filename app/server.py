@@ -1307,7 +1307,7 @@ class App:
 
     async def h_updates_check(self, _req):
         """What is newer upstream: ComfyUI itself and the node packs pinned in the catalog."""
-        return web.json_response(await updates.check(self.session, self.comfy_root()))
+        return web.json_response(await updates.check(self.session, self.comfy_root(), data_dir=DATA_DIR))
 
     async def h_updates_state(self, _req):
         return web.json_response(getattr(self, "update_state", None) or {"stage": "idle"})

@@ -58,13 +58,19 @@ async def gh_json(session, path):
         return None
 
 
-async def check(session, comfy_root, installed_running=None):
+async def check(session, comfy_root, installed_running=None, data_dir=None):
     """What is newer upstream: the core and every node pack the catalog knows."""
     out = {"core": {}, "packs": [], "at": time.strftime("%H:%M:%S")}
     mine = installed_running or installed_version(comfy_root) or catalog.COMFY_VERSION
     rel = await gh_json(session, "/repos/Comfy-Org/ComfyUI/releases/latest")
     latest = version_of((rel or {}).get("tag_name"))
+    marks = sorted((Path(data_dir) / "backups").glob("comfyui-*.zip"), key=lambda p: p.stat().st_mtime) if data_dir else []
+    last = marks[-1].name if marks else None
+    prev = None
+    if last:
+        prev = version_of(last.replace("comfyui-", ""))
     out["core"] = {"installed": ".".join(map(str, mine or ())),
+                   "backup": last, "backup_version": ".".join(map(str, prev or ())),
                    "latest": ".".join(map(str, latest or ())),
                    "newer": bool(latest and mine and latest > mine),
                    "url": (rel or {}).get("html_url") or "https://github.com/Comfy-Org/ComfyUI/releases",
@@ -121,9 +127,15 @@ async def download(session, url, dest, on_progress=None, attempts=3):
 
 
 def backup_source(comfy_root, data_dir):
-    """Zip the code we are about to overwrite - not models, not nodes, not user data."""
+    """Zip the code we are about to overwrite - not models, not nodes, not user data.
+
+    The version goes into the name: a person looking at the folder must see what a copy would
+    bring back, and the settings page offers the rollback whenever such a copy exists - not only
+    right after the update, when the button would vanish on the next check.
+    """
     root = Path(comfy_root) / "ComfyUI"
-    out = Path(data_dir) / "backups" / f"comfyui-{int(time.time())}.zip"
+    was = ".".join(map(str, installed_version(comfy_root) or ())) or "unknown"
+    out = Path(data_dir) / "backups" / f"comfyui-{was}-{int(time.time())}.zip"
     out.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for f in root.rglob("*"):

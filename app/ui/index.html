@@ -3609,19 +3609,21 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
     st.innerHTML = html;
     const card = b.closest('.card'); if (card && html) card.classList.remove('collapsed');   // the answer must not stay folded
   };
-  const roll = () => `<button class="btn mini" id="mdEngBack" type="button" style="margin-left:6px">Вернуть прежнюю версию</button>`;
+  const roll = (core) => !core || !core.backup ? '' :
+    `<button class="btn mini" id="mdEngBack" type="button" style="margin-left:6px" title="В папке данных есть копия файлов ComfyUI от ${esc(core.backup_version || 'прежней версии')}">Вернуть ${esc(core.backup_version || 'прежнюю версию')}</button>`;
   async function poll() {
     let s = {};
     try { s = await (await fetch('/api/updates/state', { cache: 'no-store' })).json(); } catch { return false; }
     if (s.stage === 'downloading') say(`Скачиваем ComfyUI ${esc(s.version || '')}… ${s.pct || 0}%`);
     else if (s.stage === 'backup') say('Сохраняем резервную копию файлов ядра…');
     else if (s.stage === 'installing') say('Ставим новые файлы ядра; модели, ноды и ваши данные не трогаем…');
-    else if (s.stage === 'done') { say(`Готово: ядро обновлено до ${esc(s.version || '')}, файлов ${s.files || 0}. ComfyUI сейчас перезапустится.${roll()}`); wire(); loadStatus(); return true; }
-    else if (s.stage === 'error') { say('Не вышло: ' + esc(s.error || '') + roll()); wire(); return true; }
+    else if (s.stage === 'done') { say(`Готово: ядро обновлено до ${esc(s.version || '')}, файлов ${s.files || 0}. ComfyUI сейчас перезапустится.${roll(lastCore)}`); wire(); loadStatus(); return true; }
+    else if (s.stage === 'error') { say('Не вышло: ' + esc(s.error || '') + roll(lastCore)); wire(); return true; }
     else return true;
     setTimeout(poll, 2000);
     return false;
   }
+  let lastCore = null;   // the last check answer: the rollback button lives as long as the backup does
   function wire() { const rb = $('#mdEngBack'); if (rb) rb.onclick = async () => {
     rb.disabled = true; say('Возвращаем прежнюю версию ядра…');
     try { await postJSON('/api/updates/core/rollback', {}); say('Прежняя версия на месте, ComfyUI перезапускается.'); loadStatus(); }
@@ -3633,12 +3635,12 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
     try { c = await (await fetch('/api/updates/check', { cache: 'no-store' })).json(); }
     catch (e) { say('Интернет не отвечает: ' + esc(e.message)); b.disabled = false; return; }
     b.disabled = false;
-    const core = c.core || {};
-    if (!core.installed) { say('Не видно, какая версия ядра установлена: ComfyUI не запущен.'); toast('Не видно версии ComfyUI: он сейчас не запущен'); return; }
-    if (!core.newer) { say(`ComfyUI у вас ${esc(core.installed)} — это последняя версия, обновлять нечего.`); toast(`ComfyUI ${esc(core.installed)} — обновлений нет`); return; }
+    const core = c.core || {}; lastCore = core;
+    if (!core.installed) { say('Не видно, какая версия ядра установлена: ComfyUI не запущен.' + roll(core)); wire(); toast('Не видно версии ComfyUI: он сейчас не запущен'); return; }
+    if (!core.newer) { say(`ComfyUI у вас ${esc(core.installed)} — это последняя версия, обновлять нечего.${roll(core)}`); wire(); toast(`ComfyUI ${esc(core.installed)} — обновлений нет`); return; }
     toast(`Вышел ComfyUI ${esc(core.latest)} — можно обновить`);
     say(`Вышел ComfyUI <b>${esc(core.latest)}</b> (у вас ${esc(core.installed)}). Обновим только код ядра (несколько десятков мегабайт): модели, ноды и папка вывода не меняются, а перезаписываемые файлы уйдут в резерв, из которого можно вернуть.
-      <button class="btn pri mini" id="mdEngGo" type="button" style="margin-left:6px">Обновить движок</button>${roll()}`);
+      <button class="btn pri mini" id="mdEngGo" type="button" style="margin-left:6px">Обновить движок</button>${roll(core)}`);
     $('#mdEngGo').onclick = async e => {
       if ((window.QUEUE || []).some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация: дождитесь конца'); return; }
       e.target.disabled = true;

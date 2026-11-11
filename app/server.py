@@ -38,6 +38,7 @@ import customwf
 import engine
 import monitor
 import report
+import mp4info
 import single
 import updates
 import speech
@@ -2310,7 +2311,7 @@ class App:
         if draft:
             pass   # a draft has the size the user chose (it may be enough for a clip that is only to be enlarged)
             _, loras = await self.comfy_json("GET", "/models/loras")
-            dmad = next((n for n in loras or [] if "DMAD_4step" in n), None)
+            dmad = next((n for n in loras or [] if re.search(r"dmad[_\-\s]?4[_\-\s]?step", n, re.I)), None)
             if not dmad:
                 raise web.HTTPBadRequest(text="Для черновика нужен файл minimax_h3_DMAD_4step_full_lora в папке loras. Или сделайте сцену сразу в хорошем качестве.")
         scenes = [(wf.lipsync_prompt(p, len(own or images)), sec, own) for p, sec, own in scenes]
@@ -2418,9 +2419,11 @@ class App:
         for n_, it in enumerate(items):   # trimmed length of a clip (seconds) or None
             d = durs[n_] if n_ < len(durs) else None
             cuts.append(round(float(d), 3) if isinstance(d, (int, float)) and 0.3 <= d < 3600 else None)
-        names, sizes = [], []
+        names, sizes, timing = [], [], []
         for it in items:
             data = it["_up"][1] if "_up" in it else await self.item_bytes(it)
+            tr = mp4info.track_seconds(data)   # picture and sound seconds: the sound of every clip is fitted to its own picture
+            timing.append((tr["vide"], tr.get("soun")) if tr.get("vide") else None)
             name = f"h3s_m_{uuid.uuid4().hex[:10]}.{it.get('ext') or 'mp4'}"
             fd = aiohttp.FormData()
             fd.add_field("image", data, filename=name, content_type="video/mp4")
@@ -2431,7 +2434,7 @@ class App:
             names.append(res["name"])
             mm = re.match(r"\s*(\d+)\D+(\d+)", it.get("res") or "")
             sizes.append((int(mm.group(1)), int(mm.group(2))) if mm else None)
-        graph, stages = wf.montage_graph(names, sizes, cuts)
+        graph, stages = wf.montage_graph(names, sizes, cuts, timing)
         total = sum((cuts[n_] if cuts[n_] is not None else float(it.get("len") or 0)) for n_, it in enumerate(items))
         return await self.queue(graph, stages, {
             "mode": "montage", "sub": f"{len(items)} клипов", "prompt": "", "aspect": items[0].get("aspect", ""), "q": "",

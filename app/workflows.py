@@ -442,7 +442,37 @@ def grain_graph(name, strength, seed):
     return g, {k: "encode" for k in "LNHZIGRMKBF"} | {"W": "decode", "S": "save"}
 
 
-def montage_graph(names, sizes, cuts=None):
+def _fit_soundtrack(g, stages, names, cuts, timing):
+    """One soundtrack for the whole montage, built clip by clip: the sound of each clip is cut or padded with silence to the exact
+    length of ITS picture, so the small differences (a few hundredths of a second per clip) do not add up over many clips.
+    `timing[i]` = (picture seconds, sound seconds or None). Returns the audio output to give to ConcatenateVideo or None."""
+    if not timing or any(t is None for t in timing) or all(t[1] is None for t in timing):
+        return None
+    out = None
+    for i, (vdur, adur) in enumerate(timing):
+        want = round(min(vdur, cuts[i]) if cuts and i < len(cuts) and cuts[i] else vdur, 3)
+        if adur is None:   # a clip without sound: silence of its length
+            piece = [f"Q{i}", 0]
+            g[f"Q{i}"] = {"class_type": "EmptyAudio", "inputs": {"duration": want, "sample_rate": 48000, "channels": 2}}
+        else:
+            g[f"A{i}"] = {"class_type": "LoadAudio", "inputs": {"audio": names[i]}}
+            piece = [f"A{i}", 0]
+            if adur > want:
+                g[f"R{i}"] = {"class_type": "TrimAudioDuration", "inputs": {"audio": piece, "start_index": 0.0, "duration": want}}
+                piece = [f"R{i}", 0]
+            elif want - adur > 0.002:
+                g[f"E{i}"] = {"class_type": "EmptyAudio", "inputs": {"duration": round(want - adur, 3), "sample_rate": 48000, "channels": 2}}
+                g[f"P{i}"] = {"class_type": "AudioConcat", "inputs": {"audio1": piece, "audio2": [f"E{i}", 0], "direction": "after"}}
+                piece = [f"P{i}", 0]
+        if out is None:
+            out = piece
+        else:
+            g[f"J{i}"] = {"class_type": "AudioConcat", "inputs": {"audio1": out, "audio2": piece, "direction": "after"}}
+            out = [f"J{i}", 0]
+    return out
+
+
+def montage_graph(names, sizes, cuts=None, timing=None):
     """Join clips end to end with ComfyUI's own nodes (no ffmpeg). Clips of another size than the first one are scaled to it
     first: the join node refuses clips of different sizes. `sizes`: (width, height) per clip or None when unknown."""
     g, ins, stages = {}, {}, {}
@@ -464,6 +494,10 @@ def montage_graph(names, sizes, cuts=None):
             src = [f"V{i}", 0]
         ins[f"videos.video{i}"] = src
     g["C"] = {"class_type": "ConcatenateVideo", "inputs": {**ins, "codec": "auto"}}
+    sound = _fit_soundtrack(g, stages, names, cuts, timing)
+    if sound:
+        g["C"]["inputs"]["complete_audio"] = sound
+        stages.update({k: "decode" for k in g if k[:1] in "AEJPQR" and k[1:].isdigit()})
     g["S"] = {"class_type": "SaveVideo", "inputs": {"video": ["C", 0], "filename_prefix": "H3Workspace/montage",
                                                     "format": "auto", "codec": "auto"}}
     stages.update({"C": "decode", "S": "save"})

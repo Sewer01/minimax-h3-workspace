@@ -531,7 +531,10 @@ body.first-run .pr-first{display:flex}
 .pr-first b{display:block;font-size:15px;margin-bottom:3px}.pr-first span{font-size:13px;line-height:1.45;color:var(--mut,#9a8d93)}
 .pr-first .btn{flex:none;margin-left:auto}
 .nav.sub{display:none!important}
-.st-bar{position:relative;display:flex;justify-content:flex-end;gap:8px;margin:-40px 18px 14px 0;height:34px;align-items:center;z-index:35}
+.st-bar{position:relative;display:flex;justify-content:flex-end;gap:8px;margin:-40px 18px 14px 0;height:34px;align-items:center;z-index:35;pointer-events:none}
+/* the row of stage buttons is as wide as the page and sits above the pinned tabs: only its
+   buttons may catch the mouse, the empty part of the line must let the tabs through */
+.st-bar>*{pointer-events:auto}
 .st-bar .btn{height:32px;padding:0 14px;font-size:12.5px;white-space:nowrap}
 .st-bar .st-save{background:var(--accent,#c0405a);border-color:var(--accent,#c0405a);color:#fff}
 .st-bar .st-list b{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin:0 2px;border-radius:99px;background:rgba(255,255,255,.12);font-size:11px}

@@ -8,6 +8,7 @@ import os
 import socket
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -154,6 +155,9 @@ def show_running_window(base):
 
     The old behaviour opened http://127.0.0.1:port in a browser, which gave the user a web page instead of
     the program - without the desktop window, and with two places to work in without noticing.
+
+    base is empty when the copy that holds the folder does not answer at all: that is the zombie left
+    behind on some machines after the window was closed, and single.py has already tried to clear it.
     """
     try:
         import json
@@ -175,8 +179,11 @@ def main():
         if not (busy and show_running_window(busy)):
             try:
                 ctypes.windll.user32.MessageBoxW(
-                    0, "Программа уже запущена с этой папкой данных.\n\nЗакройте первое окно — "
-                       "две копии портят общие настройки и очередь.", "Minimax H3 Workspace", 0x40)
+                    0, "Программа уже работает с этой папкой данных: окно найдите на другом экране или "
+                       "в панели задач.\n\nЕсли окна нигде нет, а это окно появляется при каждом запуске, "
+                       "завершите процесс Minimax H3 Workspace в диспетчере задач и запустите программу "
+                       "заново: окно закрывается не всегда честно, а процесс остаётся и держит папку.",
+                    "Minimax H3 Workspace", 0x40)
             except Exception:
                 pass
         return
@@ -225,6 +232,12 @@ def main():
     finally:
         srv.shutdown()
         single.release(server.DATA_DIR)
+    # The window is closed and there is nothing left to do. WebView2 leaves a thread behind on some
+    # machines: the process stays without a window, holds the data folder, the queue and the ComfyUI
+    # core it started - and every next launch answers "the program is already running" while no window
+    # exists anywhere. Cleanup above is done, so the exit is made sure of rather than hoped for.
+    time.sleep(0.6)
+    os._exit(0)
 
 
 if __name__ == "__main__":

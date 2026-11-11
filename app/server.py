@@ -374,17 +374,33 @@ class App:
             data = json.loads(body) if body else None
             return r.status, data
 
+    def probe_note(self, ok, err=""):
+        """What the last contact with ComfyUI gave: address, time, reason. The settings page shows
+           it, so a silent blank becomes a fact a person can read and repeat to me."""
+        prev = getattr(self, "probe", None) or {}
+        self.probe = {"ok": bool(ok), "err": err, "at": time.strftime("%H:%M:%S"),
+                      "fails": 0 if ok else (prev.get("fails") or 0) + 1, "url": self.comfy}
+        if prev.get("ok") is not self.probe["ok"] or (not ok and self.probe["fails"] in (1, 5, 15, 40)):
+            applog(f'ComfyUI {self.comfy}: ' + ("отвечает" if ok else f"нет ответа — {err}"))
+
     async def system_stats(self):
         try:
             status, data = await self.comfy_json("GET", "/system_stats", timeout=aiohttp.ClientTimeout(total=8))
             if status != 200 or not isinstance(data, dict) or "system" not in data:
                 raise ValueError("no stats")
-        except Exception:
+        except Exception as e:
             # some builds hide or slow down /system_stats; a queue answer still means ComfyUI is alive
-            status, _ = await self.comfy_json("GET", "/queue", timeout=aiohttp.ClientTimeout(total=8))
-            if status != 200:
+            try:
+                status, _ = await self.comfy_json("GET", "/queue", timeout=aiohttp.ClientTimeout(total=8))
+            except Exception as e2:
+                self.probe_note(False, f"{type(e2).__name__}: {e2}"[:200])
                 raise
+            if status != 200:
+                self.probe_note(False, f"ComfyUI ответил HTTP {status}"[:200])
+                raise
+            self.probe_note(True)
             data = {"system": {}, "devices": []}
+        self.probe_note(True)
         argv = data["system"].get("argv", [])
         if "--output-directory" in argv:
             self.output_dir = Path(argv[argv.index("--output-directory") + 1])
@@ -695,7 +711,9 @@ class App:
             # ComfyUI is not up (yet): the page needs the flag and the mode list anyway, so that
             # «Настройки» is not an empty hole while the core is loading
             return web.json_response({**base, "online": False, "modes": self.modes(),
-                                      "can_restore": bool(self.config.get("setup_backup"))})
+                                      "window_mode": self.config.get("window_mode") or "max",
+                                      "can_restore": bool(self.config.get("setup_backup")),
+                                      "probe": getattr(self, "probe", {"url": self.comfy})})
         dev = (stats.get("devices") or [{}])[0]
         try:
             await self.resolve_models()
@@ -724,6 +742,8 @@ class App:
             **base, "online": True, "modes": self.modes(), "add_modes": add_modes,
             "hf_mirror": bool(self.config.get("hf_mirror")),
             "can_restore": bool(self.config.get("setup_backup")),
+            "window_mode": self.config.get("window_mode") or "max",
+            "probe": getattr(self, "probe", {"url": self.comfy}),
             "offer_modes": [{"mode": m, "gb": add_modes[m]} for m in catalog.OFFER_MODES
                             if m in add_modes and m not in (self.config.get("offered_modes") or [])],
             "gpu": gpu_name(dev.get("name", "")),
@@ -1256,8 +1276,33 @@ class App:
             return False
         if self.process and self.process.alive():
             return False
+        applog("запускаю ComfyUI по просьбе программы")
         self.start_managed()
         return True
+
+    async def h_core_log(self, _req):
+        """The last lines of the ComfyUI log and of the program's own log: the screen says only
+           "no answer", these two say why."""
+        def tail(path, n):
+            try:
+                return "\n".join(path.read_text(encoding="utf-8", errors="replace").splitlines()[-n:])
+            except OSError:
+                return ""
+        return web.json_response({"comfy": tail(DATA_DIR / "comfyui.log", 70), "app": tail(DATA_DIR / "app.log", 70),
+                                  "data": str(DATA_DIR)})
+
+    async def h_window_mode(self, req):
+        """How the window should open next time (the choice lives in Настройки → Интерфейс)."""
+        try:
+            body = await req.json()
+        except Exception:
+            return web.json_response({"error": "Не понял запрос"}, status=400)
+        mode = str((body or {}).get("mode") or "")
+        if mode not in ("max", "window", "fullscreen"):
+            return web.json_response({"error": "Неизвестный режим окна"}, status=400)
+        self.config.update(window_mode=mode)
+        applog(f"окно при запуске: {mode}")
+        return web.json_response({"ok": True, "mode": mode})
 
     async def h_engine_start(self, _req):
         """Start the local ComfyUI without restarting the whole program. Before this the core was
@@ -1287,8 +1332,7 @@ class App:
         if not backup:
             return web.json_response({"error": "Прежних настроек не найдено"}, status=409)
         self.config.update(**{k: v for k, v in backup.items() if v is not None}, setup_done=True)
-        self.config.data.pop("setup_backup", None)
-        self.config.update()
+        self.config.forget("setup_backup")
         # the reset stopped the core; without this the restored set-up would show an empty
         # model list until the person restarted the program
         await asyncio.to_thread(self.wake_comfy)
@@ -3142,6 +3186,19 @@ def gpu_name(raw):
     return name.split(" ", 1)[1] if name.startswith("cuda:") and " " in name else name
 
 
+def applog(msg):
+    """One line in the data folder's app.log. When the screen can only say "it does not answer",
+       this is what tells where it stuck. Kept small: the last few hundred lines."""
+    try:
+        p = DATA_DIR / "app.log"
+        if p.exists() and p.stat().st_size > 400_000:
+            p.write_text("\n".join(p.read_text(encoding="utf-8", errors="replace").splitlines()[-600:]), encoding="utf-8")
+        with p.open("a", encoding="utf-8") as f:
+            f.write(time.strftime("%d.%m %H:%M:%S ") + msg + "\n")
+    except OSError:
+        pass
+
+
 def comfy_error_text(res):
     if not isinstance(res, dict):
         return "ComfyUI отклонил задание"
@@ -3229,6 +3286,8 @@ def build_app(comfy_override=None):
                 web.post("/api/setup/reset", state.h_setup_reset),
     web.post("/api/setup/restore", state.h_setup_restore),
     web.post("/api/engine/start", state.h_engine_start),
+    web.get("/api/core-log", state.h_core_log),
+    web.post("/api/window_mode", state.h_window_mode),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),

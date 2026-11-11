@@ -59,6 +59,23 @@ class Config:
         tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, self.path)  # a reader sees either the old file or the new one, never a part of it
 
+    def forget(self, *keys):
+        """Take keys out of the settings for good. update() merges the file on disk over memory on
+           purpose, so popping from self.data and calling update() would write the key straight back —
+           that is how a saved copy of the old set-up survived its own restore."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            on_disk = json.loads(self.path.read_text(encoding="utf-8"))
+            if isinstance(on_disk, dict):
+                self.data = {**self.data, **on_disk}
+        except (OSError, ValueError):
+            pass
+        for key in keys:
+            self.data.pop(key, None)
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, self.path)
+
     @property
     def configured(self):
         return self.data.get("engine") in ("external", "managed", "cloud") and self.data.get("setup_done")

@@ -1400,6 +1400,15 @@ body.dropping::after{content:'Отпустите — программа разл
           <div class="zoom-btns" id="uiZoom" title="Размер интерфейса (или Ctrl + колесо мыши)" ><button class="btn" id="uiSm" type="button">А−</button><small id="uiPct">100%</small><button class="btn" id="uiLg" type="button">А+</button></div>
           <span class="hint">или Ctrl + колесо мыши</span>
         </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
+          <b style="font-size:13.5px">Окно при запуске</b>
+          <div class="seg" id="winMode" style="grid-template-columns:repeat(3,minmax(0,1fr));max-width:520px">
+            <button type="button" data-w="max">Развёрнутое<small>панель задач видна</small></button>
+            <button type="button" data-w="window">В окне<small>1440×920</small></button>
+            <button type="button" data-w="fullscreen">Во весь экран<small>без панелей</small></button>
+          </div>
+          <span class="hint">применится после перезапуска программы</span>
+        </div>
       </div>
 
       <div class="steps" id="setupSteps">
@@ -1543,6 +1552,7 @@ body.dropping::after{content:'Отпустите — программа разл
         <div class="card" style="margin-bottom:16px">
           <div class="card-h"><h3>Движок</h3><button class="btn" id="mdReset">Изменить настройки</button></div>
           <div class="kv" id="mdEngine"></div>
+          <div class="hint" id="engProbe" style="margin-top:8px"></div>
         </div>
         <div class="card" id="mdRentCard">
           <div class="card-h"><h3>Аренда мощного компьютера</h3></div>
@@ -1902,19 +1912,54 @@ let WAIT_CORE = 0;
 /* ComfyUI boots for tens of seconds; until the list is there the page keeps asking by itself */
 function waitCore() {
   if (WAIT_CORE) return;
-  let n = 0;
+  let n = 0, tried = false;
   WAIT_CORE = setInterval(async () => {
     if (++n > 45 || !document.querySelector('#view-models.active')) { clearInterval(WAIT_CORE); WAIT_CORE = 0; return; }
     await loadStatus();
-    if (ENGINE_ON) { clearInterval(WAIT_CORE); WAIT_CORE = 0; toast('ComfyUI отвечает — список моделей обновлён'); }
+    if (ENGINE_ON) { clearInterval(WAIT_CORE); WAIT_CORE = 0; toast('ComfyUI отвечает — список моделей обновлён'); return; }
+    if (!tried && n === 12) { tried = true; toast('ComfyUI всё молчит — пробую запустить его заново'); startEngine(true); }
+    if (n === 45) coreLogHint();
   }, 4000);
 }
-async function startEngine() {
+async function startEngine(quiet) {
   try {
     const r = await postJSON('/api/engine/start', {});
-    toast(r.note || 'ComfyUI уже работает');
+    if (!quiet) toast(r.note || 'ComfyUI уже работает');
     if (r.starting) waitCore();
   } catch (e) { toast(e.message); }
+}
+/* the two logs the program keeps: they say why ComfyUI stays silent, the screen cannot */
+async function showCoreLog() {
+  let j = {};
+  try { j = await (await fetch('/api/core-log', { cache: 'no-store' })).json(); }
+  catch (e) { toast('Не удалось прочитать журнал: ' + e.message); return; }
+  let m = $('#coreLogModal');
+  if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'coreLogModal'; document.body.append(m); }
+  m.hidden = false;
+  m.innerHTML = `<div class="box" style="padding:20px;max-width:960px;max-height:calc(var(--vh,1vh)*88);overflow:auto">
+    <div class="card-h"><h3>Почему ComfyUI молчит</h3><button class="btn mini" data-x type="button">Закрыть</button></div>
+    <div class="hint" style="margin-bottom:8px">Файлы журнале лежат в ${esc(j.data || 'папке данных')} — их можно скопировать целиком.</div>
+    <b style="font-size:13.5px">ComfyUI, последние строки</b>
+    <pre style="white-space:pre-wrap;font-size:12px;line-height:1.45;margin:6px 0 16px;max-height:38vh;overflow:auto">${esc(j.comfy || 'пусто')}</pre>
+    <b style="font-size:13.5px">Программа</b>
+    <pre style="white-space:pre-wrap;font-size:12px;line-height:1.45;margin:6px 0 0;max-height:24vh;overflow:auto">${esc(j.app || 'пусто')}</pre></div>`;
+  m.onclick = e => { if (e.target === m || e.target.closest('[data-x]')) m.hidden = true; };
+}
+function coreLogHint() {
+  const box = $('#mlist');
+  if (!box || !document.querySelector('#view-models.active')) return;
+  box.innerHTML = `<div class="note warn"><span>ComfyUI не ответил за три минуты. Обычно причина видна в его журнале: видеокарта или драйвер, свободное место, повреждённый файл модели.
+    <button class="btn mini" id="coreLogBtn2" type="button">Показать журнал</button></span></div>`;
+  const b = $('#coreLogBtn2'); if (b) b.onclick = showCoreLog;
+}
+function paintProbe(s) {
+  const el = $('#engProbe'); if (!el) return;
+  const p = s.probe || {}, url = p.url || s.comfy || '—';
+  el.innerHTML = (p.ok
+    ? `ComfyUI отвечает: <b>${esc(url)}</b> · проверено в ${esc(p.at || '—')}`
+    : `ComfyUI не отвечает: <b>${esc(url)}</b> · ${esc(p.err || 'нет ответа')} · попыток подряд: ${p.fails || 1}`)
+    + ` <button class="btn mini" id="coreLogBtn" type="button">Показать журнал</button>`;
+  const b = $('#coreLogBtn'); if (b) b.onclick = showCoreLog;
 }
 $('#engRow').onclick = () => startEngine();
 function setEngine(on) {
@@ -2006,6 +2051,8 @@ async function loadStatus() {
     try { s = await (await fetch('/api/status', { signal: ctrl.signal })).json(); } finally { clearTimeout(kill); }
     $('#setCustomBox').hidden = s.engine !== 'external';
     setEngine(s.online);
+    paintProbe(s);
+    if (window.paintWin) paintWin(s.window_mode);
     renderModels(s);            // also when the core is silent: the card has to say why it is empty
     if (!s.online) { waitCore(); return; }
     askSavedQueue();
@@ -3470,6 +3517,15 @@ $('#wzRestore').onclick = async () => {
     await loadStatus(); goTo(v && document.querySelector(`.nav[data-view="${v}"]`) ? v : 'video');
   } catch (e) { toast(e.message); }
 };
+(function () {   // which window the program opens in next time
+  const box = $('#winMode'); if (!box) return;
+  window.paintWin = v => $$('#winMode button').forEach(x => x.classList.toggle('on', x.dataset.w === (v || 'max')));
+  box.onclick = async e => {
+    const b = e.target.closest('button[data-w]'); if (!b) return;
+    try { await postJSON('/api/window_mode', { mode: b.dataset.w }); paintWin(b.dataset.w); toast('При следующем запуске окно откроется так'); }
+    catch (err) { toast(err.message); }
+  };
+})();
 $('#mdRecheck').onclick = async () => { const b = $('#mdRecheck'); b.disabled = true;
   try { await loadStatus(); toast('Проверили ещё раз'); } finally { b.disabled = false; } };
 $('#mdReset').onclick = async () => {

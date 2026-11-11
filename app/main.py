@@ -138,6 +138,17 @@ class JsApi:
         return {"ok": bool(saved), "folder": folder, "count": len(saved), "failed": failed}
 
 
+def window_mode():
+    """How the window opens. It used to always open maximized, which cannot be dragged to a second
+       monitor or made smaller without a fight; the choice is in Настройки → Интерфейс."""
+    try:
+        import json
+        v = json.loads((server.DATA_DIR / "config.json").read_text(encoding="utf-8")).get("window_mode")
+        return v if v in ("max", "window", "fullscreen") else "max"
+    except Exception:
+        return "max"
+
+
 def show_running_window(base):
     """Ask the copy that already works with these files to bring its own window forward.
 
@@ -199,9 +210,12 @@ def main():
         except Exception:
             pass
         api = JsApi(port)
-        api._window = webview.create_window("Minimax H3 Workspace", url, width=1440, height=920, min_size=(1000, 680), maximized=True,   # opens on the whole screen (the taskbar stays visible)
-                                           background_color="#12070a", js_api=api,
-                                           draggable=True)  # pywebview blocks dragging of every picture by default; the app drags pictures into slots
+        mode = window_mode()
+        # pywebview blocks dragging of every picture by default; the app drags pictures into slots
+        api._window = webview.create_window(
+            "Minimax H3 Workspace", url, width=1440, height=920, min_size=(1000, 680),
+            maximized=(mode == "max"), fullscreen=(mode == "fullscreen"),
+            background_color="#12070a", js_api=api, draggable=True)
         webview.start(gui="edgechromium", private_mode=False,
                       storage_path=str(server.DATA_DIR / "webview"))
     except Exception:

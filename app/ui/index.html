@@ -5764,7 +5764,7 @@ $('#agNew2').onclick = newChat;
 // send a finished prompt into a generator, with the chat's pictures
 async function setDropFile(input, file) { const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files; input.dispatchEvent(new Event('change')); }
 async function sendPrompt(blk, to) {
-  const prompt = $('pre', blk).textContent;
+  let prompt = $('pre', blk).textContent;
   // pictures of a reopened chat exist only as data URLs; turn them back into files
   const toFile = (u, i) => { const [h, b] = u.split(','); const bin = atob(b); const a = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) a[k] = bin.charCodeAt(k); return new File([a], `picture${i + 1}.jpg`, { type: h.slice(5, h.indexOf(';')) }); };
   const own = m => (m.files && m.files.length ? m.files
@@ -5772,8 +5772,20 @@ async function sendPrompt(blk, to) {
   const msgIdx = +(blk.closest('.msg')?.dataset.i ?? -1);
   const answer = msgIdx >= 0 ? AG.msgs[msgIdx] : null;
   const fix = answer ? answer.edit !== false : true;   // этот ответ — правка или продолжение сюжета
+  // only the pictures the prompt actually names go along, in the order they are named, and the
+  // numbers in the text are rewritten to the slots they will take: otherwise "Picture 3" lands
+  // on the first free cell and the prompt describes somebody else's face
+  const allFiles = AG.msgs.filter(m => m.role === 'user').flatMap(own);   // Picture N counts exactly these (frames excluded)
+  const order = [];
+  prompt = prompt.replace(/<image(\d+)>|Picture\s+(\d+)|image\s+(\d+)/gi, (m, t1, p, f) => {
+    const n = +(t1 || p || f);
+    if (n < 1 || n > allFiles.length) return m;
+    if (!order.includes(n)) order.push(n);
+    return m.replace(/\d+/, String(order.indexOf(n) + 1));
+  });
   let files = [];
-  if (fix) {   // a fix carries the pictures that were discussed in that message, not every picture of the chat
+  if (order.length) files = order.map(n => allFiles[n - 1]);
+  else if (fix) {   // no numbers in the text: the pictures that were discussed in that message
     for (let k = msgIdx - 1; k >= 0; k--) {
       const m = AG.msgs[k];
       if (m.role !== 'user') continue;

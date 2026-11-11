@@ -668,6 +668,16 @@ img.pr-media{object-position:center 38%}
 .ag-att img{height:56px;border-radius:8px;display:block}
 .ag-att b{position:absolute;left:4px;top:4px;font-size:10px;font-family:var(--mono);background:rgba(var(--ov-rgb),.8);padding:1px 5px;border-radius:5px}
 .ag-att button{position:absolute;right:-6px;top:-6px;width:20px;height:20px;border-radius:50%;background:var(--surface-2);font-size:11px}
+.ag-att .vid{width:88px;height:56px;border-radius:8px;border:1px solid var(--line);overflow:hidden;background:var(--bg-2)}
+.ag-att .vid img{width:100%;height:100%;object-fit:cover;display:block}
+.ag-att button[data-fr]{left:4px;right:auto;top:auto;bottom:4px;width:auto;height:auto;border-radius:6px;padding:2px 7px;font-size:10.5px}
+/* while a video is dragged into the chat, the screen splits in two: where it lands decides what it becomes */
+#agSplit{position:fixed;inset:0;z-index:780;display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px;background:rgba(5,7,11,.74);backdrop-filter:blur(3px)}
+#agSplit[hidden]{display:none}
+#agSplit .ds{border:2px dashed var(--line-2);border-radius:18px;display:grid;place-content:center;gap:10px;justify-items:center;text-align:center;padding:22px;background:rgba(var(--bg2-rgb),.55)}
+#agSplit .ds b{font-size:21px}
+#agSplit .ds small{color:var(--muted);font-size:13px;max-width:440px;line-height:1.5}
+#agSplit .ds.hot{border-color:var(--accent);background:rgba(var(--accent-rgb),.16)}
 .ag-comp{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;padding:12px 18px 14px}
 /* below the conversation there is a fixed height: the previews, the mode line and the field
    must take their own room, or the column squashes them into each other and they overlap */
@@ -1213,15 +1223,13 @@ body.dropping::after{content:'Отпустите — программа разл
             <small id="agEditHint">Вернёт весь промпт с заменой; «Picture 1, 2…» — картинки этого сообщения</small>
           </div>
           <div class="ag-comp">
-            <label class="btn ag-clip" title="Приложить изображения с компьютера"><input type="file" accept="image/*" multiple hidden id="agFile">
+            <label class="btn ag-clip" title="Приложить картинки; если выбрать видео, из него возьмутся кадры"><input type="file" accept="image/*,video/*" multiple hidden id="agFile">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 8"/></svg>
             </label>
             <button class="btn ag-clip" type="button" id="agLib" title="Взять изображение или звук из Библиотеки (то, что вы уже сделали)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M16 4v5"/></svg>
             </button>
-            <label class="btn ag-clip" title="Приложить видео: программа вырежет из него несколько кадров, чтобы Агент увидел, кто в кадре"><input type="file" accept="video/*" hidden id="agVidFile">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="14" height="14" rx="2"/><path d="m16 10 6-3v10l-6-3"/></svg>
-            </label>
+            <label class="btn ag-clip" title="Приложить видео файлом: уйдёт в раздел генерации как есть. Чтобы Агент увидел содержимое, нажмите «кадры» на плашке или бросьте видео в левую половину"><input type="file" accept="video/*" hidden id="agVidFile"></label>
             <label class="btn ag-clip" title="Приложить аудио (песню или голос) — слова будут распознаны"><input type="file" accept="audio/*,video/mp4" hidden id="agAudioFile">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
             </label>
@@ -1641,6 +1649,11 @@ equirements.txt</code><br>
   </main>
 </div>
 
+  <div id="agSplit" hidden>
+    <div class="ds" data-how="frames"><b>В кадры</b><small>Агент посмотрит видео как восемь кадров: кто в кадре, что происходит, куда движется камера</small></div>
+    <div class="ds" data-how="file"><b>Видео файлом</b><small>Файл останется как есть: уйдёт в раздел генерации целиком. Агент его не смотрит - для него видео существует только кадрами</small></div>
+  </div>
+
 <button id="sbToggle" type="button" title="Показать или скрыть главное меню">‹ Меню</button>
 <div id="sbRs" title="Потяните, чтобы изменить ширину меню (двойной щелчок: вернуть как было)"></div>
 <div class="dock" id="dock" hidden title="Открыть очередь">
@@ -1911,6 +1924,31 @@ document.addEventListener('drop', e => {
   e.preventDefault();
   handleDrop(e);
 });
+
+/* dragging a video into the chat splits the screen: the left half turns it into frames, the right
+   keeps it a file; pictures and sound go where they always went */
+(() => {
+  const veil = $('#agSplit'); if (!veil) return;
+  const wanted = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files') && activeView() === 'agent';
+  document.addEventListener('dragenter', e => { if (wanted(e)) veil.hidden = false; });
+  document.addEventListener('dragover', e => {
+    if (veil.hidden || !wanted(e)) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+    const p = e.target.closest('.ds'); $$('#agSplit .ds').forEach(x => x.classList.toggle('hot', x === p));
+  }, true);
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) veil.hidden = true; });
+  document.addEventListener('drop', async e => {
+    if (veil.hidden) return;
+    const p = e.target.closest('.ds'); veil.hidden = true;
+    if (!p) return;                       // past the halves: the usual unpacking as usual
+    e.preventDefault(); e.stopPropagation();
+    const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+    const how = p.dataset.how;
+    const vids = files.filter(f => fileKind(f) === 'video'), rest = files.filter(f => fileKind(f) !== 'video');
+    for (const f of vids) { if (how === 'frames') await agFramesFromFile(f); else await agVideoFile(f); }
+    if (rest.length) await routeFiles(rest);
+  }, true);
+})();
 
 /* ---------- local server (real ComfyUI) or offline demo ---------- */
 const API = location.protocol.startsWith('http');
@@ -5262,7 +5300,9 @@ function renderAtt() {
   const base = agImgCount(); let k = 0;
   $('#agAtt').innerHTML = AG.att.map((a, i) => a.frame
     ? `<div title="Кадр из видео «${esc(a.vname)}»"><img src="${a.url}"><b style="background:#3a5a8c">🎞 ${esc(a.label)}</b><button data-i="${i}">✕</button></div>`
-    : `<div><img src="${a.url}"><b>Picture ${base + (++k)}</b><button data-i="${i}">✕</button></div>`).join('');
+    : a.video
+      ? `<div title="Видео «${esc(a.vname)}» файлом: в генерацию уйдёт целиком, Агент его не смотрит"><div class="vid"><img src="${a.url}"></div><b style="background:#3a5a8c">🎬 ${a.vdur ? a.vdur.toFixed(1) + ' с' : 'видео'}</b><button data-fr="${i}" type="button" title="Вырезать кадры, чтобы Агент увидел, что в видео">кадры</button><button data-i="${i}">✕</button></div>`
+      : `<div><img src="${a.url}"><b>Picture ${base + (++k)}</b><button data-i="${i}">✕</button></div>`).join('');
 }
 // a video cannot be shown to the model as a file: several frames are cut out of it and sent as pictures, with the seconds written down
 async function agVideoFrames(file, n = 8) {
@@ -5281,15 +5321,29 @@ async function agVideoFrames(file, n = 8) {
   URL.revokeObjectURL(v.src);
   return { frames: out, dur: v.duration };
 }
-$('#agVidFile').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+async function agFramesFromFile(f) {   // the only way the agent can look at a video: pieces of it
   AG.att = AG.att.filter(a => !a.frame);   // one video at a time
   toast('Вырезаем кадры из видео…');
   try {
     const { frames, dur } = await agVideoFrames(f);
     frames.forEach(fr => AG.att.push({ file: fr.file, url: fr.url, frame: true, label: fr.t.toFixed(1) + ' с', vname: f.name, vdur: dur, vfile: f }));
     renderAtt(); agCtx(); toast(`Из видео взято ${frames.length} кадров. Теперь напишите, кого на что заменить`);
-  } catch (err) { toast(err.message); }
+  } catch (err) { toast(err.message); return false; }
+  return true;
+}
+async function agVideoFile(f) {   // kept as a file: the mode gets the video itself, the agent is only told it exists
+  if (AG.att.some(a => a.video && a.file && a.file.name === f.name && a.file.size === f.size)) { toast('Это видео уже приложено'); return false; }
+  toast('Прикладываем видео файлом…');
+  try {
+    const { frames, dur } = await agVideoFrames(f, 1);   // the first frame is only the picture on the chip
+    AG.att.push({ file: f, url: frames[0].url, video: true, vname: f.name, vdur: dur });
+    renderAtt(); agCtx();
+    toast('Видео приложено файлом. Агент его не видит — нажмите «кадры» на плашке, если нужно описать содержимое');
+  } catch (err) { toast(err.message); return false; }
+  return true;
+}
+$('#agVidFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (f) await agVideoFile(f);
 };
 $('#agAtt').addEventListener('dragover', e => { if ([...(e.dataTransfer.types || [])].includes('Files')) { e.preventDefault(); $('#agAtt').classList.add('over'); } });
 $('#agAtt').addEventListener('dragleave', () => $('#agAtt').classList.remove('over'));
@@ -5298,9 +5352,15 @@ $('#agAtt').addEventListener('drop', async e => {
   e.preventDefault(); e.stopPropagation(); $('#agAtt').classList.remove('over');
   for (const f of e.dataTransfer.files) await agAttachFile(f);
 });
-$('#agAtt').onclick = e => { const b = e.target.closest('button[data-i]'); if (b) { AG.att.splice(+b.dataset.i, 1); renderAtt(); } };
+$('#agAtt').onclick = async e => {
+  const fr = e.target.closest('button[data-fr]');
+  if (fr) { const a = AG.att[+fr.dataset.fr]; if (a && a.file) { AG.att.splice(+fr.dataset.fr, 1); renderAtt(); await agFramesFromFile(a.file); } return; }
+  const b = e.target.closest('button[data-i]'); if (b) { AG.att.splice(+b.dataset.i, 1); renderAtt(); }
+};
 $('#agFile').onchange = async e => {
-  for (const f of e.target.files) { if (!isImage(f)) { toast('Это не картинка: ' + f.name); continue; } const u = await fileToDataURL(f); if (u) AG.att.push({ file: f, url: u }); else toast('Картинка не открылась: ' + f.name); }
+  for (const f of e.target.files) {
+    if (fileKind(f) === 'video') { await agFramesFromFile(f); continue; }   // the picture button: a video turns into frames
+    if (!isImage(f)) { toast('Это не картинка: ' + f.name); continue; } const u = await fileToDataURL(f); if (u) AG.att.push({ file: f, url: u }); else toast('Картинка не открылась: ' + f.name); }
   e.target.value = ''; renderAtt();
 };
 $('#agEmpty').onclick = e => { const s = e.target.closest('span'); if (s) { $('#agIn').value = s.textContent.replace(/[«»]/g, '').replace(/ \+ фото героинь$/, ''); $('#agIn').focus(); } };
@@ -5492,12 +5552,17 @@ async function agSend() {
       ? `Слова из аудио${au.langName ? ` (язык: ${au.langName})` : ''}: «${au.text.trim()}»]` : 'Слов в аудио нет (музыка или голос не распознан).]');
     text = text.trim();
   }
-  const pics = AG.att.filter(a => !a.frame), frs = AG.att.filter(a => a.frame);   // frames of the video go last, so Picture 1, 2… stay the heroes
+  const vids = AG.att.filter(a => a.video);
+  const pics = AG.att.filter(a => !a.frame && !a.video), frs = AG.att.filter(a => a.frame);   // frames of the video go last, so Picture 1, 2… stay the heroes
   if (frs.length) {
     text += `\n\n[Видео «${frs[0].vname}», ${frs[0].vdur.toFixed(1)} с (это <Video 1>). К сообщению приложены последние ${frs.length} изображений: кадры из этого видео в моменты ${frs.map(a => a.label).join(', ')}. Это кадры исходного видео, а не изображения героев: в Picture N они не входят.]`;
     text = text.trim();
   }
-  AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videoFile: frs[0]?.vfile, audioFile: au?.file });
+  if (vids.length) {
+    text += `\n\n[К сообщению приложено видео «${vids[0].vname}»${vids[0].vdur ? `, ${vids[0].vdur.toFixed(1)} с` : ''} — файлом, без раскадровки. Его кадров среди Picture N нет: содержимое описать нельзя, но файл уйдёт в раздел генерации целиком.]`;
+    text = text.trim();
+  }
+  AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videoFile: frs[0]?.vfile || vids[0]?.file, audioFile: au?.file });
   AG.att = []; renderAtt(); $('#agIn').value = ''; AG.audio = null; showAudioBox();
   const reply = { role: 'assistant', content: '', status: 'Отправляем…', edit: AG.edit, to: AG.target };   // перенос в раздел потом поступит по тому же смыслу
   AG.msgs.push(reply); renderMsgs();

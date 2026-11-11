@@ -4055,10 +4055,13 @@ function askDelete(ids) {
   $('#confirm').hidden = false;
   $('#cfOk').onclick = async () => {
     if (API) {
-      for (const id of [...ids]) {
-        const r = await fetch(`/api/library/${id}`, { method: 'DELETE' });
-        if (!r.ok) { toast((await r.json().catch(() => ({}))).error || 'Не удалось удалить'); ids = ids.filter(x => x !== id); }
-      }
+      try {   // one request for the whole choice: the files go to the Recycle Bin in one hidden call
+        const r = await fetch('/api/library/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...ids] }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) toast(j.error || 'Не удалось удалить');
+        else if ((j.failed || []).length) toast(`Не удалось удалить файлов: ${j.failed.length} — остались на месте`);
+        ids = j.gone || [];
+      } catch (e) { toast(e.message); ids = []; }
     }
     ids.forEach(id => { const i = LIB.findIndex(x => x.id === id); if (i >= 0) LIB.splice(i, 1); selected.delete(id); });
     $('#confirm').hidden = true;

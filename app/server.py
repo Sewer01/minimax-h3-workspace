@@ -2751,6 +2751,31 @@ class App:
             self.library.save()
         return web.json_response(self.public(item))
 
+    async def h_library_delete_many(self, req):
+        """Several library items at once: their files go to the Recycle Bin in one call."""
+        ids = [str(i) for i in ((await req.json()).get("ids") or [])][:200]
+        gone, failed, paths, by_id = [], [], [], {}
+        for i in ids:
+            item = self.library.get(i)
+            if not item:
+                failed.append(i)
+                continue
+            cand = [p for p in {self.file_path(item), Path(item["local"]) if item.get("local") else None} if p and p.exists()]
+            if not cand:                      # the file is already gone: the record goes too
+                self.library.remove(i)
+                gone.append(i)
+                continue
+            by_id[i] = cand
+            paths += cand
+        removed = {str(p) for p in (await asyncio.to_thread(send_to_recycle_bin, paths) if paths else [])}
+        for i, cand in by_id.items():
+            if all(str(p) in removed for p in cand):
+                self.library.remove(i)
+                gone.append(i)
+            else:                             # the file stayed where it was: so does the record
+                failed.append(i)
+        return web.json_response({"gone": gone, "failed": failed})
+
     async def h_library_delete(self, req):
         item = self.library.get(req.match_info["id"])
         if not item:
@@ -3361,12 +3386,27 @@ def comfy_error_text(res):
     return "\n".join(p for p in parts if p) or "ComfyUI отклонил задание"
 
 
-def send_to_recycle_bin(path):
+def send_to_recycle_bin(paths):
+    """Move files to the Recycle Bin with ONE hidden PowerShell.
+
+    Before, every file took its own process and a visible blue console window: deleting a dozen
+    library clips blinked a dozen windows and took a dozen seconds. Paths arrive through an
+    environment variable joined by a pipe, so quotes, spaces and Cyrillic names are no problem.
+    One path in gives the old answer (True when it is gone), a list gives the list of paths that
+    actually disappeared.
+    """
+    single = isinstance(paths, (str, Path))
+    items = [Path(paths)] if single else [Path(p) for p in paths]
+    items = [p for p in items if p.exists()]
+    if not items:
+        return [] if not single else False
     ps = ("Add-Type -AssemblyName Microsoft.VisualBasic; "
-          "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($env:H3_DEL, 'OnlyErrorDialogs', 'SendToRecycleBin')")
-    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                       env={**os.environ, "H3_DEL": str(path)}, capture_output=True)
-    return r.returncode == 0 and not path.exists()
+          "foreach ($p in ($env:H3_DEL -split '\\|')) { if ($p) { try { "
+          "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') } catch { } } }")
+    subprocess.run(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                   env={**os.environ, "H3_DEL": "|".join(str(p) for p in items)}, capture_output=True)
+    gone = [p for p in items if not p.exists()]
+    return bool(gone) if single else gone
 
 
 def _same_origin(request):
@@ -3524,6 +3564,7 @@ def build_app(comfy_override=None):
         web.get("/api/library", state.h_library),
         web.patch("/api/library/{id}", state.h_library_patch),
         web.delete("/api/library/{id}", state.h_library_delete),
+        web.post("/api/library/delete", state.h_library_delete_many),
         web.get("/api/file/{id}", state.h_file),
         web.get("/api/srcfile/{id}", state.h_srcfile),
         web.get("/api/events", state.h_events),

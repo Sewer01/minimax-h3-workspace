@@ -2080,7 +2080,7 @@ async function loadStatus() {
     const box = $('#mlist');
     if (box && document.querySelector('#view-models.active') && !box.querySelector('.m')) {
       box.innerHTML = `<div class="note warn"><span>${window.PROBE_OK
-        ? 'ComfyUI отвечает, но список моделей не собрался вовремя — он сейчас занят. Страница переспрашивает сама; можно нажать «Проверить ещё раз».'
+        ? 'ComfyUI отвечает, но список моделей не собрался вовремя — он сейчас занят. Страница переспрашивает сама; можно нажать «Обновить список».'
         : 'ComfyUI не отвечает: он либо ещё загружается (это около полминуты), либо не запущен. Страница переспрашивает каждые четыре секунды.'}
         <button class="btn mini" id="coreLogBtn3" type="button">Показать журнал</button></span></div>`;
       const cl = $('#coreLogBtn3'); if (cl) cl.onclick = showCoreLog;

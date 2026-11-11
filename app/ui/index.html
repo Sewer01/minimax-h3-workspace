@@ -225,7 +225,9 @@ body.nosb-on #modeBar{left:112px}
 #modeBar .mb:hover{opacity:1;border-color:var(--accent)}
 #modeBar .mb.on{opacity:1;border-color:var(--accent);background:var(--accent-soft,var(--surface-2));color:var(--accent)}
 #modeBar .mb-sep{flex:none;width:1px;height:18px;background:var(--line-2);margin:0 4px}
-@media (max-width:1000px){#modeBar{display:none}}
+#modeBar .mb i{font-style:normal}
+#modeBar.tight .mb{padding:0 8px;gap:0}#modeBar.tight .mb i{display:none}
+#modeBar.can-right{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent)}
 .app.nosb ~ #sbToggle,body.nosb-on #sbToggle{left:12px}
 
 /* sidebar */
@@ -288,7 +290,9 @@ h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
 .card{background:linear-gradient(180deg,var(--surface),rgba(var(--surface-rgb),.85));border:1px solid var(--line);border-radius:var(--radius);padding:18px;min-width:0}
 .card .btn{white-space:normal;text-align:center;line-height:1.3}
 .card input,.card select{min-width:0;max-width:100%}
-.card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.card-h h3{flex:1 1 auto;min-width:0}
+.card-h .btn,.card-h button{flex:none;white-space:nowrap}
 .card-h h3{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:9px}
 .card-h h3 .n{width:22px;height:22px;border-radius:7px;background:var(--surface-2);display:grid;place-items:center;font-size:11.5px;color:var(--muted)}
 .hint{font-size:12.5px;color:var(--muted)}
@@ -870,8 +874,8 @@ body.dropping::after{content:'Отпустите — программа разл
 .v-media .li-play{opacity:1;background:none}
 .v-info{padding:22px;display:grid;gap:14px;align-content:start}
 .v-info h3{font-size:16px;padding-right:30px}
-.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12.5px}
-.kv span{color:var(--dim)}.kv b{font-family:var(--mono);font-weight:500}
+.kv{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:6px 14px;font-size:12.5px}
+.kv span{color:var(--dim)}.kv b{font-family:var(--mono);font-weight:500;min-width:0;overflow-wrap:anywhere}
 .v-prompt{font-size:13px;color:var(--muted);background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;max-height:160px;overflow:auto;white-space:pre-wrap}
 .v-btns{display:grid;gap:8px}
 .close{position:absolute;top:12px;right:12px;width:32px;height:32px;border-radius:10px;background:var(--surface-2);display:grid;place-items:center;z-index:2}
@@ -1990,7 +1994,7 @@ function setEngine(on) {
     GROUPS.forEach(g => {
       const part = g.map(v => {
         const n = $(`.nav[data-view="${v}"]`); if (!n || n.hidden) return '';
-        return `<button type="button" class="mb${v === cur ? ' on' : ''}" data-go="${v}" title="${n.textContent.trim().replace(/["<>&]/g, '')}">${n.querySelector('svg')?.outerHTML || ''}${v === 'presets' ? 'Главная' : SHORT[v]}</button>`;
+        return `<button type="button" class="mb${v === cur ? ' on' : ''}" data-go="${v}" title="${n.textContent.trim().replace(/["<>&]/g, '')}">${n.querySelector('svg')?.outerHTML || ''}<i>${v === 'presets' ? 'Главная' : SHORT[v]}</i></button>`;
       }).join('');
       if (part) html += (html ? '<i class="mb-sep"></i>' : '') + part;
     });
@@ -3546,6 +3550,7 @@ $('#wzRestore').onclick = async () => {
     catch (err) { toast(err.message); }
   };
 })();
+setTimeout(fitTopBar, 700);   // the pills are built a moment after the page opens
 $('#mdRecheck').onclick = async () => { const b = $('#mdRecheck'); b.disabled = true;
   try { await loadStatus(); toast('Проверили ещё раз'); } finally { b.disabled = false; } };
 $('#mdReset').onclick = async () => {
@@ -4994,7 +4999,21 @@ function fitTopBar() {
   const bar = document.querySelector('.view.active .st-bar');
   const w = bar && bar.offsetParent ? Math.ceil(bar.getBoundingClientRect().width) : 0;
   mb.style.right = (w ? w + 18 : 24) + 'px';
+  /* a tab that is not visible is worse than a tab without a word under it: names go away first,
+     and only what still does not fit stays behind the edge that fades out */
+  mb.classList.remove('tight');
+  if (mb.scrollWidth > mb.clientWidth + 4) mb.classList.add('tight');
+  mb.classList.toggle('can-right', mb.scrollWidth > mb.clientWidth + 4);
+  const on = mb.querySelector('.mb.on');
+  if (on && mb.scrollWidth > mb.clientWidth) {
+    const l = on.offsetLeft, r = l + on.offsetWidth;
+    if (l < mb.scrollLeft || r > mb.scrollLeft + mb.clientWidth) mb.scrollTo({ left: l - (mb.clientWidth - on.offsetWidth) / 2, behavior: 'smooth' });
+  }
 }
+document.addEventListener('wheel', e => {           // a wheel over the strip moves it sideways
+  const mb = e.target.closest && e.target.closest('#modeBar');
+  if (mb && mb.scrollWidth > mb.clientWidth) { e.preventDefault(); mb.scrollLeft += (e.deltaY || e.deltaX); }
+}, { passive: false });
 addEventListener('resize', fitTopBar);
 document.addEventListener('click', e => { if (e.target.closest('.nav')) setTimeout(fitTopBar, 30); }, true);
 setTimeout(fitTopBar, 60);

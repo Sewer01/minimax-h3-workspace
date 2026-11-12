@@ -4563,7 +4563,7 @@ function makeRefMode(cfg) {
       <div class="hint lm-mode-hint" style="margin-bottom:10px"></div>
       <div class="seg lm-base" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:6px"><button type="button" data-b="own" class="on">Новые сцены<small>с нуля по описаниям</small></button><button type="button" data-b="cont">Продолжить своё видео<small>берём конец вашего файла</small></button></div>
       <div class="hint lm-base-hint" style="margin-bottom:10px"></div>
-      <button class="btn pri lm-chain" type="button" style="margin-bottom:12px;width:100%;padding:12px" title="Сцены считаются одна за другой сами: следующая запускается, когда предыдущая готова. Можно оставить компьютер на ночь: каждая сцена сохраняется в Библиотеку отдельным клипом.">▶ Сделать все сцены подряд (само, одну за другой)</button>
+      <button class="btn pri lm-chain" type="button" style="margin-bottom:12px;width:100%;padding:12px" title="Сцены считаются одна за другой сами: следующая запускается, когда предыдущая готова. Можно оставить компьютер на ночь: каждая сцена сохраняется в Библиотеку отдельным клипом.">Сделать все сцены</button>
       <button class="btn pri lm-final" type="button" hidden style="margin-bottom:12px;width:100%;padding:12px" title="Все сцены считаются заново с теми же текстами и тем же seed, но на 8 шагах: детали станут лучше. Один в один они не будут.">✨ Всё готово? Сделать всё в хорошем качестве</button>
       <div class="note lm-src" hidden style="margin-bottom:10px"><span><b>Продолжаем готовое видео:</b> <span class="lm-srcname"></span>. Первая сцена продолжит его конец, как будто это была прошлая сцена.</span> <button class="btn lm-srcx" type="button" style="padding:2px 9px;margin-left:8px">Убрать</button></div>
       <button class="btn" type="button" id="lmAdd" style="margin-top:10px">+ Добавить сцену</button>
@@ -4642,7 +4642,7 @@ function makeRefMode(cfg) {
         const rg = $('.sc-redogo', c); if (rg) rg.hidden = !(done && parts && i < $$('.sc', root).length - 1);
       });
       const r = $('.lm-reset', root); if (r) r.hidden = !parts || !ready;
-      const ch = $('.lm-chain', root); if (ch) { ch.hidden = !parts; ch.textContent = '▶ Сделать все сцены подряд (само, одну за другой)'; }
+      const ch = $('.lm-chain', root); if (ch) { ch.hidden = !parts; ch.textContent = 'Сделать все сцены'; }
       root._memo?.();   // the quality and the counting mode are said once, above the run buttons
       const lf = $('.lm-final', root); if (lf) lf.hidden = !(parts && root._q === 'draft' && ready >= $$('.sc', root).length);
       root._renderTL?.();
@@ -5231,7 +5231,7 @@ function makeRefMode(cfg) {
         memo.className = 'hint lm-memo';
         memo.style.cssText = 'margin:0 0 8px;font-size:13px;text-align:center;font-weight:700';
         const plate = document.createElement('div');
-        plate.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:10px';
+        plate.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:12px';
         const chainB = $('.lm-chain', root), joinB = $('.tl-join', root), watchB = $('.tl-all', root);
         if (watchB) {
           watchB.textContent = 'Отправить в монтаж';
@@ -5243,13 +5243,17 @@ function makeRefMode(cfg) {
             toast('Сцены лежат в «Монтаже»: откройте его и склейте, когда будет нужно.');
           };
         }
-        if (joinB) joinB.textContent = 'Собрать все и отправить в монтаж';
-        [chainB, joinB, watchB].filter(Boolean).forEach(b => { b.style.width = '100%'; b.style.margin = '0'; plate.append(b); });
-        root._plates = plate;
+        if (joinB) joinB.textContent = 'Сделать все сцены и отправить в монтаж';
+        // one column, one measure: mass actions first, then the single scene, then the hand-off
+        const goB = $('.go', bar);
+        const trio = [chainB, joinB, watchB].filter(Boolean);
+        const same = 'width:100%;margin:0;padding:12px 14px;font-size:14px;font-weight:700;border-radius:12px';
+        [chainB, joinB, goB, watchB].filter(Boolean).forEach(b => { if (!b.classList.contains('pri')) b.classList.add('btn', 'pri'); b.style.cssText = same; plate.append(b); });
+        root._plates = trio;
         root._memo = () => {
           const q = root._q === 'draft' ? 'Черновик' : 'Хорошее качество';
           memo.textContent = root._mode === 'parts' ? `${q} · по частям` : `${q} · весь ролик одним файлом`;
-          if (plate) plate.hidden = root._mode !== 'parts';
+          (root._plates || []).forEach(b => { b.hidden = root._mode !== 'parts'; });   // the whole-film mode keeps only the run button
         };
         bar.prepend(memo); bar.append(plate);
         root._memo();

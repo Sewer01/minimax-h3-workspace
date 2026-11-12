@@ -7724,10 +7724,16 @@ applyZoom();
     showMode(P.mode); updateUI();
   }
   pv.addEventListener('timeupdate', () => { if (P.playing && pv.currentTime >= pieceEnd(P.i) - 0.04) atEnd(); });
+  // The interface can be zoomed (the "Размер интерфейса" setting): a screen pixel is then not a
+  // layout pixel, so every point of the mouse has to be turned into the ribbon's own pixels first.
+  const ribbonX = clientX => {
+    const strip = $('.mt-strip', root), box = strip.getBoundingClientRect();
+    const k = strip.offsetWidth ? box.width / strip.offsetWidth : 1;   // how much this ribbon is zoomed
+    return (clientX - box.left) / k + strip.scrollLeft;
+  };
   const timeAtX = clientX => {              // which second of the montage is under this point of the screen
     const strip = $('.mt-strip', root), items = $$('.mt-item', strip);
-    const box = strip.getBoundingClientRect();
-    const x = clientX - box.left + strip.scrollLeft;
+    const x = ribbonX(clientX);
     let a = 0;
     for (let i = 0; i < items.length; i++) {
       const w = items[i].offsetWidth || 1;
@@ -7758,7 +7764,7 @@ applyZoom();
     // neither run ahead of the pointer nor stick at one side.
     const strip = $('.mt-strip', root);
     const mk = mkAt();
-    const ruler = ev => ev.clientX - strip.getBoundingClientRect().left + strip.scrollLeft;   // one ruler for the pointer and the blocks
+    const ruler = ev => ribbonX(ev.clientX);   // one ruler for the pointer and the blocks, in the ribbon's own pixels
     const pxGrab = ruler(e) - xOf(mk.i, mk.off);   // how far from the marker the pointer took it, in pixels
     head.classList.add('drag');
     try { head.setPointerCapture(e.pointerId); } catch { }

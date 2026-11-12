@@ -4714,6 +4714,7 @@ function makeRefMode(cfg) {
     root._setSrc = (src, fresh = true) => {   // src: { id } of a library clip or { file } from the computer; null removes it
       root._src = src || null;
       $('.lm-src', root).hidden = !src; $('.lm-srcname', root).textContent = src ? src.name : '';
+      $('.lm-srcx', root).hidden = !src;   // the button stands with the source buttons, so it hides itself
       if (!src && root._srcFrame) { root._srcFrame?.remove?.(); root._srcFrame = null; root._srcFrameFile = null; $$('.sc', root).forEach(x => x._counter?.()); }   // the frame tile leaves together with the video
       if (src && fresh) { root._run = Math.random().toString(36).slice(2, 12); $$('.sc', root).forEach(c => { c._dn = { draft: null, final: null }; }); }
       if (src) setMode('parts');
@@ -5184,7 +5185,11 @@ function makeRefMode(cfg) {
         hdr.after(baseRow);
       // the video you continue is part of this choice, so the note with «Убрать» stands right here
       const srcNote = $('.lm-src', root);
-      if (srcNote) { srcNote.style.margin = '10px 0 0'; baseRow.append(srcNote); }
+      if (srcNote) { baseRow.append(srcNote); }
+      // the button that takes the video off stands with the buttons that put it on
+      const unBtn = $('.lm-srcx', root), srcRow = ownBox && [...ownBox.children].find(x => /flex/.test(x.getAttribute('style') || ''));
+      if (unBtn && srcRow) { unBtn.style.margin = '0'; srcRow.append(unBtn); }
+      if (srcNote) { srcNote.classList.remove('note'); srcNote.classList.add('hint'); srcNote.style.cssText = 'margin:8px 0 0;font-size:12.5px;display:block'; }
       // one mini instruction instead of notes spread over the page: the fold in the settings card
       const guide = how || (() => { const d = document.createElement('details'); d.className = 'agvar'; d.innerHTML = '<summary>Как работает</summary>'; baseRow.after(d); return d; })();
       const box = document.createElement('div'); box.className = 'lm-guide'; box.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:8px';

@@ -4666,11 +4666,20 @@ function makeRefMode(cfg) {
     root._src = null;
     const lastFrameFile = async file => {   // the last picture of a video file from the computer
       const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = URL.createObjectURL(file);
-      await new Promise((res, rej) => { v.onloadedmetadata = res; v.onerror = () => rej(new Error('Не удалось открыть видео')); });
+      const fail = new Error(`Браузер не открыл это видео (${file.name}): обычно так ведут себя HEVC или редкий контейнер. Сохраните его как MP4 (H.264).`);
+      const open = await new Promise(res => { v.onloadedmetadata = () => res(true); v.onerror = () => res(false); setTimeout(() => res(v.readyState > 0), 15000); });
+      if (!open) { URL.revokeObjectURL(v.src); throw fail; }
+      // some files (webm especially) do not know their length until you ask for the end
+      if (!isFinite(v.duration) || !v.duration) {
+        v.currentTime = 1e6;
+        await new Promise(res => { v.ondurationchange = () => res(); setTimeout(res, 4000); });
+      }
       v.currentTime = Math.max(0, (v.duration || 1) - 0.12);
-      await new Promise(res => { v.onseeked = res; setTimeout(res, 3000); });
+      await new Promise(res => { v.onseeked = res; setTimeout(res, 4000); });
+      if (!v.videoWidth || !v.videoHeight) { URL.revokeObjectURL(v.src); throw fail; }
       const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext('2d').drawImage(v, 0, 0);
       const blob = await new Promise(r => c.toBlob(r, 'image/png')); URL.revokeObjectURL(v.src);
+      if (!blob) throw fail;
       return new File([blob], 'last_frame.png', { type: 'image/png' });
     };
     root._setSrc = (src, fresh = true) => {   // src: { id } of a library clip or { file } from the computer; null removes it
@@ -4685,10 +4694,15 @@ function makeRefMode(cfg) {
     $('.lm-srcfile', root).onchange = async e => {
       const f = e.target.files[0]; e.target.value = ''; if (!f) return;
       try {
-        const frame = await lastFrameFile(f);
-        root._setSrc({ file: f, name: f.name });
-        $$('.ref:not(.filled) input', imgsEl)[0] && await putInto($$('.ref:not(.filled) input', imgsEl)[0], frame);
-        toast('Видео загружено: последний кадр встал первым референсом, добавьте остальные изображения и опишите сцену.');
+        let frame = null, why = '';
+        try { frame = await lastFrameFile(f); } catch (err) { why = err.message; }
+        root._setSrc({ file: f, name: f.name });   // the video itself is usable even when its last frame cannot be read
+        if (frame && $$('.ref:not(.filled) input', imgsEl)[0]) {
+          await putInto($$('.ref:not(.filled) input', imgsEl)[0], frame);
+          toast('Видео загружено: последний кадр встал первым референсом, добавьте остальные изображения и опишите сцену.');
+        } else {
+          toast(why + ' Видео принято - сцена продолжит его, но первый референс не подставился: добавьте изображения героя и места сами.');
+        }
       } catch (err) { toast(err.message); }
     };
     root._setScenes = list => {   // from the agent: replace all scenes
@@ -4831,15 +4845,33 @@ function makeRefMode(cfg) {
         });
         const tk = $('.sc-tokens', c);
         if (tk) tk.innerHTML = c._files.map((_, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="Вставить в текст сцены тег <Picture ${10 + j}> - это ваше фото номер ${j + 1}">&lt;Pic ${10 + j}&gt;</button>`).join('');
+        c._counter?.();
         $('.sc-rhint', c).textContent = c._files.length ? `Своих фото в этой сцене: ${c._files.length}. В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих референсов нет: берутся общие, которые загружены сверху.';
       };
-      fin.onchange = () => { for (const f of fin.files) if (c._files.length < 5) c._files.push(f); fin.value = ''; paintRefs(); refreshStates(); };
+      fin.onchange = () => {
+        const common = $$('.ref.filled', imgsEl).length;
+        let skipped = 0;
+        for (const f of fin.files) {
+          if (c._files.length >= 5) { skipped++; continue; }
+          if (common + c._files.length >= 9) { skipped++; continue; }   // nine pictures in a scene, common and own together
+          c._files.push(f);
+        }
+        fin.value = ''; paintRefs(); refreshStates();
+        if (skipped) toast(`Добавили не все: в сцену входит 9 фото вместе с общими (сейчас общих ${common}), и не больше пяти своих`);
+      };
       paintRefs();
       $('.sc-m', c).onclick = () => { const r = $('input[type=range]', c); r.value = Math.max(3, +r.value - 1); r.dispatchEvent(new Event('input')); };
       $('.sc-p', c).onclick = () => { const r = $('input[type=range]', c); r.value = Math.min(15, +r.value + 1); r.dispatchEvent(new Event('input')); };
       $('textarea', c).value = txt;
       $('textarea', c).insertAdjacentHTML('afterend', '<div class="sc-tokens" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0"></div>');
       box.append(c); attachRu($('textarea', c));
+      $('.ru-wrap', c)?.insertAdjacentHTML('beforeend', '<span class="sc-left hint" style="font-size:12px;margin-left:10px"></span>');
+      c._counter = () => {   // the model takes nine pictures in total: the common ones and this scene's own share that number
+        const el = $('.sc-left', c); if (!el) return;
+        const common = $$('.ref.filled', imgsEl).length, own = c._files.length, left = 9 - common - own;
+        el.textContent = left > 2 ? `в сцену влезет ещё ${left} фото` : left > 0 ? `осталось ${left} фото из 9` : `предел: 9 фото (общие ${common} + свои ${own})`;
+        el.style.color = left <= 0 ? 'var(--pink)' : left <= 2 ? 'var(--warn, #e8a31d)' : '';
+      };
       $('.sc-tokens', c).onclick = e => {   // a chip puts its tag where the cursor stands
         const b = e.target.closest('[data-ins]'); if (!b) return;
         const ta = $('textarea', c), at = ta.selectionStart == null ? ta.value.length : ta.selectionStart, add = b.dataset.ins;
@@ -5065,21 +5097,8 @@ function makeRefMode(cfg) {
       // the names you can insert belong where you write: put them under the card that holds the text
       const host = ta0 && (ta0.closest('.sc') || ta0.closest('.card'));
       if (chips && host && !host.contains(chips)) host.insertAdjacentElement('afterend', chips);
-      const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'btn lm-clearall'; clr.textContent = 'Очистить проект'; clr.style.cssText = 'margin:0 0 12px;width:auto';
-      clr.title = 'Стирает описания всех сцен, изображения и готовые результаты этого проекта. Библиотека не затрагивается';
-      clr.onclick = () => confirmBox('Очистить весь проект?', 'Все сцены, изображения героя и результаты этого проекта будут стёрты со страницы, останутся две пустые сцены. Готовые видео в Библиотеке не удаляются.', 'Очистить', () => {
-        root._pushUndo();
-        $$('.sc', root).forEach(c => c.remove()); root._run = Math.random().toString(36).slice(2, 12); root._sel = 0;
-        $$('.ref .x', imgsEl).forEach(x => x.click()); root._setSrc?.(null);
-        addScene('', 10); addScene('', 10); recount(); refreshStates(); toast('Проект очищен');
-      });
-      fin.after(clr);
-      scCard.insertBefore(clrSc, scCard.querySelector('.lm-scenes').nextSibling);   // the scenes card gets its own, smaller clear
-      const more2 = document.createElement('details'); more2.className = 'st-more'; more2.innerHTML = '<summary>Ещё: добавить сцену, начать заново, как это работает</summary>';
-      const ownBtn = $('.lm-srcfile', root)?.closest('label'), rCard = $('.rm-imgs', root)?.closest('.card');
-      if (ownBtn && rCard) { ownBtn.style.marginTop = '0'; ownBtn.style.marginBottom = '10px'; rCard.insertAdjacentElement('beforebegin', ownBtn); }   // start here when the work continues someone's video
-      [$('#lmAdd', root), $('.lm-reset', root), [...scCard.children].filter(c => c.classList.contains('note') && !c.classList.contains('lm-src')).pop()].filter(Boolean).forEach(n => more2.append(n));
-      scCard.append(more2);
+      fin.after(clrSc);
+      $('#lmAdd', root).hidden = true;   // the plus on the ribbon is the way to add a scene
     }));
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 20) { toast('Не больше 20 сцен — это уже полчаса расчёта'); return; } addScene('', 10); };
     queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done
@@ -5150,6 +5169,7 @@ function makeRefMode(cfg) {
     $('.rm-count', root).textContent = `${total} / 12`;
     if (cfg.scenes && root._save && !root._restoring) root._save();
     $('.rm-count', root).style.color = total > 12 ? 'var(--pink)' : '';
+    $$('.sc', root).forEach(x => x._counter?.());   // every scene counts the common pictures too
     $('.rm-tokens', root).innerHTML = imgs.map((_, i) => `<button class="token" type="button">&lt;Picture ${i + 1}&gt;</button>`).join('') || '<span class="hint">добавьте изображения — появятся метки</span>';
     if (cfg.swap) { const w2 = $('.rm-who[data-i="1"]', root); if (w2) w2.hidden = imgs.length < 2; }
     if (cfg.swap && S.autoLen !== false) { const v = files('.rm-vids .slot')[0]; if (v && v._dur) { S.dur = Math.min(15, Math.max(3, Math.round(v._dur))); root._upd?.(); } }

@@ -4561,6 +4561,8 @@ function makeRefMode(cfg) {
       <div class="hint lm-q-hint" style="margin-bottom:10px"></div>
       <div class="seg lm-mode" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:6px"><button type="button" data-m="parts">По частям<small>сцена за сценой</small></button><button type="button" data-m="all">Весь ролик<small>одним файлом</small></button></div>
       <div class="hint lm-mode-hint" style="margin-bottom:10px"></div>
+      <div class="seg lm-base" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:6px"><button type="button" data-b="own" class="on">Новые сцены<small>с нуля по описаниям</small></button><button type="button" data-b="cont">Продолжить своё видео<small>берём конец вашего файла</small></button></div>
+      <div class="hint lm-base-hint" style="margin-bottom:10px"></div>
       <button class="btn pri lm-chain" type="button" style="margin-bottom:12px;width:100%;padding:12px" title="Сцены считаются одна за другой сами: следующая запускается, когда предыдущая готова. Можно оставить компьютер на ночь: каждая сцена сохраняется в Библиотеку отдельным клипом.">▶ Сделать все сцены подряд (само, одну за другой)</button>
       <button class="btn pri lm-final" type="button" hidden style="margin-bottom:12px;width:100%;padding:12px" title="Все сцены считаются заново с теми же текстами и тем же seed, но на 8 шагах: детали станут лучше. Один в один они не будут.">✨ Всё готово? Сделать всё в хорошем качестве</button>
       <div class="note lm-src" hidden style="margin-bottom:10px"><span><b>Продолжаем готовое видео:</b> <span class="lm-srcname"></span>. Первая сцена продолжит его конец, как будто это была прошлая сцена.</span> <button class="btn lm-srcx" type="button" style="padding:2px 9px;margin-left:8px">Убрать</button></div>
@@ -4600,6 +4602,7 @@ function makeRefMode(cfg) {
     const mmss = t => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
     const recount = () => {
       const all = $$('.sc', root), a = accs(), own = root._snd === 'own';
+      all.forEach(x => x._counter?.());   // a tag inserted by a chip does not fire "input": count on every recount
       const st = Math.max(0, parseFloat($('.lm-start', root)?.value) || 0);
       all.forEach((c, i) => {
 
@@ -4685,9 +4688,11 @@ function makeRefMode(cfg) {
     root._setSrc = (src, fresh = true) => {   // src: { id } of a library clip or { file } from the computer; null removes it
       root._src = src || null;
       $('.lm-src', root).hidden = !src; $('.lm-srcname', root).textContent = src ? src.name : '';
+      if (!src && root._srcFrame) { const el = root._srcFrame; root._srcFrame = null; $('.x', el)?.click(); }   // the frame taken from your video leaves together with it
       if (src && fresh) { root._run = Math.random().toString(36).slice(2, 12); $$('.sc', root).forEach(c => { c._dn = { draft: null, final: null }; }); }
       if (src) setMode('parts');
       $('.lm-mode [data-m="all"]', root).disabled = !!src;
+      if (src && root._base !== 'cont') { root._base = 'cont'; setBase('cont'); }   // a saved project that continues a video shows that choice
       refreshStates();
     };
     $('.lm-srcx', root).onclick = () => root._setSrc(null);
@@ -4698,7 +4703,9 @@ function makeRefMode(cfg) {
         try { frame = await lastFrameFile(f); } catch (err) { why = err.message; }
         root._setSrc({ file: f, name: f.name });   // the video itself is usable even when its last frame cannot be read
         if (frame && $$('.ref:not(.filled) input', imgsEl)[0]) {
-          await putInto($$('.ref:not(.filled) input', imgsEl)[0], frame);
+          const slot = $$('.ref:not(.filled) input', imgsEl)[0];
+          root._srcFrame = slot.closest('.ref');
+          await putInto(slot, frame);
           toast('Видео загружено: последний кадр встал первым референсом, добавьте остальные изображения и опишите сцену.');
         } else {
           toast(why + ' Видео принято - сцена продолжит его, но первый референс не подставился: добавьте изображения героя и места сами.');
@@ -4729,9 +4736,26 @@ function makeRefMode(cfg) {
       toast(`Сцена ${lg.part + 1} готова` + (lg.part + 1 < lg.n ? '. Можно делать следующую.' : '. Все сцены готовы: склейте клипы в «Монтаже».'));
     };
     const MODE_HINT = { parts: 'Каждая сцена считается отдельно и сохраняется в Библиотеку своим клипом. Можно посмотреть первую, потом сделать следующую, а неудачную переделать, не трогая остальные. Клипы встают встык без повторов: склейте их в любом видеоредакторе.', all: 'Все сцены считаются подряд и склеиваются в один файл. Удобно, когда уверены в тексте, но если что-то не получится, ждать придётся заново целиком.' };
+    // what the work is built on: new scenes, or the continuation of a video from the computer. The
+    // second choice decides the rest of the page for you, so nothing has to be remembered
+    const baseSeg = $('.lm-base', root), baseHint = $('.lm-base-hint', root);
+    const ownLabel = $('.lm-srcfile', root)?.closest('label');
+    const setBase = b => {
+      root._base = b;
+      $$('button', baseSeg).forEach(x => x.classList.toggle('on', x.dataset.b === b));
+      if (ownLabel) ownLabel.hidden = b !== 'cont';
+      $('.lm-mode', root).hidden = b === 'cont'; $('.lm-mode-hint', root).hidden = b === 'cont';
+      baseHint.innerHTML = b === 'cont'
+        ? 'Продолжаем ваше видео: считается по частям, режим «весь ролик» не нужен. Конец файла займёт одно из 5 общих мест - оно входит в 9 фото на сцену вместе с общими и своими. Нажмите кнопку и выберите файл.'
+        : '';
+      if (b !== 'cont') root._setSrc(null); else setMode('parts');
+      refreshStates();
+    };
+    baseSeg.onclick = e => { const b = e.target.closest('button'); if (b) setBase(b.dataset.b); };
     const setMode = v => { root._mode = v; $$('.lm-mode button', root).forEach(b => b.classList.toggle('on', b.dataset.m === v)); $('.lm-mode-hint', root).textContent = MODE_HINT[v]; refreshStates(); };
     $('.lm-mode', root).onclick = e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); };
     queueMicrotask(() => setMode('parts'));
+    queueMicrotask(() => setBase('own'));
 
     /* --- the project survives a restart: scenes, pictures of scenes, sound choice, which scenes are done --- */
     const PKEY = 'h3-long-projects', fsig = {};
@@ -5108,8 +5132,8 @@ function makeRefMode(cfg) {
       if (chips && host && !host.contains(chips)) host.insertAdjacentElement('afterend', chips);
       fin.after(clrSc);
       $('#lmAdd', root).hidden = true;   // the plus on the ribbon is the way to add a scene
-      const ownBtn = $('.lm-srcfile', root)?.closest('label'), rCard = $('.rm-imgs', root)?.closest('.card');
-      if (ownBtn && rCard) { ownBtn.style.marginTop = '0'; ownBtn.style.marginBottom = '12px'; rCard.insertAdjacentElement('beforebegin', ownBtn); }   // the work in this mode starts here
+      const ownBtn = $('.lm-srcfile', root)?.closest('label'), bHint = $('.lm-base-hint', root);
+      if (ownBtn && bHint) { ownBtn.style.cssText = 'margin:0 0 10px;display:inline-flex;cursor:pointer'; bHint.insertAdjacentElement('afterend', ownBtn); }   // the choice and its file button stand together
     }));
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 20) { toast('Не больше 20 сцен — это уже полчаса расчёта'); return; } addScene('', 10); };
     queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done

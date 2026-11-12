@@ -7567,7 +7567,7 @@ applyZoom();
         <div class="mt-trim" hidden></div>
         <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Метка реза (треугольник сверху) стоит там, куда её поставили, и не убегает во время показа; голубая линия - это бегунок воспроизведения. Клик по клипу слева от метки играет от начала оставленного куска до метки, клик справа - от метки до конца куска. Ножницы: левая убирает всё до метки, правая - всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
-      <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>добавьте клипы и нажмите на тот, который хотите посмотреть - он появится здесь. Кнопка «▶» играет всю ленту по порядку, а после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
+      <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж пуст</b>добавьте клипы из Библиотеки - они появятся в ленте, и здесь сразу покажется кадр, на который указывает метка реза. Кнопка «▶» играет всю ленту по порядку, после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
       <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button></div>
       <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
@@ -7711,8 +7711,11 @@ applyZoom();
     const blank = () => { pv.removeAttribute('src'); delete pv.dataset.id; try { pv.load(); } catch { } };   // without load() the old frame stays on screen
     // an empty ribbon is an empty window: the last joined video is only shown when it is asked for
     if (!n) { P.picked = false; setPlaying(false); blank(); P.g = 0; P.i = 0; P.mode = 'seq'; }
-    else if (!P.picked) { setPlaying(false); blank(); }   // nothing chosen yet: the window stays empty
-    else { setPlaying(false); seekTo(Math.min(P.g, tot), false); }
+    else {
+      setPlaying(false);
+      if (!P.picked) { P.picked = true; P.g = startOf(P.i) + mkAt().off; }   // open on the frame the marker points at
+      seekTo(Math.min(P.g, tot), false);
+    }
     showMode(P.mode); updateUI();
   }
   pv.addEventListener('timeupdate', () => { if (P.playing && pv.currentTime >= pieceEnd(P.i) - 0.04) atEnd(); });
@@ -7750,7 +7753,7 @@ applyZoom();
     const mv = ev => {
       const p = locate(timeAtX(ev.clientX).g - grabOff);
       P.picked = true;
-      P.i = p.i; P.mkOff[MT.ids[p.i]] = p.off;   // the marker moves with the focus: it is always the visible one
+      P.i = p.i; P.mkOff[MT.ids[p.i]] = p.off;   // the marker moves with the focus, and the window shows its frame
       P.i = p.i; P.g = startOf(p.i) + p.off; loadAt(p.i, p.off, false); updateUI();   // the frame under the marker shows on the left
     };
     const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); if (was) setPlaying(true); };

@@ -4947,7 +4947,7 @@ function makeRefMode(cfg) {
         let tries = 0;
         const timer = setInterval(() => {
           if (++tries > 80) { clearInterval(timer); return; }
-          checkDmad().then(ok => { if (ok) clearInterval(timer); });
+          checkDmad(true).then(ok => { if (ok) clearInterval(timer); });
         }, 6000);
       });
     root._askDmad = askDmad;
@@ -4958,8 +4958,9 @@ function makeRefMode(cfg) {
       setQ(b.dataset.mq);
     };
     $('.lm-final', root).onclick = () => { setQ('final'); $('.lm-chain', root).click(); };
-    const checkDmad = () => fetch('/api/loras/custom').then(r => r.json()).then(r => {
-      const found = !!(r.files || []).some(f => /DMAD_4step/i.test(f));
+    const checkDmad = fresh => fetch('/api/models/have?role=dmad_lora' + (fresh ? '&fresh=1' : '')).then(r => r.json()).then(r => {
+      const found = !!r.have;   // the same answer generation uses: the file may sit in any subfolder ComfyUI sees
+      if (!found && r.slow) { root._dmad = null; root._paintQ?.(); return false; }   // ComfyUI did not answer: that is not "no file", and we must not nag
       const was = root._dmad;
       root._dmad = found;
       if (was === false && found) { setQ('draft'); toast('Файл ускорения на месте - черновик включён'); return true; }

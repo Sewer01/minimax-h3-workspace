@@ -948,6 +948,20 @@ class App:
                                   "picked": picked.get(role), "name": self.model_names.get(role),
                                   "unknown": not self.model_names})
 
+    async def h_models_have(self, req):
+        """Is one role's file present right now. A section asks this before it offers a download:
+        guessing from the list of own LoRA said "missing" for a file that was on disk, and the offer
+        came back again and again."""
+        role = req.query.get("role") or ""
+        if role not in catalog.VARIANTS:
+            raise web.HTTPBadRequest(text="Неизвестная модель")
+        if req.query.get("fresh") or not self.model_names or role not in self.model_names:
+            await self.resolve_models()
+        have = role in (self.model_names or {}) and role not in {m["role"] for m in self.missing}
+        entry = catalog.model_entry(role, self.choice()[role])
+        return web.json_response({"have": have, "role": role, "name": (self.model_names or {}).get(role, ""),
+                                  "size": entry["size"], "slow": bool(getattr(self, "models_slow", False))})
+
     async def h_models_pick(self, req):
         body = await req.json()
         role, name = body.get("role"), body.get("name") or ""
@@ -3602,6 +3616,7 @@ def build_app(comfy_override=None):
         web.get("/api/nodes", state.h_nodes),
         web.get("/api/models/files", state.h_models_files),
         web.get("/api/models/compat", state.h_models_compat),
+        web.get("/api/models/have", state.h_models_have),
         web.post("/api/models/pick", state.h_models_pick),
         web.post("/api/models/open", state.h_models_open),
         web.post("/api/models/download", state.h_models_download),

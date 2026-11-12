@@ -7769,6 +7769,7 @@ applyZoom();
       return;
     }
     const head = e.target.closest('.mt-ph');
+    if (!head) return;                     // a press anywhere else is nobody's business here
     e.preventDefault(); e.stopPropagation();
     const was = P.playing; setPlaying(false);
     // The marker follows the mouse one for one: the distance the pointer travelled is the distance

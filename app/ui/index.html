@@ -1756,6 +1756,7 @@ equirements.txt</code><br>
       <div class="v-prompt" id="vwPrompt"></div>
       <div class="v-btns">
         <button class="btn pri" id="vwSave">Сохранить на компьютер</button>
+        <button class="btn" id="vwDel" title="Убрать из Библиотеки: файл переместится в корзину Windows, оттуда его можно вернуть">Удалить</button>
         <button class="btn" id="vwCopy">Скопировать промпт</button>
         <button class="btn" id="vwPic" title="Картинка, а у видео — кадр, который сейчас на экране, уйдёт в буфер обмена: вставляйте в любую программу">Копировать картинку</button>
         <button class="btn" id="vwRepeat">Повторить с этими настройками</button>
@@ -4222,6 +4223,7 @@ function openViewer(id, fallback) {
   const pic = it.kind === 'image';
   vwMedia(it);
   $('#vwCopy').hidden = !it.prompt;
+  $('#vwDel').hidden = !byId(openId);   // a clip the Library does not know cannot be deleted from it
   $('#vwPic').hidden = !(it.url || it.thumb);
   img.style.cursor = pic && it.url ? 'zoom-in' : '';
   img.onload = () => { if (pic && !it.res && img.naturalWidth) $('#vwKv').insertAdjacentHTML('afterbegin', `<span>Разрешение</span><b>${dimTxt(img.naturalWidth, img.naturalHeight)}</b>`); };
@@ -4319,6 +4321,7 @@ $('#bulkDel').onclick = () => askDelete([...selected]);
 $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.id === 'viewer' ? closeViewer() : (m.hidden = true); }));
 addEventListener('keydown', e => { if (e.key === 'Escape') { $('#confirm').hidden = true; closeViewer(); } });
 $('#vwSave').onclick = () => saveItems([(byId(openId) || openItem)]);
+$('#vwDel').onclick = () => { if (openId) askDelete([openId]); };   // the window that shows the result is where you decide to drop it
 $('#vwCopy').onclick = () => {
   const t = ((byId(openId) || openItem) || {}).prompt || '';
   if (!t) { toast('У этого файла нет промпта'); return; }
@@ -7609,7 +7612,7 @@ applyZoom();
     </div><div class="preview">
       <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж пуст</b>добавьте клипы из Библиотеки - они появятся в ленте, и здесь сразу покажется кадр, на который указывает метка реза. Кнопка «▶» играет всю ленту по порядку, после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-restart" title="Смотреть с начала ленты">⏮</button><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
-      <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button></div>
+      <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button><button type="button" class="btn mini mt-del" hidden title="Убрать готовый ролик из Библиотеки: файл переместится в корзину Windows">Удалить ролик</button></div>
       <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
       <div class="mt-upbox"><select class="mt-upeng" title="Чем увеличивать каждый клип"><option value="relay">Быстро (RelayVSR, в 2 раза)</option><option value="seed">Качественно (SeedVR2, в 2 раза, долго)</option></select><button type="button" class="btn mt-upgo" title="Каждый клип увеличивается отдельно (быстро, память не переполняется), потом увеличенные склеиваются. Исходные клипы остаются.">Увеличить каждый клип и склеить</button></div>
       <div class="mt-sets">
@@ -8047,7 +8050,7 @@ applyZoom();
       + ` <button class="btn" id="mtDel" type="button" style="padding:4px 12px;font-size:12px" title="Убрать ролик из Библиотеки: файл переместится в корзину Windows">Удалить</button>`;
     $('#mtSave', root).onclick = () => saveItems([byId(item.id) || normItem(item)]);
     $('#mtUp', root).onclick = () => openUpscale(byId(item.id) || normItem(item));
-    $('#mtDel', root).onclick = () => confirmBox('Удалить готовый ролик?',
+    const drop = () => confirmBox('Удалить готовый ролик?',
       'Файл переместится в корзину Windows, оттуда его можно вернуть. Клипы, из которых он собран, останутся в Библиотеке.',
       'Удалить', async () => {
         try {
@@ -8064,6 +8067,8 @@ applyZoom();
         showMode('seq'); syncPlayer(); pipePaint();
         st.innerHTML = 'Готовый ролик удалён из Библиотеки. Лента на месте - соберите заново, если он нужен.';
       });
+    $('#mtDel', root).onclick = drop;
+    const tdel = $('.mt-del', root); if (tdel) { tdel.hidden = false; tdel.onclick = drop; }
   }
   window.mtRestoreResult = () => {   // after a restart: show the joined video again if it is still in the Library
     const j = PIPE.joined, it = j && byId(j.id); if (!it || MT.res || it.missing) return;

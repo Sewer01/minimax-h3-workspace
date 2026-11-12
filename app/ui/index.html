@@ -4642,7 +4642,8 @@ function makeRefMode(cfg) {
         const rg = $('.sc-redogo', c); if (rg) rg.hidden = !(done && parts && i < $$('.sc', root).length - 1);
       });
       const r = $('.lm-reset', root); if (r) r.hidden = !parts || !ready;
-      const ch = $('.lm-chain', root); if (ch) { ch.hidden = !parts; ch.textContent = root._q === 'draft' ? '▶ Сделать все черновики подряд (само, одну за другой)' : '▶ Сделать все сцены подряд в хорошем качестве'; }
+      const ch = $('.lm-chain', root); if (ch) { ch.hidden = !parts; ch.textContent = '▶ Сделать все сцены подряд (само, одну за другой)'; }
+      root._memo?.();   // the quality and the counting mode are said once, above the run buttons
       const lf = $('.lm-final', root); if (lf) lf.hidden = !(parts && root._q === 'draft' && ready >= $$('.sc', root).length);
       root._renderTL?.();
       onScenes();
@@ -5187,7 +5188,6 @@ function makeRefMode(cfg) {
         hdr.after(baseRow);
       // the video you continue is part of this choice, so the note with «Убрать» stands right here
       const srcNote = $('.lm-src', root);
-      if (srcNote) { baseRow.append(srcNote); }
       // the button that takes the video off stands with the buttons that put it on
       const unBtn = $('.lm-srcx', root), srcRow = ownBox && [...ownBox.children].find(x => /flex/.test(x.getAttribute('style') || ''));
       if (unBtn && srcRow) { unBtn.style.margin = '0'; srcRow.append(unBtn); }
@@ -5201,14 +5201,7 @@ function makeRefMode(cfg) {
       [baseHint, scNote, rmNote].filter(Boolean).forEach(n => { n.style.margin = '0'; box.append(n); });
       box.insertAdjacentHTML('beforeend', '<div class="hint" style="font-size:12.5px"><b>Места для фото.</b> Сцена несёт девять картинок: сначала общие (<Picture 1>, <Picture 2>…), потом её собственные (<Picture 10>, <Picture 11>…) - программа сама ставит их в расчёт после общих. Когда вы продолжаете своё видео, его последний кадр идёт отдельной плиткой сверх этих девяти, и ваших мест остаётся восемь. Плашки с номерами стоят под текстом сцены; занятые места гасят те, что текст не вызывает.</div>');
       if ($('p, div', guide) && guide.querySelectorAll('p, .hint').length) { /* the old words stay above the guide */ }
-      // the blue plates are ways to run the generation: they belong under the run button, one by one
-      const bar = $('.rm-preview', root);
-      if (bar) {
-        const plate = document.createElement('div');
-        plate.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:10px';
-        [$('.lm-chain', root), $('.tl-all', root), $('.tl-join', root)].filter(Boolean).forEach(b => { b.style.width = '100%'; b.style.margin = '0'; plate.append(b); });
-        bar.append(plate);
-      }
+      // (the run buttons are placed further down, once the scenes card stopped claiming them)
         // the choice's own words already sit in the guide inside the fold
       }
       // the rare things go into one fold
@@ -5228,6 +5221,39 @@ function makeRefMode(cfg) {
       const player = $('.tl-player', scCard), allRow = player.nextElementSibling, tlEl = $('.tl', scCard), tlHint = tlEl.nextElementSibling;
       $('.card-h', scCard).after(sceneBox, tlEl, tlHint, player, allRow);
       allRow.after(chain, fin, src, foot);
+      // the note about the continued video belongs to the choice of where it comes from
+      const bRow = $('.lm-base', root)?.closest('.row'), srcN = $('.lm-src', root);
+      if (bRow && srcN) { srcN.classList.remove('note'); srcN.classList.add('hint'); srcN.style.cssText = 'margin:8px 0 0;font-size:12.5px;display:block'; bRow.append(srcN); }
+      // the right bar is the run panel: first a reminder of what is running, then the ways to run it
+      const bar = $('.rm-preview', root);
+      if (bar) {
+        const memo = document.createElement('div');
+        memo.className = 'hint lm-memo';
+        memo.style.cssText = 'margin:0 0 8px;font-size:13px;text-align:center;font-weight:700';
+        const plate = document.createElement('div');
+        plate.style.cssText = 'display:flex;flex-direction:column;gap:6px;margin-top:10px';
+        const chainB = $('.lm-chain', root), joinB = $('.tl-join', root), watchB = $('.tl-all', root);
+        if (watchB) {
+          watchB.textContent = 'Отправить в монтаж';
+          watchB.title = 'Все готовые сцены лягут в ленту «Монтажа»; сами вы туда не перелетаете - перейдите и склейте, когда захотите';
+          watchB.onclick = () => {
+            const ids = $$('.sc', root).map(c => (c._dn[root._q] || {}).id).filter(id => id && byId(id) && !byId(id).missing);
+            if (!ids.length) { toast('Пока нет готовых сцен'); return; }
+            window.montageLoad(ids);
+            toast('Сцены лежат в «Монтаже»: откройте его и склейте, когда будет нужно.');
+          };
+        }
+        if (joinB) joinB.textContent = 'Собрать все и отправить в монтаж';
+        [chainB, joinB, watchB].filter(Boolean).forEach(b => { b.style.width = '100%'; b.style.margin = '0'; plate.append(b); });
+        root._plates = plate;
+        root._memo = () => {
+          const q = root._q === 'draft' ? 'Черновик' : 'Хорошее качество';
+          memo.textContent = root._mode === 'parts' ? `${q} · по частям` : `${q} · весь ролик одним файлом`;
+          if (plate) plate.hidden = root._mode !== 'parts';
+        };
+        bar.prepend(memo); bar.append(plate);
+        root._memo();
+      }
       /* undo: what was cleared or deleted can be brought back (button «Отменить действие» or Ctrl+Z) */
       root._undo = [];
       const refsFiles = () => $$('.ref', imgsEl).map(r => r._file || null);
@@ -5354,8 +5380,7 @@ function makeRefMode(cfg) {
   const prev = previewPanel($('.rm-preview', root), S, {
     singleScene: () => cfg.scenes && root._mode === 'parts' && root._chainPart == null,
     goLabel: () => !cfg.scenes ? 'Сгенерировать' : root._mode === 'parts'
-      ? `${root._q === 'draft' ? 'Черновик' : 'Хорошее качество'}: сделать сцену ${root._next() + 1}`
-      : `${root._q === 'draft' ? 'Черновик' : 'Хорошее качество'}: весь ролик сразу`,
+      ? `Сделать сцену ${root._next() + 1}` : 'Сгенерировать видеоролик',   // the quality is written above the buttons
     extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' || cfg.swap || cfg.scenes ? 'Шаги' : 'Схема',
     extra: () => cfg.scenes ? (root._paintQ?.(), root._mode === 'parts' ? (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika') : (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika')) : cfg.mode === 'actor' || cfg.swap ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
     passes: () => cfg.scenes ? $$('.sc', root).map(() => root._q === 'draft' ? 4 : 8) : cfg.mode === 'actor' || cfg.swap ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],

@@ -4702,6 +4702,13 @@ function makeRefMode(cfg) {
       if (src && root._base !== 'cont') { root._base = 'cont'; setBase('cont'); }   // a saved project that continues a video shows that choice
       refreshStates();
     };
+    // nine pictures in a scene, counted from the text; a chip for a picture the text does not call
+    // has no right to add itself when all nine places are taken
+    root._free = (k, sc) => {
+      if (!sc || !sc._used || sc._used.size < 9 || sc._used.has(k)) return true;
+      toast('В сцене занято все 9 фото. Уберите из текста другой тег - тогда это фото освободит себе место.');
+      return false;
+    };
     $('.lm-srcx', root).onclick = () => root._setSrc(null);
     // the same continuation can be taken from what you already made here
     const useLibVideo = async it => {
@@ -4952,7 +4959,8 @@ function makeRefMode(cfg) {
           if (k < 10 ? k >= 1 && k <= common : (k - 10) < own) used.add(k);
         });
         const n = used.size, left = 9 - n;
-        el.textContent = n ? (left > 2 ? `в тексте занято ${n} из 9 фото` : left > 0 ? `занято ${n} из 9 - свободно ещё ${left}` : `занято все 9 фото - новых теги не примутся`)
+        c._used = used;   // what the text calls - the chip clicks ask this, not the colours
+        el.textContent = n > 9 ? `в тексте ${n} разных фото - в модель войдут первые 9, новых тегов не берите` : n ? (left > 2 ? `в тексте занято ${n} из 9 фото` : left > 0 ? `занято ${n} из 9 - свободно ещё ${left}` : `занято все 9 фото - новых теги не примутся`)
           : `в сцену влезет ещё 9 фото (загружено: общих ${common}, своих ${own})`;
         el.style.color = left <= 0 ? 'var(--pink)' : left <= 2 ? 'var(--warn, #e8a31d)' : '';
         // at the limit the pictures the text does not call are locked until another tag is removed
@@ -4974,6 +4982,7 @@ function makeRefMode(cfg) {
       };
       $('.sc-tokens', c).onclick = e => {   // a chip puts its tag where the cursor stands
         const b = e.target.closest('[data-ins]'); if (!b) return;
+        if (!root._free(+$b.dataset.ins.replace(/\D+/g, ''), c)) return;
         const ta = $('textarea', c), at = ta.selectionStart == null ? ta.value.length : ta.selectionStart, add = b.dataset.ins;
         ta.value = ta.value.slice(0, at) + add + ta.value.slice(at);
         ta.focus(); ta.selectionStart = ta.selectionEnd = at + add.length; recount();
@@ -4999,7 +5008,7 @@ function makeRefMode(cfg) {
         const sf = $('.sc-fresh', c); if (sf) sf.checked = false;
         refreshStates(); recount(); toast('Сцена очищена');
       };
-      $('textarea', c).addEventListener('input', () => { c._counter?.(); refreshStates(); });   // the count follows the tags you type
+      $('textarea', c).addEventListener('input', () => { refreshStates(); c._counter?.(); });   // first the rebuild, then the count and the lock
       $('textarea', c).addEventListener('focus', e => { root._ta = e.target; c._counter?.(); });   // the row of common chips follows the scene you picked up
       $('input[type=range]', c).oninput = recount; $('.x', c).onclick = () => { root._pushUndo?.(); c.remove(); recount(); };
       fin.addEventListener('change', () => refreshStates());
@@ -5283,15 +5292,17 @@ function makeRefMode(cfg) {
     $('.rm-count', root).textContent = `${total} / 12`;
     if (cfg.scenes && root._save && !root._restoring) root._save();
     $('.rm-count', root).style.color = total > 12 ? 'var(--pink)' : '';
-    $$('.sc', root).forEach(x => x._counter?.());   // every scene counts the common pictures too
     $('.rm-tokens', root).innerHTML = imgs.map((_, i) => `<button class="token" type="button">&lt;Picture ${i + 1}&gt;</button>`).join('') || '<span class="hint">добавьте изображения — появятся метки</span>';
+    $$('.sc', root).forEach(x => x._counter?.());   // after the row was rebuilt, or the lock it puts on the chips is wiped
     if (cfg.swap) { const w2 = $('.rm-who[data-i="1"]', root); if (w2) w2.hidden = imgs.length < 2; }
     if (cfg.swap && S.autoLen !== false) { const v = files('.rm-vids .slot')[0]; if (v && v._dur) { S.dur = Math.min(15, Math.max(3, Math.round(v._dur))); root._upd?.(); } }
     const tooLong = !cfg.scenes && [...files('.rm-vids .slot'), ...files('.rm-auds .slot')].some(s => s._dur > 15);
     if (tooLong) toast('Референс-видео и аудио — до 15 секунд');
   }
-  $('.rm-tokens', root).onclick = e => {
+    $('.rm-tokens', root).onclick = e => {
     const t = e.target.closest('.token'); if (!t) return;
+    const sc = (root._ta && root._ta.closest && root._ta.closest('.sc')) || $$('.sc', root)[root._sel] || $$('.sc', root).find(x => x.offsetParent !== null);
+    if (root._free && !root._free(+t.textContent.replace(/\D+/g, ''), sc)) return;
     const ta = cfg.scenes && root._ta && root._ta.isConnected ? root._ta : promptEl(), p = ta.selectionStart, txt = t.textContent + ' ';
     ta.value = ta.value.slice(0, p) + txt + ta.value.slice(ta.selectionEnd); ta.focus(); ta.selectionStart = ta.selectionEnd = p + txt.length;
     $$('.sc', root).forEach(x => x._counter?.());   // the common pictures count from the first click, not from the first scene photo

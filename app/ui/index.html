@@ -956,6 +956,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mdl-pick .mp-src.std{background:var(--surface-2);color:var(--dim)}.mdl-pick .mp-src.own{background:#e08a1e;color:#111}
 .mdl-pick .mp-loras{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .mdl-pick .mp-l.opt{opacity:.72}.mdl-pick .mp-l.no{color:#e5484d}
+.mdl-pick button.mp-l.off{opacity:.6;text-decoration:line-through}
 .mdl-pick .mp-l{font-size:12px;padding:2px 9px;border-radius:8px;background:var(--surface-2);word-break:break-all}.mdl-pick .mp-l.mine{background:rgba(224,138,30,.25)}.mdl-pick button.mp-l{border:0;cursor:pointer;color:inherit;font:inherit;font-size:12px}.mdl-pick .mp-l.tgl.off{background:var(--surface-2);text-decoration:line-through;opacity:.7}.mdl-pick .mp-l.no{background:rgba(229,72,77,.2);color:#e5484d}
 .mdl-pick .pm{flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .mdl-pick .pm .pm-q{flex:1 1 160px;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;outline:none}
@@ -7848,13 +7849,12 @@ applyZoom();
       box.classList.toggle('own', !!r.picked);
       $('.mp-reset', box).hidden = !r.picked;
       if (r.unknown) { box._tries = (box._tries || 0) + 1; setTimeout(async () => { try { await loadStatus(); } catch { } refresh(box); }, 3000); } else { box._tries = 0; }
+      const std = (r.loras || []).filter(l => !l.custom), own = (r.loras || []).filter(l => l.custom);
       $('.mp-loras', box).innerHTML = r.unknown
         ? '<span class="hint">LoRA: ComfyUI занят (обычно это загрузка модели) — список появится сам.</span>'
-        : (r.loras || []).length
-          ? '<span class="hint">LoRA:</span>' + r.loras.map(l => l.custom
-            ? `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA в этом режиме">${l.off ? '✕ выключена' : '✓ включена'} здесь: ${esc(String(l.name).split(/[\\/]/).pop())}</button>`
-            : `<span class="mp-l${l.have ? '' : (l.must ? ' no' : ' opt')}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}${l.have ? '' : (l.must ? ' — файла нет' : ' — не скачана, по желанию')}</span>`).join('')
-          : '<span class="hint">LoRA в этом режиме не нужны</span>';
+        : ((std.length ? '<span class="hint">LoRA режима:</span>' + std.map(l => `<span class="mp-l${l.have ? '' : (l.must ? ' no' : ' opt')}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}${l.have ? '' : (l.must ? ' — файла нет' : ' — не скачана, по желанию')}</span>`).join('') : '')
+          + (own.length ? '<span class="hint">Ваши LoRA:</span>' + own.map(l => `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA только в этом разделе; в других она останется как есть">${esc(String(l.name).split(/[\\/]/).pop())} · ${l.off ? 'выключена здесь — включить' : 'работает здесь — выключить'}</button>`).join('') : ''))
+          || '<span class="hint">LoRA в этом режиме не нужны</span>';
       $('.mp-notes', box).innerHTML = r.picked ? r.notes.map(n => `<div class="${n.level}">${n.level === 'bad' ? '✕ ' : n.level === 'warn' ? '⚠ ' : 'ⓘ '}${esc(n.text)}</div>`).join('') : '';
     } catch {
       box._tries = (box._tries || 0) + 1; setTimeout(() => refresh(box), 3000);

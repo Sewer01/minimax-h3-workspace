@@ -542,6 +542,8 @@ body.first-run .pr-first{display:flex}
 /* the row of stage buttons is as wide as the page and sits above the pinned tabs: only its
    buttons may catch the mouse, the empty part of the line must let the tabs through */
 .st-bar>*{pointer-events:auto}
+.head{flex-wrap:wrap}
+.head .st-bar{margin:0;height:auto;flex:none;z-index:40}
 .st-bar .btn{height:32px;padding:0 14px;font-size:12.5px;white-space:nowrap}
 .st-bar .st-save{background:var(--accent,#c0405a);border-color:var(--accent,#c0405a);color:#fff}
 .st-bar .st-list b{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin:0 2px;border-radius:99px;background:rgba(255,255,255,.12);font-size:11px}
@@ -5364,9 +5366,14 @@ new ResizeObserver(() => prRows()).observe($('#view-presets'));
    buttons begin, otherwise the last tab hides under them */
 function fitTopBar() {
   const mb = $('#modeBar'); if (!mb) return;
+  const act = document.querySelector('.view.active');
+  if (act && window.__stBars) {   // a view that rebuilt its markup gets its buttons back
+    const b = window.__stBars[act.id.replace('view-', '')], h = $('.head', act);
+    if (b && h && b.parentElement !== h) h.appendChild(b);
+  }
   const bar = document.querySelector('.view.active .st-bar');
   let w = 0;
-  if (bar && bar.offsetParent) {   // the row is as wide as the page; only its buttons block the line
+  if (bar && bar.offsetParent && !bar.closest('.head')) {   // only a bar that still sits on the tabs line takes room from it
     const kids = [...bar.children].filter(el => el.offsetParent);
     w = kids.reduce((s, el) => s + el.getBoundingClientRect().width, 0) + Math.max(0, kids.length - 1) * 8;
     w = Math.min(Math.ceil(w), Math.floor(innerWidth * 0.42));   // tabs always keep most of the line
@@ -6564,7 +6571,9 @@ BM.MODES.forEach(m => {
   const bar = document.createElement('div'); bar.className = 'st-bar';
   bar.innerHTML = '<button type="button" class="btn st-save" title="Запомнить всё, что сейчас в этом разделе: изображения, текст, настройки (в Видеостудии весь проект). Потом к этому месту можно вернуться">＋ Сохранить этап</button>'
     + '<button type="button" class="btn st-list" title="Этап запоминает проект целиком: тексты, настройки, референсы и готовые сцены. Открывайте любой этап и возвращайтесь к нему. Не удаляйте клипы из Библиотеки, пока работаете над проектом.">Этапы <b class="st-n">0</b> ▾</button><div class="st-pop" hidden></div>';
-  view.prepend(bar);
+  const head = $('.head', view);   // the stage buttons belong with the page title, not with the tabs line
+  if (head) head.appendChild(bar); else view.prepend(bar);
+  (window.__stBars || (window.__stBars = {}))[m] = bar;
   $('.st-save', bar).onclick = () => bmSave(m);
   $('.st-list', bar).onclick = e => { e.stopPropagation(); $$('.st-pop').forEach(x => { if (x !== $('.st-pop', bar)) x.hidden = true; }); $('.st-pop', bar).hidden = !$('.st-pop', bar).hidden; };
   $('.st-pop', bar).onclick = e => {

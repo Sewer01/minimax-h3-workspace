@@ -7565,7 +7565,7 @@ applyZoom();
         <div class="mt-trim" hidden></div>
         <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Метка реза (треугольник сверху) стоит там, куда её поставили, и не убегает во время показа; голубая линия - это бегунок воспроизведения. Клик по клипу слева от метки играет от начала оставленного куска до метки, клик справа - от метки до конца куска. Ножницы: левая убирает всё до метки, правая - всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
-      <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>добавьте клипы: здесь можно будет посмотреть, как они идут подряд, а потом появится готовый ролик</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
+      <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>добавьте клипы и нажмите на тот, который хотите посмотреть - он появится здесь. Кнопка «▶» играет всю ленту по порядку, а после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
       <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button></div>
       <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
@@ -7611,7 +7611,7 @@ applyZoom();
   }
 
   /* preview player: the clips in the chosen order play one after another; the slider, a click on a clip and the playhead seek in the whole montage */
-  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, mode: 'seq', loading: false, tok: 0, lim: null, mk: { i: 0, off: 0 } };
+  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, picked: false, mode: 'seq', loading: false, tok: 0, lim: null, mk: { i: 0, off: 0 } };
   // P.mk - the place of the cut (a clip and seconds inside its kept piece); P.g - where playback is.
   // They are separate on purpose: the preview must not carry the marker away.
   const mkAt = () => {
@@ -7679,21 +7679,25 @@ applyZoom();
     }
   }
   function togglePlay() {
-    if (!MT.ids.length || P.mode !== 'seq') return;
+    if (!MT.ids.length) return;
+    P.picked = true;   // pressing play is a choice too: show what is playing
+    if (P.mode !== 'seq') { showMode('seq'); }
     if (P.playing) { setPlaying(false); P.lim = null; return; }
     P.lim = null;   // the button plays the whole ribbon, not the last side you looked at
     seekTo(P.g >= totalLen() - 0.05 ? 0 : P.g, true); setPlaying(true);
   }
   function showMode(m) {
-    P.mode = m; const n = MT.ids.length, seq = m === 'seq' && n > 0, res = m === 'res' && MT.res;
+    P.mode = m; const n = MT.ids.length, seq = m === 'seq' && n > 0 && P.picked, res = m === 'res' && MT.res;
     if (!seq) setPlaying(false);
-    pv.hidden = !seq; bar.hidden = !seq; $('.mt-res', root).hidden = !res; $('.mt-empty', root).hidden = seq || res;
+    // the transport row stays when there is a ribbon to play, even before anything is chosen
+    pv.hidden = !seq; bar.hidden = !(n > 0 && m === 'seq'); $('.mt-res', root).hidden = !res; $('.mt-empty', root).hidden = seq || res;
     const tabs = $('.mt-tabs', root); tabs.hidden = !MT.res; $$('[data-pv]', tabs).forEach(b => b.classList.toggle('on', b.dataset.pv === m));
     if (m === 'seq' && !$('.mt-res', root).paused) $('.mt-res', root).pause();
   }
   function syncPlayer() {
     const n = MT.ids.length, tot = totalLen(); seek.max = Math.round(tot * 10);
-    if (!n) { setPlaying(false); pv.removeAttribute('src'); delete pv.dataset.id; P.g = 0; P.i = 0; if (P.mode === 'seq') P.mode = MT.res ? 'res' : 'seq'; }
+    if (!n) { P.picked = false; setPlaying(false); pv.removeAttribute('src'); delete pv.dataset.id; P.g = 0; P.i = 0; if (P.mode === 'seq') P.mode = MT.res ? 'res' : 'seq'; }
+    else if (!P.picked) { setPlaying(false); pv.removeAttribute('src'); delete pv.dataset.id; }   // nothing chosen yet: the window stays empty
     else { setPlaying(false); seekTo(Math.min(P.g, tot), false); }
     showMode(P.mode); updateUI();
   }
@@ -7717,6 +7721,7 @@ applyZoom();
       const mk = mkAt(), i = mk.i, at = mk.off;      // the cut happens where the marker stands
       const left = cut.dataset.cut === 'in';
       if ((left ? durOf(i) - at : at) < 0.3) { toast('После такой обрезки не останется и трети секунды'); return; }
+      P.picked = true;
       if (left) { MT.ins[i] = +Math.min(999, inOf(i) + at).toFixed(2); P.mk = { i, off: 0 }; }   // the cut point became the new beginning
       else { MT.cuts[i] = (inOf(i) + at) >= fullOf(i) - 0.05 ? null : +(inOf(i) + at).toFixed(2); P.mk = { i, off: durOf(i) }; }   // and stays at the new end
       setPlaying(false); render();
@@ -7729,6 +7734,7 @@ applyZoom();
     const grabOff = grabAt - (startOf(mk.i) + mk.off);
     const mv = ev => {
       const p = locate(timeAtX(ev.clientX).g - grabOff);
+      P.picked = true;
       P.mk = { i: p.i, off: p.off };
       P.i = p.i; P.g = startOf(p.i) + p.off; loadAt(p.i, p.off, false); updateUI();   // the frame under the marker shows on the left
     };
@@ -7737,7 +7743,7 @@ applyZoom();
     mv(e);
   });
   playBtn.onclick = togglePlay;
-  seek.oninput = () => { P.drag = true; seekTo(seek.value / 10, P.playing); };
+  seek.oninput = () => { P.drag = true; P.picked = true; if (P.mode !== 'seq') showMode('seq'); seekTo(seek.value / 10, P.playing); };
   seek.onchange = () => { P.drag = false; };
   addEventListener('keydown', e => {
     if (e.code !== 'Space' || root.offsetParent === null || e.target.closest('input,textarea,select,button,[contenteditable]')) return;
@@ -7802,6 +7808,7 @@ applyZoom();
     if (e.target.closest('.mt-rh') || P.mode !== 'seq') { if (P.mode !== 'seq') showMode('seq'); else return; }
     const r = it.getBoundingClientRect();
     const at = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * durOf(i);   // where in this clip they clicked
+    P.picked = true;   // the clip you touched is the one the window shows
     const m = mkAt();
     if (i === m.i && Math.abs(at - m.off) > 0.02) {
       // left of the marker: show the kept beginning up to the marker; right of it: from the marker to the kept end

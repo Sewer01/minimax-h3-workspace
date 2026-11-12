@@ -827,6 +827,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-plus{position:absolute;left:5px;top:5px;background:var(--pink);color:#fff;border-radius:50%;width:20px;height:20px;display:grid;place-items:center;font-size:14px;line-height:1}
 .mt-strip{display:flex;gap:8px;min-height:60px;padding:4px 0 10px;overflow-x:auto}.mt-item{flex:none}
 .mt-rh{position:absolute;right:0;top:0;bottom:0;width:10px;cursor:ew-resize;background:linear-gradient(90deg,transparent,var(--pink));opacity:.55;z-index:3}.mt-rh:hover{opacity:1}
+.mt-rhl{position:absolute;left:0;top:0;bottom:0;width:10px;cursor:ew-resize;background:linear-gradient(-90deg,transparent,var(--pink));opacity:.55;z-index:3}
 .mt-item{position:relative;width:170px;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:grab}
 .mt-item.over{outline:2px solid var(--pink)}
 .mt-item .mt-n{position:absolute;left:5px;top:5px;background:var(--pink);color:#fff;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700}
@@ -7525,7 +7526,7 @@ applyZoom();
 
 /* ---------- MONTAGE: join library clips in a chosen order (ComfyUI does the work, no ffmpeg) ---------- */
 (function mountMontage() {
-  const root = $('#view-montage'), MT = { ids: [], cuts: [], drag: null, busy: false, up: {}, n: 0, px: 26, res: false };
+  const root = $('#view-montage'), MT = { ids: [], cuts: [], ins: [], drag: null, busy: false, up: {}, n: 0, px: 26, res: false };
   try { MT.px = +localStorage.getItem('h3-mt-px') || 26; } catch {}
   const wOf = d => Math.max(Math.round(MT.px * 2.85), Math.round(d * MT.px));   // block width: the clip length at the chosen scale (short clips keep room for buttons)
    // cuts[i]: seconds the clip is trimmed to (null: whole clip)
@@ -7537,7 +7538,7 @@ applyZoom();
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок склейки</h3><span class="counter mt-total"></span><span class="mt-zoom"><button type="button" class="btn mini" data-z="-1" title="Мельче">−</button><button type="button" class="btn mini" data-z="0" title="Уместить всю ленту по ширине">По ширине</button><button type="button" class="btn mini" data-z="1" title="Крупнее">+</button></span></div>
         <div class="mt-strip"></div>
         <div class="mt-vh" title="Потяните вниз или вверх, чтобы клипы стали крупнее или мельче. Двойной щелчок: как было"><i></i></div>
-        <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
+        <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
       <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>добавьте клипы: здесь можно будет посмотреть, как они идут подряд, а потом появится готовый ролик</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
@@ -7554,15 +7555,24 @@ applyZoom();
     </div></div>`;
   const hidden = () => { try { return JSON.parse(localStorage.getItem('h3-mt-hide') || '[]'); } catch { return []; } };
   const hideSet = a => { try { localStorage.setItem('h3-mt-hide', JSON.stringify(a)); } catch {} };
-  const fullOf = i => get(MT.ids[i]).len || 5, durOf = i => MT.cuts[i] != null ? MT.cuts[i] : fullOf(i);
+  const fullOf = i => get(MT.ids[i]).len || 5;
+  // what is kept of a clip: from inOf(i) to endOf(i) seconds of the original; cuts[i] went on
+  // meaning "where it ends", so the old saved states keep working
+  const endOf = i => MT.cuts[i] != null ? Math.min(MT.cuts[i], fullOf(i)) : fullOf(i);
+  const inOf = i => Math.min(Math.max(0, MT.ins[i] || 0), Math.max(0, endOf(i) - 0.3));
+  const durOf = i => Math.max(0.3, endOf(i) - inOf(i));
+  const trimTxt = i => (inOf(i) > 0.05
+    ? inOf(i).toFixed(1).replace('.0', '') + '\u2009–\u2009' + endOf(i).toFixed(1).replace('.0', '')   // a piece cut from the middle: show its edges
+    : durOf(i).toFixed(1).replace('.0', ''))                                                          // whole, or cut only at the end
+    + ' с' + (MT.cuts[i] != null || inOf(i) > 0.05 ? ' ✂' : '');
   const lenTxt = it => it.len ? it.len.toFixed(1).replace('.0', '') + ' с' : '';
   function render() {
-    const keep = MT.ids.map(id => !!get(id) && !get(id).missing); MT.cuts = MT.cuts.filter((_, i) => keep[i]); MT.ids = MT.ids.filter((_, i) => keep[i]);
+    const keep = MT.ids.map(id => !!get(id) && !get(id).missing); MT.cuts = MT.cuts.filter((_, i) => keep[i]); MT.ins = MT.ins.filter((_, i) => keep[i]); MT.ids = MT.ids.filter((_, i) => keep[i]);
     const hid = hidden(), all = LIB.filter(it => it.kind !== 'image' && !it.missing && it.url), vids = all.filter(it => !hid.includes(it.id)), nh = all.length - vids.length;
     $('.mt-hid', root).innerHTML = nh ? `Убрано из списка: ${nh} · <button type="button" class="a-change" data-showall>Вернуть все</button>` : '';
     $('.mt-lib', root).innerHTML = vids.length ? vids.map(it => `<button type="button" class="mt-card" data-id="${it.id}" title="${esc(it.prompt || '')}"><video src="${it.url}#t=0.5" preload="metadata" muted playsinline></video><span class="mt-plus">+</span><span class="mt-x" data-hide="${it.id}" role="button" title="Убрать из этого списка (в Библиотеке клип останется)">✕</span><span class="mt-len">${lenTxt(it)}</span><small>${esc(it.prompt || MODE_NAME[it.mode] || '')}</small></button>`).join('')
       : '<div class="hint">В Библиотеке пока нет видео. Сначала сгенерируйте клипы.</div>';
-    $('.mt-strip', root).innerHTML = MT.ids.length ? MT.ids.map((id, i) => { const it = get(id), d = durOf(i); return `<div class="mt-item" draggable="true" data-i="${i}" style="width:${wOf(d)}px"><video src="${it.url}#t=0.5" preload="metadata" muted playsinline></video><span class="mt-n">${i + 1}</span>${window.mtPipeDone && window.mtPipeDone(id) ? '<span class="mt-ok" title="Клип обработан">✓</span>' : ''}<span class="mt-len">${d.toFixed(1).replace('.0', '')} с${MT.cuts[i] != null ? ' ✂' : ''}</span><div class="mt-b"><button type="button" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Порядок склейки: переставить левее">◀</button><button type="button" data-rm title="Убрать из монтажа (в Библиотеке клип останется)">✕</button><button type="button" data-mv="1" ${i === MT.ids.length - 1 ? "disabled" : ""} title="Порядок склейки: переставить правее">▶</button></div><i class="mt-rh" title="Потяните, чтобы сделать клип короче или длиннее (длиннее оригинала нельзя)"></i></div>`; }).join('')
+    $('.mt-strip', root).innerHTML = MT.ids.length ? MT.ids.map((id, i) => { const it = get(id), d = durOf(i); return `<div class="mt-item" draggable="true" data-i="${i}" style="width:${wOf(d)}px"><video src="${it.url}#t=${(inOf(i) + 0.2).toFixed(2)}" preload="metadata" muted playsinline></video><span class="mt-n">${i + 1}</span>${window.mtPipeDone && window.mtPipeDone(id) ? '<span class="mt-ok" title="Клип обработан">✓</span>' : ''}<span class="mt-len">${trimTxt(i)}</span><div class="mt-b"><button type="button" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Порядок склейки: переставить левее">◀</button><button type="button" data-rm title="Убрать из монтажа (в Библиотеке клип останется)">✕</button><button type="button" data-mv="1" ${i === MT.ids.length - 1 ? "disabled" : ""} title="Порядок склейки: переставить правее">▶</button></div><i class="mt-rhl" title="Потяните, чтобы отрезать начало клипа"></i><i class="mt-rh" title="Потяните, чтобы отрезать конец клипа (длиннее оригинала нельзя). Двойной щелчок по клипу - вернуть целое"></i></div>`; }).join('')
       : '<div class="hint">Пока пусто: нажмите на клипы сверху.</div>';
     const total = MT.ids.reduce((a, id, i) => a + durOf(i), 0);
     $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
@@ -7580,7 +7590,7 @@ applyZoom();
   function locate(g) { let a = 0; const n = MT.ids.length; for (let i = 0; i < n; i++) { const d = durOf(i); if (g < a + d - 1e-6 || i === n - 1) return { i, off: Math.min(d, Math.max(0, g - a)) }; a += d; } return { i: 0, off: 0 }; }
   function loadAt(i, off, play) {
     const id = MT.ids[i], it = get(id); if (!it) return;
-    const tok = ++P.tok, go = () => { if (tok !== P.tok) return; P.loading = false; try { pv.currentTime = off; } catch {} if (play) pv.play().catch(() => {}); };
+    const tok = ++P.tok, go = () => { if (tok !== P.tok) return; P.loading = false; try { pv.currentTime = inOf(i) + off; } catch {} if (play) pv.play().catch(() => {}); };
     if (pv.dataset.id !== id) { P.loading = true; pv.dataset.id = id; pv.src = it.url; pv.addEventListener('loadedmetadata', go, { once: true }); pv.load(); } else go();
   }
   function seekTo(g, play) {
@@ -7639,7 +7649,7 @@ applyZoom();
     return 8;
   }
   const setPx = v => { MT.px = Math.min(90, Math.max(8, Math.round(v))); try { localStorage.setItem('h3-mt-px', MT.px); } catch {} render(); };
-  window.montageLoad = ids => { MT.ids = ids.slice(); MT.cuts = ids.map(() => null); render(); const st = $('.mt-status', root); st.textContent = 'Сцены из Видеостудии уже стоят по порядку. Нажмите «Склеить»: готовый ролик появится справа и в Библиотеке.'; };
+  window.montageLoad = ids => { MT.ids = ids.slice(); MT.cuts = ids.map(() => null); MT.ins = ids.map(() => 0); render(); const st = $('.mt-status', root); st.textContent = 'Сцены из Видеостудии уже стоят по порядку. Нажмите «Склеить»: готовый ролик появится справа и в Библиотеке.'; };
   $('.mt-pc', root).onclick = () => $('.mt-file', root).click();
   $('.mt-file', root).onchange = async e => {
     const files = [...e.target.files]; e.target.value = '';
@@ -7648,32 +7658,49 @@ applyZoom();
       const meta = await new Promise(res => { const v = document.createElement('video'); v.preload = 'metadata'; v.muted = true; v.onloadedmetadata = () => res({ len: v.duration || 0, res: v.videoWidth ? `${v.videoWidth}×${v.videoHeight}` : '' }); v.onerror = () => res(null); v.src = url; });
       if (!meta) { toast('Не удалось открыть файл «' + f.name + '». Нужно видео (mp4, mov, webm).'); URL.revokeObjectURL(url); continue; }
       const k = 'k' + (++MT.n); MT.up[k] = { id: 'up:' + k, file: f, url, len: meta.len, res: meta.res, prompt: f.name };
-      MT.ids.push('up:' + k); MT.cuts.push(null);
+      MT.ids.push('up:' + k); MT.cuts.push(null); MT.ins.push(0);
     }
     render();
   };
-  const move = (i, j) => { if (j < 0 || j >= MT.ids.length) return; const [x] = MT.ids.splice(i, 1), [c] = MT.cuts.splice(i, 1); MT.ids.splice(j, 0, x); MT.cuts.splice(j, 0, c); render(); };
+  const move = (i, j) => { if (j < 0 || j >= MT.ids.length) return; const [x] = MT.ids.splice(i, 1), [c] = MT.cuts.splice(i, 1), [bi] = MT.ins.splice(i, 1); MT.ids.splice(j, 0, x); MT.cuts.splice(j, 0, c); MT.ins.splice(j, 0, bi); render(); };
   root.addEventListener('click', e => {
     if (e.target.closest('[data-showall]')) { hideSet([]); render(); return; }
     const zb = e.target.closest('[data-z]'); if (zb) { const k = +zb.dataset.z; setPx(k > 0 ? MT.px * 1.25 : k < 0 ? MT.px * 0.8 : fitPx()); return; }
     const tb = e.target.closest('[data-pv]'); if (tb) { showMode(tb.dataset.pv); return; }
-    const x = e.target.closest('[data-hide]'); if (x) { e.stopPropagation(); const id = x.dataset.hide; hideSet([...hidden(), id]); const k2 = MT.ids.map(v => v !== id); MT.cuts = MT.cuts.filter((_, i) => k2[i]); MT.ids = MT.ids.filter((_, i) => k2[i]); render(); return; }
-    const c = e.target.closest('.mt-card'); if (c) { MT.ids.push(c.dataset.id); MT.cuts.push(null); render(); return; }
+    const x = e.target.closest('[data-hide]'); if (x) { e.stopPropagation(); const id = x.dataset.hide; hideSet([...hidden(), id]); const k2 = MT.ids.map(v => v !== id); MT.cuts = MT.cuts.filter((_, i) => k2[i]); MT.ins = MT.ins.filter((_, i) => k2[i]); MT.ids = MT.ids.filter((_, i) => k2[i]); render(); return; }
+    const c = e.target.closest('.mt-card'); if (c) { MT.ids.push(c.dataset.id); MT.cuts.push(null); MT.ins.push(0); render(); return; }
     const it = e.target.closest('.mt-item'); if (!it) return; const i = +it.dataset.i;
-    if (e.target.closest('[data-rm]')) { MT.ids.splice(i, 1); MT.cuts.splice(i, 1); render(); return; }
+    if (e.target.closest('[data-rm]')) { MT.ids.splice(i, 1); MT.cuts.splice(i, 1); MT.ins.splice(i, 1); render(); return; }
     const mv = e.target.closest('[data-mv]'); if (mv) { move(i, i + +mv.dataset.mv); return; }
     if (e.target.closest('.mt-rh') || P.mode !== 'seq') { if (P.mode !== 'seq') showMode('seq'); else return; }
     const r = it.getBoundingClientRect();
     seekTo(startOf(i) + Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * durOf(i), true);   // a click on a clip: watch from that place, right away
   });
   root.addEventListener('pointerdown', e => {
-    const h = e.target.closest('.mt-rh'); if (!h) return;
+    const h = e.target.closest('.mt-rh, .mt-rhl'); if (!h) return;
     e.preventDefault(); e.stopPropagation();
-    const el = h.closest('.mt-item'), i = +el.dataset.i, x0 = e.clientX, d0 = durOf(i), full = fullOf(i);
+        const el = h.closest('.mt-item'), i = +el.dataset.i, x0 = e.clientX, d0 = durOf(i), full = fullOf(i);
+    const left = h.classList.contains('mt-rhl');   // the same arithmetic, mirrored: the left handle moves the start
     el.draggable = false; try { h.setPointerCapture(e.pointerId); } catch {}
-    const move2 = ev => { const d = Math.min(full, Math.max(0.5, Math.round((d0 + (ev.clientX - x0) / MT.px) * 10) / 10)); MT.cuts[i] = d; el.style.width = wOf(d) + 'px'; $('.mt-len', el).textContent = d.toFixed(1).replace('.0', '') + ' с ✂'; };
-    const up = () => { h.removeEventListener('pointermove', move2); h.removeEventListener('pointerup', up); if (MT.cuts[i] != null && MT.cuts[i] >= full - 0.05) MT.cuts[i] = null; render(); };
+    const move2 = ev => {
+      const px = Math.round(((ev.clientX - x0) * (left ? -1 : 1) / MT.px) * 10) / 10;
+      if (left) { MT.ins[i] = Math.min(Math.max(0, Math.round(((MT.ins[i] || 0) + px) * 10) / 10), Math.max(0, endOf(i) - 0.3)); }
+      else { MT.cuts[i] = Math.min(full, Math.max(inOf(i) + 0.3, Math.round((d0 + (ev.clientX - x0) / MT.px) * 10) / 10 + inOf(i))); }
+      el.style.width = wOf(durOf(i)) + 'px'; $('.mt-len', el).textContent = trimTxt(i);
+    };
+    const up = () => {
+      h.removeEventListener('pointermove', move2); h.removeEventListener('pointerup', up);
+      if (MT.cuts[i] != null && MT.cuts[i] >= fullOf(i) - 0.05) MT.cuts[i] = null;
+      if (MT.ins[i] && inOf(i) < 0.06) MT.ins[i] = 0;
+      render();
+    };
     h.addEventListener('pointermove', move2); h.addEventListener('pointerup', up);
+  });
+  root.addEventListener('dblclick', e => {        // a cut clip is easy to bring back: double-click restores it
+    const it = e.target.closest('.mt-item'); if (!it) return;
+    const i = +it.dataset.i;
+    if (MT.cuts[i] == null && !MT.ins[i]) return;
+    MT.cuts[i] = null; MT.ins[i] = 0; render(); toast('Клип снова целиком');
   });
   root.addEventListener('dragstart', e => { const it = e.target.closest('.mt-item'); if (!it) return; MT.drag = +it.dataset.i; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'mt'); });
   root.addEventListener('dragover', e => { const it = e.target.closest('.mt-item'); if (it && MT.drag != null) { e.preventDefault(); $$('.mt-item', root).forEach(x => x.classList.toggle('over', x === it)); } });
@@ -7684,16 +7711,17 @@ applyZoom();
   function applyPend() {   // the order of clips from the last time, as soon as the Library is loaded
     if (!PEND || !LIB.length) return; const p = PEND; PEND = null;
     if (MT.ids.length || !Array.isArray(p.ids)) return;
-    const ok = p.ids.map(id => !!byId(id)); MT.ids = p.ids.filter((_, i) => ok[i]); MT.cuts = (p.cuts || []).filter((_, i) => ok[i]); render();
+    const ok = p.ids.map(id => !!byId(id)); MT.ids = p.ids.filter((_, i) => ok[i]); MT.cuts = (p.cuts || []).filter((_, i) => ok[i]); MT.ins = (p.ins || []).filter((_, i) => ok[i]); render();
   }
-  const durList = () => MT.ids.map((_, i) => MT.cuts[i] != null && MT.cuts[i] < fullOf(i) - 0.05 ? MT.cuts[i] : null);
-  const orderKey = () => JSON.stringify([MT.ids, durList()]);   // what the joined video was made from: another order or trim makes it out of date
+  const durList = () => MT.ids.map((_, i) => (MT.cuts[i] != null || inOf(i) > 0.05) ? +durOf(i).toFixed(3) : null);
+  const inList = () => MT.ids.map((_, i) => +inOf(i).toFixed(3));
+  const orderKey = () => JSON.stringify([MT.ids, durList(), inList()]);   // what the joined video was made from: another order or trim makes it out of date
 
   /* the state of the work (which clips are enlarged, grained, joined) is kept, so it survives closing the program: the finished parts lie in the Library */
   let PIPE = { sig: '', doUp: false, grain: 0, steps: {}, joined: null };
   try { const s = JSON.parse(localStorage.getItem('h3-mt-pipe') || 'null'); if (s && s.steps) PIPE = s; } catch {}
   const pipeSave = () => { try { localStorage.setItem('h3-mt-pipe', JSON.stringify(PIPE)); } catch {} pipePaint(); };
-  window.mtSaveState = () => { if (PEND) return; try { const k = MT.ids.map(id => !id.startsWith('up:')); localStorage.setItem('h3-mt-state', JSON.stringify({ ids: MT.ids.filter((_, i) => k[i]), cuts: MT.cuts.filter((_, i) => k[i]) })); } catch {} };
+  window.mtSaveState = () => { if (PEND) return; try { const k = MT.ids.map(id => !id.startsWith('up:')); localStorage.setItem('h3-mt-state', JSON.stringify({ ids: MT.ids.filter((_, i) => k[i]), cuts: MT.cuts.filter((_, i) => k[i]), ins: MT.ins.filter((_, i) => k[i]) })); } catch {} };
   window.mtPipeDone = id => { const s = PIPE.steps[id]; return !!(s && (PIPE.grain > 0 ? s.gr : PIPE.doUp ? s.up : false)); };
   function pipePaint() {
     const box = $('.mt-pipe', root), n = MT.ids.length, line = (t, ok) => `<div class="${ok ? 'ok' : ''}">${ok ? '✓ ' : '• '}${t}</div>`;
@@ -7721,8 +7749,8 @@ applyZoom();
     showDone(it);
   };
 
-  $('.mt-go', root).onclick = () => { if (+$('.mt-grain', root).value > 0) chain('none'); else joinNow(MT.ids.slice(), durList()); };
-  async function joinNow(ids, durs) {
+  $('.mt-go', root).onclick = () => { if (+$('.mt-grain', root).value > 0) chain('none'); else joinNow(MT.ids.slice(), durList(), inList()); };
+  async function joinNow(ids, durs, ins) {
     const st = $('.mt-status', root);
     if (MT.busy && !MT.chaining) return;
     if (ids.length < 2) { st.textContent = 'Добавьте хотя бы два клипа'; return; }
@@ -7730,7 +7758,7 @@ applyZoom();
     MT.busy = true; MT.joining = true; $('.mt-go', root).disabled = true; st.textContent = 'Отправляем клипы в ComfyUI…'; pipePaint();
     const fail = msg => { MT.busy = false; MT.joining = false; MT.chaining = false; $('.mt-go', root).disabled = false; st.textContent = msg; pipePaint(); };
     try {
-      const fd = new FormData(); fd.append('ids', JSON.stringify(ids)); fd.append('durs', JSON.stringify(durs));
+      const fd = new FormData(); fd.append('ids', JSON.stringify(ids)); fd.append('durs', JSON.stringify(durs)); fd.append('ins', JSON.stringify(ins || []));
       ids.filter(id => id.startsWith('up:')).forEach(id => { const u = get(id), k = id.slice(3); fd.append('res_' + k, u.res || ''); fd.append('len_' + k, String(u.len || 0)); fd.append('file_' + k, u.file, u.file.name); });
       const r = await fetch('/api/montage', { method: 'POST', body: fd });
       const txt = await r.text(); let res; try { res = JSON.parse(txt); } catch { res = { error: txt }; }
@@ -7777,7 +7805,7 @@ applyZoom();
     const opt = { scale: '2', method: '', engine: eng === 'relay' ? 'relay' : '', detail: +$('.mt-detail', root).value / 100, sharp: +$('.mt-sharp', root).value / 100 };
     const sig = [doUp ? eng : '-', doUp ? (eng === 'relay' ? opt.detail : opt.sharp) : '-', grain].join('|');
     if (PIPE.sig !== sig) PIPE = { sig, doUp, grain, steps: {}, joined: null };   // other settings: the clips are done again
-    const ids = MT.ids.slice(), durs = durList(), out = [], todo = ids.filter(id => !(PIPE.steps[id] && (!doUp || PIPE.steps[id].up) && (!grain || PIPE.steps[id].gr))).length;
+    const ids = MT.ids.slice(), durs = durList(), ins = inList(), out = [], todo = ids.filter(id => !(PIPE.steps[id] && (!doUp || PIPE.steps[id].up) && (!grain || PIPE.steps[id].gr))).length;
     MT.upBusy = true; MT.busy = true; MT.chaining = true; MT.cancel = false; $('.mt-go', root).disabled = true; upBtn.textContent = 'Остановить'; pipeSave();
     const job = async (url, id, srcFile, extra, label, k) => {   // one job on ComfyUI; returns the finished Library item
       let r;
@@ -7816,7 +7844,7 @@ applyZoom();
     }
     MT.upBusy = false; MT.curPrompt = null; upBtn.textContent = upTxt;
     st.textContent = `${doUp ? 'Увеличение' : 'Зерно'} завершено для всех ${ids.length} клипов. Склеиваем…`;
-    await joinNow(out, durs);
+    await joinNow(out, durs, ins);
   }
   IMG_PANELS.push(() => { applyPend(); pipePaint(); window.mtRestoreResult(); });
   pipePaint();

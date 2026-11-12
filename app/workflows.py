@@ -442,7 +442,7 @@ def grain_graph(name, strength, seed):
     return g, {k: "encode" for k in "LNHZIGRMKBF"} | {"W": "decode", "S": "save"}
 
 
-def _fit_soundtrack(g, stages, names, cuts, timing):
+def _fit_soundtrack(g, stages, names, cuts, timing, starts=None):
     """One soundtrack for the whole montage, built clip by clip: the sound of each clip is cut or padded with silence to the exact
     length of ITS picture, so the small differences (a few hundredths of a second per clip) do not add up over many clips.
     `timing[i]` = (picture seconds, sound seconds or None). Returns the audio output to give to ConcatenateVideo or None."""
@@ -450,7 +450,8 @@ def _fit_soundtrack(g, stages, names, cuts, timing):
         return None
     out = None
     for i, (vdur, adur) in enumerate(timing):
-        want = round(min(vdur, cuts[i]) if cuts and i < len(cuts) and cuts[i] else vdur, 3)
+        start = float(starts[i]) if starts and i < len(starts) and starts[i] else 0.0
+        want = round(min(vdur - start, cuts[i]) if cuts and i < len(cuts) and cuts[i] else vdur - start, 3)
         if adur is None:   # a clip without sound: silence of its length
             piece = [f"Q{i}", 0]
             g[f"Q{i}"] = {"class_type": "EmptyAudio", "inputs": {"duration": want, "sample_rate": 48000, "channels": 2}}
@@ -458,7 +459,7 @@ def _fit_soundtrack(g, stages, names, cuts, timing):
             g[f"A{i}"] = {"class_type": "LoadAudio", "inputs": {"audio": names[i]}}
             piece = [f"A{i}", 0]
             if adur > want:
-                g[f"R{i}"] = {"class_type": "TrimAudioDuration", "inputs": {"audio": piece, "start_index": 0.0, "duration": want}}
+                g[f"R{i}"] = {"class_type": "TrimAudioDuration", "inputs": {"audio": piece, "start_index": start, "duration": want}}
                 piece = [f"R{i}", 0]
             elif want - adur > 0.002:
                 g[f"E{i}"] = {"class_type": "EmptyAudio", "inputs": {"duration": round(want - adur, 3), "sample_rate": 48000, "channels": 2}}
@@ -472,7 +473,7 @@ def _fit_soundtrack(g, stages, names, cuts, timing):
     return out
 
 
-def montage_graph(names, sizes, cuts=None, timing=None):
+def montage_graph(names, sizes, cuts=None, timing=None, starts=None):
     """Join clips end to end with ComfyUI's own nodes (no ffmpeg). Clips of another size than the first one are scaled to it
     first: the join node refuses clips of different sizes. `sizes`: (width, height) per clip or None when unknown."""
     g, ins, stages = {}, {}, {}
@@ -481,8 +482,9 @@ def montage_graph(names, sizes, cuts=None, timing=None):
         g[f"L{i}"] = {"class_type": "LoadVideo", "inputs": {"file": name}}
         stages[f"L{i}"] = "encode"
         src = [f"L{i}", 0]
-        if cuts and i < len(cuts) and cuts[i]:   # the clip is trimmed: only its first seconds are used
-            g[f"T{i}"] = {"class_type": "Video Slice", "inputs": {"video": src, "start_time": 0.0, "duration": float(cuts[i]), "strict_duration": False}}
+        start = float(starts[i]) if starts and i < len(starts) and starts[i] else 0.0
+        if cuts and i < len(cuts) and cuts[i]:   # a piece of the clip is used: from `start`, `cuts[i]` seconds long
+            g[f"T{i}"] = {"class_type": "Video Slice", "inputs": {"video": src, "start_time": start, "duration": float(cuts[i]), "strict_duration": False}}
             stages[f"T{i}"] = "encode"
             src = [f"T{i}", 0]
         if first and sizes[i] and tuple(sizes[i]) != tuple(first):
@@ -494,7 +496,7 @@ def montage_graph(names, sizes, cuts=None, timing=None):
             src = [f"V{i}", 0]
         ins[f"videos.video{i}"] = src
     g["C"] = {"class_type": "ConcatenateVideo", "inputs": {**ins, "codec": "auto"}}
-    sound = _fit_soundtrack(g, stages, names, cuts, timing)
+    sound = _fit_soundtrack(g, stages, names, cuts, timing, starts)
     if sound:
         g["C"]["inputs"]["complete_audio"] = sound
         stages.update({k: "decode" for k in g if k[:1] in "AEJPQR" and k[1:].isdigit()})

@@ -2477,6 +2477,10 @@ class App:
             durs = json.loads(form.get("durs") or "[]")
         except ValueError:
             durs = []
+        try:                                   # where the kept piece of every clip starts, seconds
+            insv = json.loads(form.get("ins") or "[]")
+        except ValueError:
+            insv = []
         items = []
         for i in ids:
             if i.startswith("up:"):
@@ -2495,15 +2499,20 @@ class App:
             raise web.HTTPBadRequest(text="Добавьте хотя бы два видео")
         if self.rh():
             raise web.HTTPBadRequest(text="Монтаж работает только с локальным ComfyUI, не с облаком.")
-        cuts = []
-        for n_, it in enumerate(items):   # trimmed length of a clip (seconds) or None
+        cuts, starts = [], []
+        for n_, it in enumerate(items):   # kept length of a clip (seconds) or None, and where it starts
             d = durs[n_] if n_ < len(durs) else None
             cuts.append(round(float(d), 3) if isinstance(d, (int, float)) and 0.3 <= d < 3600 else None)
+            s = insv[n_] if n_ < len(insv) else 0
+            starts.append(round(float(s), 3) if isinstance(s, (int, float)) and 0 <= float(s) < 3600 else 0.0)
         names, sizes, timing = [], [], []
         for it in items:
             data = it["_up"][1] if "_up" in it else await self.item_bytes(it)
             tr = mp4info.track_seconds(data)   # picture and sound seconds: the sound of every clip is fitted to its own picture
             timing.append((tr["vide"], tr.get("soun")) if tr.get("vide") else None)
+            if cuts[n_] is None and starts[n_] > 0.02 and tr.get("vide"):
+                # only the start is cut: the piece runs to the end of the picture, and the slice node needs its length
+                cuts[n_] = round(max(0.3, tr["vide"] - starts[n_]), 3)
             name = f"h3s_m_{uuid.uuid4().hex[:10]}.{it.get('ext') or 'mp4'}"
             fd = aiohttp.FormData()
             fd.add_field("image", data, filename=name, content_type="video/mp4")
@@ -2514,8 +2523,8 @@ class App:
             names.append(res["name"])
             mm = re.match(r"\s*(\d+)\D+(\d+)", it.get("res") or "")
             sizes.append((int(mm.group(1)), int(mm.group(2))) if mm else None)
-        graph, stages = wf.montage_graph(names, sizes, cuts, timing)
-        total = sum((cuts[n_] if cuts[n_] is not None else float(it.get("len") or 0)) for n_, it in enumerate(items))
+        graph, stages = wf.montage_graph(names, sizes, cuts, timing, starts)
+        total = sum((cuts[n_] if cuts[n_] is not None else max(0.3, float(it.get("len") or 0) - starts[n_])) for n_, it in enumerate(items))
         return await self.queue(graph, stages, {
             "mode": "montage", "sub": f"{len(items)} клипов", "prompt": "", "aspect": items[0].get("aspect", ""), "q": "",
             "len": round(total, 1), "res": items[0].get("res", ""), "seed": 0}, last_output=True)

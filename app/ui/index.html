@@ -7721,7 +7721,7 @@ applyZoom();
     if (!seq) setPlaying(false);
     // the transport row stays when there is a ribbon to play, even before anything is chosen
     pv.hidden = !seq; bar.hidden = !(n > 0 && m === 'seq'); $('.mt-res', root).hidden = !res; $('.mt-empty', root).hidden = seq || res;
-    const tabs = $('.mt-tabs', root); tabs.hidden = !MT.res; $$('[data-pv]', tabs).forEach(b => b.classList.toggle('on', b.dataset.pv === m));
+    const tabs = $('.mt-tabs', root); tabs.hidden = !MT.res; $$('[data-pv]', tabs).forEach(b => b.classList.toggle('on', b.dataset.pv === m)); resTabPaint();
     if (m === 'seq' && !$('.mt-res', root).paused) $('.mt-res', root).pause();
   }
   function syncPlayer() {
@@ -7963,6 +7963,7 @@ applyZoom();
   window.mtSaveState = () => { if (PEND) return; try { const k = MT.ids.map(id => !id.startsWith('up:')); localStorage.setItem('h3-mt-state', JSON.stringify({ ids: MT.ids.filter((_, i) => k[i]), cuts: MT.cuts.filter((_, i) => k[i]), ins: MT.ins.filter((_, i) => k[i]) })); } catch {} };
   window.mtPipeDone = id => { const s = PIPE.steps[id]; return !!(s && (PIPE.grain > 0 ? s.gr : PIPE.doUp ? s.up : false)); };
   function pipePaint() {
+    resTabPaint();
     const box = $('.mt-pipe', root), n = MT.ids.length, line = (t, ok) => `<div class="${ok ? 'ok' : ''}">${ok ? '✓ ' : '• '}${t}</div>`;
     let h = '';
     const have = id => PIPE.steps[id] || {};
@@ -7976,10 +7977,23 @@ applyZoom();
     box.innerHTML = h; box.hidden = !h;
   }
   window.mtPipePaint = pipePaint;
+  // The tab and the line under it have to say which result is shown: joined now, or left over from
+  // an earlier run while the ribbon has not been joined yet in this one.
+  const resTabPaint = () => {
+    const tabs = $('.mt-tabs', root), rtab = tabs && $('[data-pv="res"]', tabs);
+    if (!rtab || !MT.res) return;
+    const when = MT.resAt ? fmtDate(MT.resAt) : 'прежде';
+    rtab.textContent = MT.joining ? 'Прошлый ролик · идёт склейка' : (MT.resFresh ? 'Готовый ролик' : `Ролик от ${when}`);
+    rtab.title = MT.joining ? `сейчас показан ролик, склеенный раньше (${when}); как только новая склейка закончится, он заменится`
+      : (MT.resFresh ? 'склеен в этом запуске' : `склеен раньше, ${when}; новая склейка заменит его`);
+  };
   function showDone(item, quiet) {   // quiet: remember the result, but do not steal the window from the ribbon
     const st = $('.mt-status', root), v = $('.mt-res', root);
-    v.src = item.url; v.muted = true; MT.res = true; if (!quiet) showMode('res');
-    st.innerHTML = 'Склейка завершена: ролик лежит в Библиотеке. <button class="btn pri" id="mtSave" type="button" style="padding:4px 12px;font-size:12px" title="Сохранить готовый ролик целиком на компьютер">Сохранить на компьютер</button> <button class="btn" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>';
+    v.src = item.url; v.muted = true; MT.res = true;
+    MT.resAt = new Date(item.date); MT.resFresh = !quiet;
+    resTabPaint();
+    if (!quiet) showMode('res');
+    st.innerHTML = (quiet ? `Показан ролик, склеенный раньше (${fmtDate(MT.resAt)}) - в этом запуске ещё не склеивали. Его можно посмотреть, сохранить или увеличить; новая склейка заменит его.` : 'Склейка завершена: ролик лежит в Библиотеке.') + `<button class="btn pri" id="mtSave" type="button" style="padding:4px 12px;font-size:12px" title="Сохранить готовый ролик целиком на компьютер">Сохранить на компьютер</button> <button class="btn" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>`;
     $('#mtSave', root).onclick = () => saveItems([byId(item.id) || normItem(item)]);
     $('#mtUp', root).onclick = () => openUpscale(byId(item.id) || normItem(item));
   }

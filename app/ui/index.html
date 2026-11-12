@@ -846,6 +846,13 @@ body.dropping::after{content:'Отпустите — программа разл
    столько и встаёт в ряд, четвёртая не падает на пустую строку */
 #mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:stretch}
 #mdStatus>.card,#mdStatus>details{margin-bottom:0!important;min-width:0}
+#mdStatus:not([hidden]){grid-template-columns:repeat(auto-fit,minmax(250px,1fr));align-items:start}
+#mdStatus>.card>.card-h{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:start;margin-bottom:12px}
+#mdStatus>.card>.card-h>h3{min-width:0}
+#mdStatus>.card>.card-h>span,#mdStatus>.card>.card-h>.btn,#mdStatus>.card>.card-h>button{width:100%}
+#mdStatus>.card>.card-h>span{display:flex;gap:8px;flex-wrap:wrap}
+#mdStatus>.card>.card-h>span>.btn{flex:1 1 130px;min-width:0;text-align:center;white-space:normal}
+#mdStatus>.card>.card-h>.btn,#mdStatus>.card>.card-h>button{white-space:normal;text-align:center}
 #clCard .m{grid-template-columns:minmax(0,1fr);gap:8px;align-items:stretch}
 #clCard .m>*{min-width:0}
 #clCard .cl-f{width:100%;max-width:100%}
@@ -3801,7 +3808,11 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
       if (u) {
         if ((window.QUEUE || []).some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация: дождитесь конца'); return; }
         u.disabled = true; u.textContent = 'Обновляем…';
-        try { const j = await postJSON('/api/updates/pack', { name: u.dataset.np }); toast(`Нода ${u.dataset.np} на коммите ${j.commit}`); b.onclick(); }
+        try {
+          const j = await postJSON('/api/updates/pack', { name: u.dataset.np });
+          toast(j.already ? 'Эта нода уже стоит на самой новой версии' : `Нода ${u.dataset.np} на коммите ${j.commit}`);
+          b.onclick();
+        }
         catch (err) { toast(err.message); u.disabled = false; u.textContent = 'Обновить ноду'; }
       } else if (r) {
         r.disabled = true;
@@ -7796,15 +7807,19 @@ applyZoom();
       const src = $('.mp-src', box); src.textContent = r.picked ? 'СВОЯ МОДЕЛЬ' : 'встроенная'; src.className = 'mp-src ' + (r.picked ? 'own' : 'std');
       box.classList.toggle('own', !!r.picked);
       $('.mp-reset', box).hidden = !r.picked;
+      if (r.unknown) { box._tries = (box._tries || 0) + 1; setTimeout(() => refresh(box), box._tries < 40 ? 4000 : 30000); } else { box._tries = 0; }
       $('.mp-loras', box).innerHTML = r.unknown
-        ? '<span class="hint">LoRA: ComfyUI сейчас не отвечает — это не ошибка, список появится, когда он ответит.</span>'
+        ? '<span class="hint">LoRA: ComfyUI ещё не ответил — это не ошибка, список появится сам.</span>'
         : (r.loras || []).length
           ? '<span class="hint">LoRA:</span>' + r.loras.map(l => l.custom
             ? `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA в этом режиме">${l.off ? '✕ выключена' : '✓ включена'} здесь: ${esc(String(l.name).split(/[\\/]/).pop())}</button>`
             : `<span class="mp-l${l.have ? '' : (l.must ? ' no' : ' opt')}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}${l.have ? '' : (l.must ? ' — файла нет' : ' — не скачана, по желанию')}</span>`).join('')
           : '<span class="hint">LoRA в этом режиме не нужны</span>';
       $('.mp-notes', box).innerHTML = r.picked ? r.notes.map(n => `<div class="${n.level}">${n.level === 'bad' ? '✕ ' : n.level === 'warn' ? '⚠ ' : 'ⓘ '}${esc(n.text)}</div>`).join('') : '';
-    } catch { $('.mp-loras', box).innerHTML = '<span class="hint">ComfyUI не отвечает — список LoRA появится, когда он ответит.</span>'; }
+    } catch {
+      box._tries = (box._tries || 0) + 1; setTimeout(() => refresh(box), box._tries < 40 ? 4000 : 30000);
+      $('.mp-loras', box).innerHTML = '<span class="hint">ComfyUI ещё не ответил — это не ошибка, список появится сам.</span>';
+    }
   };
   const ensure = view => {
     const mode = view.id.replace('view-', ''), role = MAIN[mode];

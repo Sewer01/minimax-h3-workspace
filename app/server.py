@@ -1429,11 +1429,21 @@ class App:
         sha = ((head or [{}])[0]).get("sha") or ""
         if not sha:
             return web.json_response({"error": "GitHub не ответил"}, status=502)
+        standing = ""
+        try:                                   # what the folder holds now, as recorded on the last swap
+            standing = ((root / "ComfyUI" / "custom_nodes" / pack["name"] / ".h3-applied").read_text(encoding="utf-8").split() or [""])[0]
+        except OSError:
+            pass
+        if standing and sha.startswith(standing):
+            return web.json_response({"ok": True, "commit": sha[:10], "already": True})
         archive = root / "downloads" / f'{pack["name"]}-{sha[:8]}.zip'
-        try:
-            archive = await updates.download(self.session, f"https://github.com/{pack['repo']}/archive/{sha}.zip", archive)
-        except Exception as e:
-            return web.json_response({"error": f"Скачать не удалось: {e}"}, status=502)
+        if archive.exists() and archive.stat().st_size > 65536:
+            pass                               # this commit lies here already - rewriting the same file is what failed
+        else:
+            try:
+                archive = await updates.download(self.session, f"https://github.com/{pack['repo']}/archive/{sha}.zip", archive)
+            except Exception as e:
+                return web.json_response({"error": f"Скачать не удалось: {e}"}, status=502)
         if self.process:
             await asyncio.to_thread(self.process.stop)
             self.process = None

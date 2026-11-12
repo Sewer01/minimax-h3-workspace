@@ -4717,7 +4717,8 @@ function makeRefMode(cfg) {
     $('.lm-srclib', root).onclick = () => {
       let m = $('#lmLibM'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'lmLibM'; document.body.append(m); }
       m.hidden = false;
-      const vids = LIB.filter(it => !it.missing && it.url && it.kind === 'video').sort((a, b) => b.date - a.date).slice(0, 120);
+      // a lot of older records carry no kind at all: anything that is not a picture continues a scene
+      const vids = LIB.filter(it => !it.missing && it.url && it.kind !== 'image').sort((a, b) => (b.date || 0) - (a.date || 0)).slice(0, 120);
       m.innerHTML = '<div class="box" style="padding:20px;max-height:80vh;overflow:auto"><div class="card-h"><h3>Продолжить видео из Библиотеки</h3><button class="btn" data-x type="button">Закрыть</button></div>'
         + (vids.length ? `<div class="cw-pickgrid">${vids.map(it => `<button class="cw-th" data-id="${it.id}" type="button" style="width:170px;padding:9px;text-align:left"><b>${it.date ? new Date(it.date).toLocaleDateString('ru-RU') : 'без даты'}</b><small class="hint" style="display:block;margin-top:4px">${esc((it.prompt || it.label || '').slice(0, 60))}</small></button>`).join('')}</div>`
           : '<div class="hint" style="padding:20px 4px">Видео в Библиотеке пока нет - загрузите с компьютера.</div>') + '</div>';

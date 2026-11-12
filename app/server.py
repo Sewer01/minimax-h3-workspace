@@ -355,6 +355,9 @@ class App:
             except Exception:
                 slow, lst = True, []
             visible[cat] = lst or []
+        if slow and self.model_names:      # a core busy loading a model answers these slowly or not
+            self.models_slow = True        # at all: keep what we knew rather than call every file
+            return self.model_names, self.missing   # missing - that is what made the lists lie
         self.models_slow = slow
         self.visible = {cat: {n.replace("/", "\\").split("\\")[-1] for n in lst} for cat, lst in visible.items()}
         names, found, entries = {}, set(), {}
@@ -942,7 +945,7 @@ class App:
                   for x in self.unique_loras() if x.get("on", True)]
         return web.json_response({"notes": [{"level": lv, "text": t} for lv, t in notes], "loras": loras,
                                   "picked": picked.get(role), "name": self.model_names.get(role),
-                                  "unknown": bool(getattr(self, "models_slow", False)) or not self.model_names})
+                                  "unknown": not self.model_names})
 
     async def h_models_pick(self, req):
         body = await req.json()

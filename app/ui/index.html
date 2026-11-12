@@ -846,6 +846,10 @@ body.dropping::after{content:'Отпустите — программа разл
    столько и встаёт в ряд, четвёртая не падает на пустую строку */
 #mdStatus:not([hidden]){display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;align-items:stretch}
 #mdStatus>.card,#mdStatus>details{margin-bottom:0!important;min-width:0}
+#clCard .m{grid-template-columns:minmax(0,1fr);gap:8px;align-items:stretch}
+#clCard .m>*{min-width:0}
+#clCard .cl-f{width:100%;max-width:100%}
+#clCard .m .chip,#clCard .m .btn{white-space:normal;text-align:center}
 #mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdNodesCard,#mdStatus>details{grid-column:1/-1}
 .card.fold>.card-h{cursor:pointer;user-select:none}
 .card.fold>.card-h h3::before{content:'▾';display:inline-block;width:18px;color:var(--dim);transition:transform .15s}
@@ -941,6 +945,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mdl-pick .mp-src{font-size:11px;font-weight:800;padding:2px 9px;border-radius:99px;letter-spacing:.04em}
 .mdl-pick .mp-src.std{background:var(--surface-2);color:var(--dim)}.mdl-pick .mp-src.own{background:#e08a1e;color:#111}
 .mdl-pick .mp-loras{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.mdl-pick .mp-l.opt{opacity:.72}.mdl-pick .mp-l.no{color:#e5484d}
 .mdl-pick .mp-l{font-size:12px;padding:2px 9px;border-radius:8px;background:var(--surface-2);word-break:break-all}.mdl-pick .mp-l.mine{background:rgba(224,138,30,.25)}.mdl-pick button.mp-l{border:0;cursor:pointer;color:inherit;font:inherit;font-size:12px}.mdl-pick .mp-l.tgl.off{background:var(--surface-2);text-decoration:line-through;opacity:.7}.mdl-pick .mp-l.no{background:rgba(229,72,77,.2);color:#e5484d}
 .mdl-pick .pm{flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .mdl-pick .pm .pm-q{flex:1 1 160px;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;outline:none}
@@ -1633,7 +1638,8 @@ body.dropping::after{content:'Отпустите — программа разл
         </div>
         <div class="card" id="clCard" style="margin-bottom:16px" hidden>
           <div class="card-h"><h3>Свои LoRA <small style="color:var(--muted);font-weight:500">· для тех, кто знает ComfyUI</small></h3><span><button class="btn" id="clRe" type="button">Обновить список</button> <button class="btn pri" id="clAdd" type="button">+ Добавить LoRA</button></span></div>
-          <div class="hint" style="margin-bottom:10px">Положите файл LoRA в папку <b>ComfyUI\models\loras</b>, нажмите «Обновить список» и добавьте её. Она подключится ко всем разделам сразу после основной модели. Новичкам ничего менять не нужно: всё уже готово. Свои VAE и модели меняются кнопкой «Заменить…» в списке ниже.</div>
+          <div class="hint" style="margin-bottom:10px">Дополнительные файлы к основной модели: усиливают персонажа или стиль. Новичкам не нужно — всё уже настроено.</div>
+          <details class="agvar" style="margin-bottom:10px"><summary>Как добавить</summary><div class="hint" style="padding:6px 0;line-height:1.55">Положите файл LoRA в папку <b>ComfyUI\models\loras</b>, нажмите «Обновить список» и добавьте его. Файл подключится ко всем разделам сразу после основной модели; в одном разделе его можно выключить в строке «Модель». Свои VAE и модели меняются кнопкой «Заменить…» в списке моделей.</div></details>
           <div class="mlist" id="clList"></div>
         </div>
         <div class="card" id="mdNodesCard" style="margin-bottom:16px" hidden>
@@ -7790,13 +7796,15 @@ applyZoom();
       const src = $('.mp-src', box); src.textContent = r.picked ? 'СВОЯ МОДЕЛЬ' : 'встроенная'; src.className = 'mp-src ' + (r.picked ? 'own' : 'std');
       box.classList.toggle('own', !!r.picked);
       $('.mp-reset', box).hidden = !r.picked;
-      $('.mp-loras', box).innerHTML = (r.loras || []).length
-        ? '<span class="hint">LoRA:</span>' + r.loras.map(l => l.custom
-          ? `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA в этом режиме">${l.off ? '✕ выключена' : '✓ включена'} здесь: ${esc(String(l.name).split(/[\\/]/).pop())}</button>`
-          : `<span class="mp-l${l.have ? '' : ' no'}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}: ${esc(String(l.name).split(/[\\/]/).pop())}${l.have ? '' : ' (файла нет)'}</span>`).join('')
-        : '<span class="hint">LoRA: нет</span>';
+      $('.mp-loras', box).innerHTML = r.unknown
+        ? '<span class="hint">LoRA: ComfyUI сейчас не отвечает — это не ошибка, список появится, когда он ответит.</span>'
+        : (r.loras || []).length
+          ? '<span class="hint">LoRA:</span>' + r.loras.map(l => l.custom
+            ? `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA в этом режиме">${l.off ? '✕ выключена' : '✓ включена'} здесь: ${esc(String(l.name).split(/[\\/]/).pop())}</button>`
+            : `<span class="mp-l${l.have ? '' : (l.must ? ' no' : ' opt')}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}${l.have ? '' : (l.must ? ' — файла нет' : ' — не скачана, по желанию')}</span>`).join('')
+          : '<span class="hint">LoRA в этом режиме не нужны</span>';
       $('.mp-notes', box).innerHTML = r.picked ? r.notes.map(n => `<div class="${n.level}">${n.level === 'bad' ? '✕ ' : n.level === 'warn' ? '⚠ ' : 'ⓘ '}${esc(n.text)}</div>`).join('') : '';
-    } catch { /* ComfyUI is off: the block stays as it is */ }
+    } catch { $('.mp-loras', box).innerHTML = '<span class="hint">ComfyUI не отвечает — список LoRA появится, когда он ответит.</span>'; }
   };
   const ensure = view => {
     const mode = view.id.replace('view-', ''), role = MAIN[mode];

@@ -941,7 +941,8 @@ class App:
         loras += [{"title": "Своя LoRA", "name": x["file"], "have": True, "must": False, "mine": True, "custom": True, "off": mode in (x.get("skip") or [])}
                   for x in self.unique_loras() if x.get("on", True)]
         return web.json_response({"notes": [{"level": lv, "text": t} for lv, t in notes], "loras": loras,
-                                  "picked": picked.get(role), "name": self.model_names.get(role)})
+                                  "picked": picked.get(role), "name": self.model_names.get(role),
+                                  "unknown": bool(getattr(self, "models_slow", False)) or not self.model_names})
 
     async def h_models_pick(self, req):
         body = await req.json()
@@ -1396,7 +1397,7 @@ class App:
             async def progress(got, total):
                 st["pct"] = round(got * 100 / total) if total else 0
 
-            await updates.download(self.session, updates.source_url(st["version"]), archive, progress)
+            archive = await updates.download(self.session, updates.source_url(st["version"]), archive, progress)
             st["stage"] = "backup"
             mark = await asyncio.to_thread(updates.backup_source, root, DATA_DIR)
             st["backup"] = mark.name
@@ -1430,14 +1431,14 @@ class App:
             return web.json_response({"error": "GitHub не ответил"}, status=502)
         archive = root / "downloads" / f'{pack["name"]}-{sha[:8]}.zip'
         try:
-            await updates.download(self.session, f"https://github.com/{pack['repo']}/archive/{sha}.zip", archive)
+            archive = await updates.download(self.session, f"https://github.com/{pack['repo']}/archive/{sha}.zip", archive)
         except Exception as e:
             return web.json_response({"error": f"Скачать не удалось: {e}"}, status=502)
         if self.process:
             await asyncio.to_thread(self.process.stop)
             self.process = None
         try:
-            kept = await asyncio.to_thread(updates.update_pack, root, pack, sha)
+            kept = await asyncio.to_thread(updates.update_pack, root, pack, sha, archive)
         except Exception as e:
             await asyncio.to_thread(self.wake_comfy)
             return web.json_response({"error": str(e)}, status=500)

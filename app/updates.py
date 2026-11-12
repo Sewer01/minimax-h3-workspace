@@ -14,6 +14,7 @@ a rebuild of our release. Two rules here:
 """
 
 import asyncio
+import os
 import re
 import shutil
 import tarfile
@@ -102,14 +103,16 @@ def source_url(version):
 
 async def download(session, url, dest, on_progress=None, attempts=3):
     dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_suffix(dest.suffix + ".part")
+    # a half-finished download of the same file may still be held open by the previous try, so
+    # this one writes to its own name and only then takes the intended one
+    tmp = dest.with_suffix(f'{dest.suffix}.{os.getpid()}.{int(time.time() * 1000)}.part')
     last = None
     for _ in range(attempts):
         try:
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=1800),
                                    headers={"User-Agent": "h3"}) as r:
                 if r.status != 200:
-                    raise RuntimeError(f"GitHub ответил {r.status}")
+                    raise RuntimeError(f"Файл не скачался: сервер ответил {r.status}")
                 total = int(r.headers.get("Content-Length") or 0)
                 got = 0
                 with tmp.open("wb") as f:
@@ -118,8 +121,16 @@ async def download(session, url, dest, on_progress=None, attempts=3):
                         got += len(chunk)
                         if on_progress and (got >> 22) % 8 == 0:
                             await on_progress(got, total)
-                tmp.replace(dest)
-                return dest
+                for _ in range(4):
+                    try:
+                        tmp.replace(dest)
+                        return dest
+                    except OSError as e:              # Windows: the old archive is still busy
+                        last = e
+                        await asyncio.sleep(1.5)
+                keep = dest.with_name(dest.stem + f'-{int(time.time())}' + dest.suffix)
+                tmp.replace(keep)
+                return keep
         except Exception as e:
             last = e
             await asyncio.sleep(3)
@@ -180,12 +191,27 @@ def rollback(comfy_root, data_dir):
     return marks[-1].name
 
 
-def update_pack(comfy_root, pack, commit):
-    """Replace one node pack with another commit of its repository, keeping the old folder."""
+def update_pack(comfy_root, pack, commit, archive=None):
+    """Replace one node pack with another commit of its repository, keeping the old folder.
+
+    `archive` is the file the download actually landed on: when the usual name is held by another
+    program, it gets a name of its own, and the caller knows it, this function does not guess.
+    """
     nodes = Path(comfy_root) / "ComfyUI" / "custom_nodes"
     target = nodes / pack["name"]
-    archive = Path(comfy_root) / "downloads" / f'{pack["name"]}-{commit[:8]}.zip'
-    with zipfile.ZipFile(archive) as z:
+    archive = Path(archive) if archive else Path(comfy_root) / "downloads" / f'{pack["name"]}-{commit[:8]}.zip'
+    z = None
+    for _ in range(4):
+        try:
+            z = zipfile.ZipFile(archive)
+            break
+        except FileNotFoundError:
+            raise RuntimeError("Архив ноды не скачался - попробуйте «Обновить ноду» ещё раз")
+        except OSError:
+            time.sleep(1.0)
+    if z is None:
+        raise RuntimeError("Файл архива занят другой программой: закройте ComfyUI и нажмите «Обновить ноду» ещё раз")
+    with z:
         names = z.namelist()
         top = names[0].split("/")[0]
         if f"{top}/__init__.py" not in names:
@@ -204,8 +230,15 @@ def update_pack(comfy_root, pack, commit):
             target.rename(backup)
         fresh.rename(target)
         shutil.rmtree(stage, ignore_errors=True)
-        archive.unlink(missing_ok=True)
-        return backup.name if backup else None
+        result = backup.name if backup else None
+    # the downloaded archive and any half-finished file of the same pack are not needed anymore;
+    # only after the zip is closed - Windows does not let an open file be deleted
+    for left in sorted(archive.parent.glob(f'{pack["name"]}-*.zip*')):
+        try:
+            left.unlink()
+        except OSError:
+            pass
+    return result
 
 
 def rollback_pack(comfy_root, name):

@@ -102,6 +102,8 @@
 .tl{touch-action:pan-x;user-select:none}
 .tl-add{border-style:dashed;min-width:56px;font-size:20px;font-weight:800;color:var(--muted)}
 .tl-player{background:#000;border-radius:12px;overflow:hidden;min-height:90px;display:grid;place-items:center;margin-bottom:8px}
+.tl-player.empty{background:transparent;min-height:0}
+.tl-player.empty .hint{padding:6px 0 2px;color:var(--muted)}
 .tl-player video{width:100%;max-height:36vh;display:block}
 .tl-player .hint{padding:22px 14px;text-align:center}
 .lm-scenes .sc:not(.sel){display:none}
@@ -2593,6 +2595,7 @@ function previewPanel(el, st, opts) {
     $('.res', frame).hidden = false; frame.classList.remove('done');
   }
   // «Очистить» in the section must empty this preview too, not only the fields
+  el._syncLabel = () => { if (!run) setGo(false); };   // the page may change what the button should say
   el._reset = () => {
     resetFrame();
     $$('.sum b', el).forEach(b => b.textContent = '—');
@@ -4644,6 +4647,7 @@ function makeRefMode(cfg) {
       const r = $('.lm-reset', root); if (r) r.hidden = !parts || !ready;
       const ch = $('.lm-chain', root); if (ch) { ch.hidden = !parts; ch.textContent = 'Сделать все сцены'; }
       root._memo?.();   // the quality and the counting mode are said once, above the run buttons
+      $('.rm-preview', root)._syncLabel?.();   // and the button shows the scene you are on
       const lf = $('.lm-final', root); if (lf) lf.hidden = !(parts && root._q === 'draft' && ready >= $$('.sc', root).length);
       root._renderTL?.();
       onScenes();
@@ -5058,8 +5062,12 @@ function makeRefMode(cfg) {
     root._renderTL = renderTL;
     function showClip() {
       const c = $$('.sc', root)[root._sel], d = c && (c._dn[root._q] || (c._old || {})[root._q] || c._dn[root._q === 'draft' ? 'final' : 'draft']);
-      if (d && d.url) { if (!vid.src.endsWith(d.url)) vid.src = d.url; vid.hidden = false; $('.tl-empty', root).hidden = true; }
-      else { vid.pause(); vid.removeAttribute('src'); vid.hidden = true; $('.tl-empty', root).hidden = false; }
+      const pl = $('.tl-player', root), em = $('.tl-empty', root);
+      const n = root._sel + 1;
+      if (d && d.url) { if (!vid.src.endsWith(d.url)) vid.src = d.url; vid.hidden = false; em.hidden = true; pl.classList.remove('empty'); }
+      else { vid.pause(); vid.removeAttribute('src'); vid.hidden = true; em.hidden = false; pl.classList.add('empty'); }
+      em.textContent = `Сцена ${n}: здесь появится её готовое видео. Собрать или пересобрать её можно кнопкой «Сделать сцену ${n}».`;
+      $('.rm-preview', root)._syncLabel?.();
     }
     root._showClip = showClip;
     tl.addEventListener('pointerdown', e => {   // drag the right edge of a fragment: shorter / longer
@@ -5085,7 +5093,8 @@ function makeRefMode(cfg) {
       }
       const b = e.target.closest('.tl-b'); if (!b) return;
       if (b.dataset.add) { $('#lmAdd', root).click(); return; }
-      root._sel = +b.dataset.i; renderTL(); showClip();
+      root._sel = +b.dataset.i; root._target = root._sel;   // the run button works on the scene you picked
+      renderTL(); showClip(); refreshStates();
     };
     $('.tl-join', root).onclick = () => {   // the finished scenes, in order, go to the Montage page: one click there joins them into a single file
       const q = root._q, cards = $$('.sc', root);
@@ -5097,7 +5106,7 @@ function makeRefMode(cfg) {
     $('.tl-all', root).onclick = () => {   // the finished fragments one after another
       const urls = $$('.sc', root).map(c => (c._dn[root._q] || {}).url).filter(Boolean);
       if (!urls.length) { toast('Пока нет готовых фрагментов'); return; }
-      let n = 0; vid.hidden = false; $('.tl-empty', root).hidden = true;
+      let n = 0; vid.hidden = false; $('.tl-empty', root).hidden = true; $('.tl-player', root).classList.remove('empty');
       const next = () => { if (n >= urls.length) { vid.onended = null; vid.loop = true; return; } vid.loop = false; vid.src = urls[n++]; vid.play().catch(() => {}); };
       vid.onended = next; next();
     };
@@ -5384,7 +5393,7 @@ function makeRefMode(cfg) {
   const prev = previewPanel($('.rm-preview', root), S, {
     singleScene: () => cfg.scenes && root._mode === 'parts' && root._chainPart == null,
     goLabel: () => !cfg.scenes ? 'Сгенерировать' : root._mode === 'parts'
-      ? `Сделать сцену ${root._next() + 1}` : 'Сгенерировать видеоролик',   // the quality is written above the buttons
+      ? `Сделать сцену ${root._sel + 1}` : 'Сгенерировать видеоролик',   // the number follows the scene you picked
     extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' || cfg.swap || cfg.scenes ? 'Шаги' : 'Схема',
     extra: () => cfg.scenes ? (root._paintQ?.(), root._mode === 'parts' ? (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika') : (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika')) : cfg.mode === 'actor' || cfg.swap ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
     passes: () => cfg.scenes ? $$('.sc', root).map(() => root._q === 'draft' ? 4 : 8) : cfg.mode === 'actor' || cfg.swap ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],

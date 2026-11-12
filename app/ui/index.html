@@ -857,7 +857,8 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-cut:hover{background:var(--pink);color:#111}
 .mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}.mt-bar[hidden],.mt-tabs[hidden]{display:none}
 .mt-b button:disabled{opacity:.3;cursor:default}
-.mt-bar .mt-play{min-width:44px;font-size:16px;padding:4px 12px}.mt-seek{flex:1;accent-color:var(--pink)}
+.mt-bar .mt-play{min-width:44px;font-size:16px;padding:4px 12px}
+.mt-bar .mt-restart{min-width:40px;font-size:14px;padding:4px 10px;opacity:.85}.mt-seek{flex:1;accent-color:var(--pink)}
 .mt-time{font-size:12px;color:var(--dim);min-width:84px;text-align:right;font-variant-numeric:tabular-nums}
 .mt-upbox{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .mt-upbox select{min-width:0;flex:1 1 190px}
@@ -7568,7 +7569,7 @@ applyZoom();
         <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Метка реза (треугольник сверху) стоит там, куда её поставили, и не убегает во время показа; голубая линия - это бегунок воспроизведения. Клик по клипу слева от метки играет от начала оставленного куска до метки, клик справа - от метки до конца куска. Ножницы: левая убирает всё до метки, правая - всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
       <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж пуст</b>добавьте клипы из Библиотеки - они появятся в ленте, и здесь сразу покажется кадр, на который указывает метка реза. Кнопка «▶» играет всю ленту по порядку, после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
-      <div class="mt-bar" hidden><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
+      <div class="mt-bar" hidden><button type="button" class="btn mt-restart" title="Смотреть с начала ленты">⏮</button><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
       <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button></div>
       <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
       <div class="mt-upbox"><select class="mt-upeng" title="Чем увеличивать каждый клип"><option value="relay">Быстро (RelayVSR, в 2 раза)</option><option value="seed">Качественно (SeedVR2, в 2 раза, долго)</option></select><button type="button" class="btn mt-upgo" title="Каждый клип увеличивается отдельно (быстро, память не переполняется), потом увеличенные склеиваются. Исходные клипы остаются.">Увеличить каждый клип и склеить</button></div>
@@ -7648,7 +7649,7 @@ applyZoom();
     g = Math.min(Math.max(0, g), totalLen()); const L = locate(g); P.g = g; P.i = L.i; loadAt(L.i, L.off, play); updateUI();
   }
   function updateUI() {
-    const tot = totalLen(); if (!P.drag) seek.value = Math.round(P.g * 10);
+    const tot = totalLen(); if (!P.drag) { seek.value = Math.round(P.g * 10); paintRange(seek); }   // the fill follows playback, not only the hand
     timeEl.textContent = mmss(P.g) + ' / ' + mmss(tot);
     const strip = $('.mt-strip', root), ph = $('.mt-ph', strip), ln = $('.mt-line', strip), run = $('.mt-run', strip), items = $$('.mt-item', strip); if (!ph || !items.length) return;
     items.forEach((x, k) => x.classList.toggle('cur', k === P.i));
@@ -7705,7 +7706,7 @@ applyZoom();
     if (m === 'seq' && !$('.mt-res', root).paused) $('.mt-res', root).pause();
   }
   function syncPlayer() {
-    const n = MT.ids.length, tot = totalLen(); seek.max = Math.round(tot * 10);
+    const n = MT.ids.length, tot = totalLen(); seek.max = Math.round(tot * 10); paintRange(seek);
     const blank = () => { pv.removeAttribute('src'); delete pv.dataset.id; try { pv.load(); } catch { } };   // without load() the old frame stays on screen
     // an empty ribbon is an empty window: the last joined video is only shown when it is asked for
     if (!n) { P.picked = false; setPlaying(false); blank(); P.g = 0; P.i = 0; P.mode = 'seq'; }
@@ -7766,6 +7767,13 @@ applyZoom();
     showMode('seq'); P.g = startOf(i); seekTo(P.g, false);
   };
   window.mtFocusClip = focusClip;
+  const restartBtn = $('.mt-restart', root);
+  restartBtn.onclick = () => {          // watch the ribbon again from its very first frame
+    if (!MT.ids.length) return;
+    P.picked = true; P.lim = null;
+    if (P.mode !== 'seq') showMode('seq');
+    seekTo(0, true); setPlaying(true);
+  };
   playBtn.onclick = togglePlay;
   seek.oninput = () => { P.drag = true; P.picked = true; if (P.mode !== 'seq') showMode('seq'); seekTo(seek.value / 10, P.playing); };
   seek.onchange = () => { P.drag = false; };

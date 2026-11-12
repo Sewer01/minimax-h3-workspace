@@ -772,7 +772,8 @@ class App:
                                  "current": k == variant, "have": v["file"] in getattr(self, "visible", {}).get(v["category"], ()),
                                   "lic": catalog.license_of(v["url"])[0], "lic_note": catalog.license_of(v["url"])[1]}
                                 for k, v in catalog.VARIANTS[role].items()] if len(catalog.VARIANTS[role]) > 1 else []}
-                  for role, variant in self.choice().items() if role in needed]
+                  for role, variant in self.choice().items()
+                  if role in needed or role in {r for roles in catalog.MODE_OPTIONAL.values() for r in roles}]
         choice = self.choice()
         add_modes = {m: round((catalog.plan_size(choice, self.modes() + [m]) - catalog.plan_size(choice, self.modes())) / 1e9, 1)   # gigabytes (plan_size is in bytes)
                      for m in catalog.MODE_ROLES if m not in self.modes()}
@@ -938,7 +939,7 @@ class App:
         notes = catalog.compat_notes(mode, role, name or self.model_names.get(role, ""), self.hw.get("compute_cap") or 0)
         missing = {m["role"] for m in self.missing}
         picked = self.config.get("model_pick") or {}
-        loras = [{"title": catalog.ROLE_TITLES.get(r, r), "name": self.model_names.get(r, ""), "have": r not in missing,
+        loras = [{"role": r, "title": catalog.ROLE_TITLES.get(r, r), "name": self.model_names.get(r, ""), "have": r not in missing,
                   "must": r in catalog.MODE_ROLES.get(mode, []), "mine": r in picked}
                  for r in catalog.MODE_ROLES.get(mode, []) + catalog.MODE_OPTIONAL.get(mode, []) if r.endswith("_lora") and r in self.model_names]
         loras += [{"title": "Своя LoRA", "name": x["file"], "have": True, "must": False, "mine": True, "custom": True, "off": mode in (x.get("skip") or [])}

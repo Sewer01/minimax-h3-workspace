@@ -543,7 +543,7 @@ body.first-run .pr-first{display:flex}
    buttons may catch the mouse, the empty part of the line must let the tabs through */
 .st-bar>*{pointer-events:auto}
 .head{flex-wrap:wrap}
-.head .st-bar{margin:0;height:auto;flex:none;z-index:40}
+.head .st-bar{margin:0;height:auto;flex:none;z-index:1}   // below the fixed tabs: when the page scrolls they go behind it, not over it
 .st-bar .btn{height:32px;padding:0 14px;font-size:12.5px;white-space:nowrap}
 .st-bar .st-save{background:var(--accent,#c0405a);border-color:var(--accent,#c0405a);color:#fff}
 .st-bar .st-list b{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin:0 2px;border-radius:99px;background:rgba(255,255,255,.12);font-size:11px}
@@ -990,6 +990,8 @@ body.dropping::after{content:'Отпустите — программа разл
 .mdl-pick .mp-loras{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .mdl-pick .mp-l.opt{opacity:.72}.mdl-pick .mp-l.no{color:#e5484d}
 .mdl-pick button.mp-l.off{opacity:.6;text-decoration:line-through}
+.mp-dl{margin-left:6px;padding:1px 8px;font-size:11px;border-radius:8px;border:1px solid var(--pink);background:transparent;color:var(--pink);cursor:pointer}
+.mp-dl:hover{background:var(--pink);color:#111}
 .mdl-pick .mp-l{font-size:12px;padding:2px 9px;border-radius:8px;background:var(--surface-2);word-break:break-all}.mdl-pick .mp-l.mine{background:rgba(224,138,30,.25)}.mdl-pick button.mp-l{border:0;cursor:pointer;color:inherit;font:inherit;font-size:12px}.mdl-pick .mp-l.tgl.off{background:var(--surface-2);text-decoration:line-through;opacity:.7}.mdl-pick .mp-l.no{background:rgba(229,72,77,.2);color:#e5484d}
 .mdl-pick .pm{flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .mdl-pick .pm .pm-q{flex:1 1 160px;min-width:0;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;outline:none}
@@ -3632,8 +3634,9 @@ function renderModels(s) {
     return;
   }
   MD_ENGINE = s.engine;
-  const have = s.models.filter(m => m.have).length;
-  $('#modelsBadge').textContent = `${have} / ${s.models.length}`; $('#modelsBadge').hidden = false;
+  const req = s.models.filter(m => m.needed);   // optional files are listed too, but they must not make the counter look broken
+  const have = req.filter(m => m.have).length;
+  $('#modelsBadge').textContent = `${have} / ${req.length}`; $('#modelsBadge').hidden = false;
   const miss = s.models.filter(m => !m.have).map(m => m.role).sort().join(',');
   if (window._missSig !== undefined && window._missSig !== miss && window.refreshMdl) window.refreshMdl();
   window._missSig = miss;
@@ -8019,9 +8022,27 @@ applyZoom();
     MT.resAt = new Date(item.date); MT.resFresh = !quiet;
     resTabPaint();
     if (!quiet) showMode('res');
-    st.innerHTML = (quiet ? `Показан ролик, склеенный раньше (${fmtDate(MT.resAt)}) - в этом запуске ещё не склеивали. Его можно посмотреть, сохранить или увеличить; новая склейка заменит его.` : 'Склейка завершена: ролик лежит в Библиотеке.') + `<button class="btn pri" id="mtSave" type="button" style="padding:4px 12px;font-size:12px" title="Сохранить готовый ролик целиком на компьютер">Сохранить на компьютер</button> <button class="btn" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>`;
+    st.innerHTML = (quiet ? `Показан ролик, склеенный раньше (${fmtDate(MT.resAt)}) - в этом запуске ещё не склеивали. Его можно посмотреть, сохранить или увеличить; новая склейка заменит его.` : 'Склейка завершена: ролик лежит в Библиотеке.') + `<button class="btn pri" id="mtSave" type="button" style="padding:4px 12px;font-size:12px" title="Сохранить готовый ролик целиком на компьютер">Сохранить на компьютер</button> <button class="btn" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>`
+      + ` <button class="btn" id="mtDel" type="button" style="padding:4px 12px;font-size:12px" title="Убрать ролик из Библиотеки: файл переместится в корзину Windows">Удалить</button>`;
     $('#mtSave', root).onclick = () => saveItems([byId(item.id) || normItem(item)]);
     $('#mtUp', root).onclick = () => openUpscale(byId(item.id) || normItem(item));
+    $('#mtDel', root).onclick = () => confirmBox('Удалить готовый ролик?',
+      'Файл переместится в корзину Windows, оттуда его можно вернуть. Клипы, из которых он собран, останутся в Библиотеке.',
+      'Удалить', async () => {
+        try {
+          const r = await fetch('/api/library/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [item.id] }) });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) { toast(j.error || 'Не удалось удалить'); return; }
+          if ((j.failed || []).length) { toast('Файл не удался: ' + j.failed.length + ' остался на месте'); return; }
+          const at = LIB.findIndex(x => x.id === item.id); if (at >= 0) LIB.splice(at, 1);
+          if (typeof selected !== 'undefined') selected.delete(item.id);
+          renderLib();
+        } catch (err) { toast(err.message); return; }
+        MT.res = false; if (typeof PIPE !== 'undefined') PIPE.joined = null;
+        const rv = $('.mt-res', root); rv.removeAttribute('src'); try { rv.load(); } catch { }
+        showMode('seq'); syncPlayer(); pipePaint();
+        st.innerHTML = 'Готовый ролик удалён из Библиотеки. Лента на месте - соберите заново, если он нужен.';
+      });
   }
   window.mtRestoreResult = () => {   // after a restart: show the joined video again if it is still in the Library
     const j = PIPE.joined, it = j && byId(j.id); if (!it || MT.res || it.missing) return;
@@ -8174,7 +8195,8 @@ applyZoom();
       const std = (r.loras || []).filter(l => !l.custom), own = (r.loras || []).filter(l => l.custom);
       $('.mp-loras', box).innerHTML = r.unknown
         ? '<span class="hint">LoRA: ComfyUI занят (обычно это загрузка модели) — список появится сам.</span>'
-        : ((std.length ? '<span class="hint">LoRA режима:</span>' + std.map(l => `<span class="mp-l${l.have ? '' : (l.must ? ' no' : ' opt')}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}${l.have ? '' : (l.must ? ' — файла нет' : ' — не скачана, по желанию')}</span>`).join('') : '')
+        : ((std.length ? '<span class="hint">LoRA режима:</span>' + std.map(l => `<span class="mp-l${l.have ? '' : (l.must ? ' no' : ' opt')}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}${l.have ? '' : (l.must ? ' — файла нет' : ' — не скачана, по желанию')}${(l.have || !l.role) ? ''
+  : ` <button type="button" class="mp-dl" data-dlrole="${esc(l.role)}" title="${l.must ? 'Скачать нужный этому режиму файл' : 'Скачать сейчас, файл не обязателен'}">Скачать</button>`}</span>`).join('') : '')
           + (own.length ? '<span class="hint">Ваши LoRA:</span>' + own.map(l => `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA только в этом разделе; в других она останется как есть">${esc(String(l.name).split(/[\\/]/).pop())} · ${l.off ? 'выключена здесь — включить' : 'работает здесь — выключить'}</button>`).join('') : ''))
           || '<span class="hint">LoRA в этом режиме не нужны</span>';
       $('.mp-notes', box).innerHTML = r.picked ? r.notes.map(n => `<div class="${n.level}">${n.level === 'bad' ? '✕ ' : n.level === 'warn' ? '⚠ ' : 'ⓘ '}${esc(n.text)}</div>`).join('') : '';
@@ -8204,6 +8226,8 @@ applyZoom();
     };
     $('.mp-no', box).onclick = () => { pm.hidden = true; };
     $('.mp-loras', box).onclick = async e => {
+      const dl = e.target.closest('[data-dlrole]');
+      if (dl) { mdStart([dl.dataset.dlrole]); return; }   // the file is offered right where its absence is written
       const b = e.target.closest('.tgl'); if (!b) return;
       try { await postJSON('/api/loras/custom/mode', { file: b.dataset.file, mode, on: b.classList.contains('off') }); refresh(box); } catch (err) { toast(err.message); }
     };

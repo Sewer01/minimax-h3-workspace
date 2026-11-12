@@ -109,6 +109,7 @@
 #view-long .st-grid .row{margin:0 0 12px}
 #view-long .st-l .seg{display:grid!important;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:4px;width:100%!important;padding:4px}
 #view-long .st-l .seg button{padding:8px 8px;white-space:normal;min-width:0;text-align:center}
+#view-long .seg button.need{outline:1px dashed var(--warn);outline-offset:-3px}
 #view-long .st-grid .seg-q{flex-wrap:wrap;max-width:100%}
 #view-long .st-grid .seg-q button{padding:7px 10px}
 @media (max-width:1100px){#view-long .st-grid{grid-template-columns:1fr}}
@@ -3599,6 +3600,9 @@ function renderModels(s) {
   MD_ENGINE = s.engine;
   const have = s.models.filter(m => m.have).length;
   $('#modelsBadge').textContent = `${have} / ${s.models.length}`; $('#modelsBadge').hidden = false;
+  const miss = s.models.filter(m => !m.have).map(m => m.role).sort().join(',');
+  if (window._missSig !== undefined && window._missSig !== miss && window.refreshMdl) window.refreshMdl();
+  window._missSig = miss;
   $('#mlist').innerHTML = s.models.map(m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ загружено</span>' : optional ? '<span class="st opt" title="Без этого файла разделы работают; он добавляет возможность. Нажмите «Скачать», чтобы взять его.">по желанию</span>' : '<span class="st miss" title="Этот файл нужен выбранным разделам. Нажмите «Докачать недостающие» или «Скачать».">нет файла</span>';
@@ -4811,7 +4815,10 @@ function makeRefMode(cfg) {
         const sec = +$('input[type=range]', c).value, done = sigOk(c), draft = root._q === 'draft', old = !done && !!(c._old || {})[root._q];
         return `<div class="tl-b${i === root._sel ? ' sel' : ''}${done ? (draft ? ' draft' : ' done') : old ? ' stale' : ''}${fr[i] ? ' cut' : ''}" data-i="${i}" style="flex:0 0 ${sec * TL_PPS}px" title="${fr[i] ? 'Новый план (смена кадра). ' : ''}Потяните правый край, чтобы изменить длину"><div><b>${i + 1}</b> · ${sec} с</div><div class="hint" style="font-size:11px;white-space:nowrap;overflow:hidden">${done ? (draft ? 'черновик ✓' : 'готово ✓') : old ? 'старая версия' : ''}${fr[i] ? ' ✂ новый план' : ''}</div><i class="tl-h"></i></div>`;
       }).join('') + '<div class="tl-b tl-add" data-add="1" style="flex:0 0 56px;align-items:center;justify-content:center" title="Добавить фрагмент">+</div>';
-      $('.lm-q button[data-mq="draft"]', root).disabled = root._dmad === false;
+      const dmb = $('.lm-q button[data-mq="draft"]', root);
+      dmb.disabled = false;   // pressing it is how you find out you need a file - and how you get it
+      dmb.classList.toggle('need', root._dmad === false);
+      dmb.title = root._dmad === false ? 'Для черновика нужен файл ускорения: нажмите, и программа предложит его скачать' : ''
     }
     root._renderTL = renderTL;
     function showClip() {
@@ -4861,7 +4868,10 @@ function makeRefMode(cfg) {
       $('.lm-q button[data-mq="draft"] small', root).textContent = `${szOf('draft')} · 4 шага, быстро`;
       $('.lm-q button[data-mq="final"] small', root).textContent = `${szOf('final')} · 8 шагов, итог`;
       const qn = $('.lm-qnote', root); if (qn) qn.textContent = root._q === 'draft' ? 'Размер ниже выбирается для ЧЕРНОВИКА (режим переключается кнопками в блоке «Сцены»).' : 'Размер ниже выбирается для ХОРОШЕГО КАЧЕСТВА (режим переключается кнопками в блоке «Сцены»).';
-      $('.lm-q-hint', root).textContent = root._dmad === false ? 'Черновик недоступен: нет файла minimax_h3_DMAD_4step_full_lora в папке loras. Сцены считаются в хорошем качестве.' : Q_HINT(root._q);
+      $('.lm-q-hint', root).innerHTML = root._dmad === false
+        ? 'Черновику нужен файл ускорения DMAD (340 МБ) - его нет в папке моделей. '
+          + '<button class="btn mini lm-dmad" type="button">Скачать и включить черновик</button> Сейчас сцены считаются в хорошем качестве.'
+        : Q_HINT(root._q);
       $$('.sc-tq', root).forEach(sel => { if (!sel._touched) sel.value = S.q; });
     };
     root._qBy = { draft: S.q, final: S.q };
@@ -4872,14 +4882,39 @@ function makeRefMode(cfg) {
       vid.onended = null; vid.loop = true; refreshStates(); renderTL(); showClip(); onScenes();
     }
     root._setQ = setQ;
-    $('.lm-q', root).onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) setQ(b.dataset.mq); };
+    const askDmad = () => confirmBox('Черновику нужен файл ускорения',
+      'Черновик считается в четыре шага на файле ускорения DMAD (340 МБ). Сейчас его нет в папке моделей вашего ComfyUI. Скачать его прямо сейчас?',
+      'Скачать и включить', async () => {
+        mdStart(['dmad_lora']);
+        toast('Качаем. Черновик включится сам, как только файл появится');
+        let tries = 0;
+        const timer = setInterval(() => {
+          if (++tries > 80) { clearInterval(timer); return; }
+          checkDmad().then(ok => { if (ok) clearInterval(timer); });
+        }, 6000);
+      });
+    root._askDmad = askDmad;
+    $('.lm-q', root).onclick = e => {
+      if (e.target.closest('.lm-dmad')) { askDmad(); return; }
+      const b = e.target.closest('button'); if (!b || b.disabled) return;
+      if (b.dataset.mq === 'draft' && root._dmad === false) { askDmad(); return; }
+      setQ(b.dataset.mq);
+    };
     $('.lm-final', root).onclick = () => { setQ('final'); $('.lm-chain', root).click(); };
-    fetch('/api/loras/custom').then(r => r.json()).then(r => {
-      root._dmad = !!(r.files || []).some(f => /DMAD_4step/i.test(f));
-      if (!root._dmad) setQ('final');
-      else if (!root._restoring && !readyUpTo()) setQ('draft');
-      renderTL();
-    }).catch(() => { root._dmad = false; setQ('final'); });
+    const checkDmad = () => fetch('/api/loras/custom').then(r => r.json()).then(r => {
+      const found = !!(r.files || []).some(f => /DMAD_4step/i.test(f));
+      const was = root._dmad;
+      root._dmad = found;
+      if (was === false && found) { setQ('draft'); toast('Файл ускорения на месте - черновик включён'); return true; }
+      if (was === null) {
+        if (!found) { setQ('final'); }
+        else if (!root._restoring && !readyUpTo()) { setQ('draft'); }
+        renderTL();
+      } else { root._paintQ(); }
+      return found;
+    }).catch(() => { root._dmad = false; return false; });
+    root._checkDmad = checkDmad;
+    checkDmad();
     queueMicrotask(() => { setQ('final'); });
     queueMicrotask(() => queueMicrotask(() => {   /* the order of the page: main settings, pictures, scenes; the rare things are folded */
       const col = $('.col', root), top = $('.rm-params', root), refsCard = $('.rm-imgs', root).closest('.card'), musCard = $('.lm-snd', root).closest('.card'), scCard = $('.lm-scenes', root).parentElement;
@@ -7861,6 +7896,7 @@ applyZoom();
     };
     $('.mp-reset', box).onclick = async () => { try { await postJSON('/api/models/pick', { role, name: '' }); await loadStatus(); $$('.mdl-pick').forEach(refresh); toast('Снова встроенная модель'); } catch (e) { toast(e.message); } };
   };
+  window.refreshMdl = () => $$('.mdl-pick').forEach(refresh);
   const watch = view => { new MutationObserver(() => { if (view.classList.contains('active')) ensure(view); }).observe(view, { attributes: true, attributeFilter: ['class'] }); if (view.classList.contains('active')) ensure(view); };
   $$('.view').forEach(watch);
 })();

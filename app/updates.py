@@ -88,7 +88,7 @@ async def check(session, comfy_root, installed_running=None, data_dir=None):
         except (OSError, TypeError):
             pass
         out["packs"].append({"name": pack["name"], "repo": pack["repo"], "pinned": pack["commit"][:10], "applied": applied,
-                             "latest": sha[:10], "newer": bool(sha) and sha != (applied or pack["commit"]), "date": when,
+                             "latest": sha[:10], "newer": bool(sha) and sha[:10] != (applied or pack["commit"][:10]), "date": when,
                              "installed": bool(folder and (folder / pack["name"]).exists()),
                              "backup": olds[-1].name if olds else None})
     return out

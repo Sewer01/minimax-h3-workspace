@@ -840,6 +840,10 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-item .mt-b{display:flex;justify-content:space-between;gap:4px;padding:5px}
 .mt-item .mt-b button{background:var(--surface-2);border-radius:7px;padding:2px 9px;font-size:12px}
 .mt-strip{position:relative}.mt-item.cur{border-color:var(--pink)}
+.mt-item.narrow .mt-b [data-mv]{display:none}
+.mt-item.narrow .mt-b{justify-content:center}
+.mt-item.narrow .mt-b button{padding:2px 5px}
+.mt-item.narrow .mt-len{display:none}
 .mt-ph{position:absolute;top:0;bottom:6px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px var(--pink);pointer-events:none;z-index:4}
 .mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}.mt-bar[hidden],.mt-tabs[hidden]{display:none}
 .mt-b button:disabled{opacity:.3;cursor:default}
@@ -7536,7 +7540,8 @@ applyZoom();
   try { MT.px = +localStorage.getItem('h3-mt-px') || 26; } catch {}
   try { MT.hpx = +localStorage.getItem('h3-mt-h') || 96; } catch {}
   root.style.setProperty('--mt-h', MT.hpx + 'px');   // one height for every block, whatever its length
-  const wOf = d => Math.max(Math.round(MT.px * 2.85), Math.round(d * MT.px));   // block width: the clip length at the chosen scale (short clips keep room for buttons)
+  // a block is as wide as its length; the floor is one second (below that the buttons step aside)
+  const wOf = d => Math.max(Math.round(MT.px), Math.round(d * MT.px));   // block width: the clip length at the chosen scale (short clips keep room for buttons)
    // cuts[i]: seconds the clip is trimmed to (null: whole clip)
   const get = id => id.startsWith('up:') ? MT.up[id.slice(3)] : byId(id);   // a clip of the Library or a file from the computer
   root.innerHTML = `
@@ -7582,7 +7587,7 @@ applyZoom();
     $('.mt-hid', root).innerHTML = nh ? `Убрано из списка: ${nh} · <button type="button" class="a-change" data-showall>Вернуть все</button>` : '';
     $('.mt-lib', root).innerHTML = vids.length ? vids.map(it => `<button type="button" class="mt-card" data-id="${it.id}" title="${esc(it.prompt || '')}"><video src="${it.url}#t=0.5" preload="metadata" muted playsinline></video><span class="mt-plus">+</span><span class="mt-x" data-hide="${it.id}" role="button" title="Убрать из этого списка (в Библиотеке клип останется)">✕</span><span class="mt-len">${lenTxt(it)}</span><small>${esc(it.prompt || MODE_NAME[it.mode] || '')}</small></button>`).join('')
       : '<div class="hint">В Библиотеке пока нет видео. Сначала сгенерируйте клипы.</div>';
-    $('.mt-strip', root).innerHTML = MT.ids.length ? MT.ids.map((id, i) => { const it = get(id), d = durOf(i); return `<div class="mt-item" draggable="true" data-i="${i}" style="width:${wOf(d)}px"><video src="${it.url}#t=${(inOf(i) + 0.2).toFixed(2)}" preload="metadata" muted playsinline></video><span class="mt-n">${i + 1}</span>${window.mtPipeDone && window.mtPipeDone(id) ? '<span class="mt-ok" title="Клип обработан">✓</span>' : ''}<span class="mt-len">${trimTxt(i)}</span><div class="mt-b"><button type="button" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Порядок склейки: переставить левее">◀</button><button type="button" data-rm title="Убрать из монтажа (в Библиотеке клип останется)">✕</button><button type="button" data-mv="1" ${i === MT.ids.length - 1 ? "disabled" : ""} title="Порядок склейки: переставить правее">▶</button></div><i class="mt-rhl" title="Потяните, чтобы отрезать начало клипа"></i><i class="mt-rh" title="Потяните, чтобы отрезать конец клипа (длиннее оригинала нельзя). Двойной щелчок по клипу - вернуть целое"></i></div>`; }).join('')
+    $('.mt-strip', root).innerHTML = MT.ids.length ? MT.ids.map((id, i) => { const it = get(id), d = durOf(i); return `<div class="mt-item${wOf(d) < 92 ? ' narrow' : ''}" draggable="true" data-i="${i}" style="width:${wOf(d)}px" data-w="${wOf(d)}"><video src="${it.url}#t=${(inOf(i) + 0.2).toFixed(2)}" preload="metadata" muted playsinline></video><span class="mt-n">${i + 1}</span>${window.mtPipeDone && window.mtPipeDone(id) ? '<span class="mt-ok" title="Клип обработан">✓</span>' : ''}<span class="mt-len">${trimTxt(i)}</span><div class="mt-b"><button type="button" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Порядок склейки: переставить левее">◀</button><button type="button" data-rm title="Убрать из монтажа (в Библиотеке клип останется)">✕</button><button type="button" data-mv="1" ${i === MT.ids.length - 1 ? "disabled" : ""} title="Порядок склейки: переставить правее">▶</button></div><i class="mt-rhl" title="Потяните, чтобы отрезать начало клипа"></i><i class="mt-rh" title="Потяните, чтобы отрезать конец клипа (длиннее оригинала нельзя). Двойной щелчок по клипу - вернуть целое"></i></div>`; }).join('')
       : '<div class="hint">Пока пусто: нажмите на клипы сверху.</div>';
     const total = MT.ids.reduce((a, id, i) => a + durOf(i), 0);
     $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
@@ -7620,11 +7625,11 @@ applyZoom();
   function tick() {
     if (!P.playing) return;
     if (!P.loading) {
-      const d = durOf(P.i), t = pv.currentTime;
-      if (!pv.seeking && (t >= d - 0.04 || pv.ended)) {
+      const d = durOf(P.i), t = pv.currentTime, from = inOf(P.i);   // the video counts from the whole file, we keep a piece of it
+      if (!pv.seeking && (t >= from + d - 0.04 || pv.ended)) {
         if (P.i < MT.ids.length - 1) { P.i++; P.g = startOf(P.i); loadAt(P.i, 0, true); }
         else { setPlaying(false); P.g = totalLen(); updateUI(); return; }
-      } else P.g = startOf(P.i) + t;
+      } else P.g = startOf(P.i) + Math.max(0, t - from);
       updateUI();
     }
   }
@@ -7655,7 +7660,7 @@ applyZoom();
   });
   function fitPx() {
     const W = $('.mt-strip', root).clientWidth - 8, n = MT.ids.length; if (!n) return 26;
-    for (let px = 90; px > 8; px--) { const w = MT.ids.reduce((a, _, i) => a + Math.max(Math.round(px * 2.85), Math.round(durOf(i) * px)), 0) + 8 * (n - 1); if (w <= W) return px; }
+    for (let px = 90; px > 8; px--) { const w = MT.ids.reduce((a, _, i) => a + Math.max(Math.round(px), Math.round(durOf(i) * px)), 0) + 8 * (n - 1); if (w <= W) return px; }
     return 8;
   }
   const setPx = v => {
@@ -7724,7 +7729,8 @@ applyZoom();
       const px = Math.round(((ev.clientX - x0) / MT.px) * 10) / 10;
       if (left) { MT.ins[i] = Math.min(Math.max(0, Math.round(((MT.ins[i] || 0) + px) * 10) / 10), Math.max(0, endOf(i) - 0.3)); }
       else { MT.cuts[i] = Math.min(full, Math.max(inOf(i) + 0.3, Math.round((d0 + (ev.clientX - x0) / MT.px) * 10) / 10 + inOf(i))); }
-      el.style.width = wOf(durOf(i)) + 'px'; $('.mt-len', el).textContent = trimTxt(i);
+      el.style.width = wOf(durOf(i)) + 'px'; el.classList.toggle('narrow', wOf(durOf(i)) < 92); el.classList.toggle('narrow', wOf(durOf(i)) < 92);
+      $('.mt-len', el).textContent = trimTxt(i);
     };
     const up = () => {
       h.removeEventListener('pointermove', move2); h.removeEventListener('pointerup', up);

@@ -82,7 +82,12 @@ async def check(session, comfy_root, installed_running=None, data_dir=None):
         when = (((head or [{}])[0]).get("commit") or {}).get("author", {}).get("date", "")[:10]
         folder = Path(comfy_root) / "ComfyUI" / "custom_nodes" if comfy_root else None
         olds = sorted(folder.glob(f'{pack["name"]}.old-*')) if folder else []
-        out["packs"].append({"name": pack["name"], "repo": pack["repo"], "pinned": pack["commit"][:10],
+        applied = ""
+        try:
+            applied = ((folder / pack["name"] / ".h3-applied").read_text(encoding="utf-8").split() or [""])[0][:10]
+        except (OSError, TypeError):
+            pass
+        out["packs"].append({"name": pack["name"], "repo": pack["repo"], "pinned": pack["commit"][:10], "applied": applied,
                              "latest": sha[:10], "newer": bool(sha) and sha != pack["commit"], "date": when,
                              "installed": bool(folder and (folder / pack["name"]).exists()),
                              "backup": olds[-1].name if olds else None})
@@ -230,6 +235,11 @@ def update_pack(comfy_root, pack, commit, archive=None):
             target.rename(backup)
         fresh.rename(target)
         shutil.rmtree(stage, ignore_errors=True)
+        # a note inside the folder: which commit was put here by hand, so the settings can say it
+        try:
+            (target / ".h3-applied").write_text(commit + " " + time.strftime("%Y-%m-%d %H:%M"), encoding="utf-8")
+        except OSError:
+            pass
         result = backup.name if backup else None
     # the downloaded archive and any half-finished file of the same pack are not needed anymore;
     # only after the zip is closed - Windows does not let an open file be deleted
@@ -251,4 +261,5 @@ def rollback_pack(comfy_root, name):
     if target.exists():
         shutil.rmtree(target, ignore_errors=True)
     olds[-1].rename(target)
+    (target / ".h3-applied").unlink(missing_ok=True)     # it is the pinned version again
     return olds[-1].name

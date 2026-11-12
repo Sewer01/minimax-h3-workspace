@@ -4824,18 +4824,28 @@ function makeRefMode(cfg) {
         const bx = $('.sc-thumbs', c); bx.querySelectorAll('.sc-th').forEach(x => x.remove());
         c._files.forEach((f, j) => {
           const sp = document.createElement('span'); sp.className = 'sc-th'; sp.style.cssText = 'position:relative;display:inline-block';
-          const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.title = `<Picture ${j + 1}>`; im.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line-2);display:block';
+          const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.title = `<Picture ${10 + j}>`; im.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line-2);display:block';
           const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.className = 'btn'; x.style.cssText = 'position:absolute;top:-7px;right:-7px;padding:0 6px;font-size:11px;line-height:18px';
           x.onclick = () => { c._files.splice(j, 1); paintRefs(); refreshStates(); };
           sp.append(im, x); bx.insertBefore(sp, bx.querySelector('.sc-img'));
         });
-        $('.sc-rhint', c).textContent = c._files.length ? `Своих референсов в этой сцене: ${c._files.length} (в тексте <Picture 1>…<Picture ${c._files.length}> по порядку). Общие референсы сверху здесь не используются.` : 'Своих референсов нет: берутся общие, которые загружены сверху.';
+        const tk = $('.sc-tokens', c);
+        if (tk) tk.innerHTML = c._files.map((_, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="Вставить в текст сцены тег <Picture ${10 + j}> - это ваше фото номер ${j + 1}">&lt;Pic ${10 + j}&gt;</button>`).join('');
+        $('.sc-rhint', c).textContent = c._files.length ? `Своих фото в этой сцене: ${c._files.length}. В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих референсов нет: берутся общие, которые загружены сверху.';
       };
       fin.onchange = () => { for (const f of fin.files) if (c._files.length < 5) c._files.push(f); fin.value = ''; paintRefs(); refreshStates(); };
       paintRefs();
       $('.sc-m', c).onclick = () => { const r = $('input[type=range]', c); r.value = Math.max(3, +r.value - 1); r.dispatchEvent(new Event('input')); };
       $('.sc-p', c).onclick = () => { const r = $('input[type=range]', c); r.value = Math.min(15, +r.value + 1); r.dispatchEvent(new Event('input')); };
-      $('textarea', c).value = txt; box.append(c); attachRu($('textarea', c));
+      $('textarea', c).value = txt;
+      $('textarea', c).insertAdjacentHTML('afterend', '<div class="sc-tokens" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0"></div>');
+      box.append(c); attachRu($('textarea', c));
+      $('.sc-tokens', c).onclick = e => {   // a chip puts its tag where the cursor stands
+        const b = e.target.closest('[data-ins]'); if (!b) return;
+        const ta = $('textarea', c), at = ta.selectionStart == null ? ta.value.length : ta.selectionStart, add = b.dataset.ins;
+        ta.value = ta.value.slice(0, at) + add + ta.value.slice(at);
+        ta.focus(); ta.selectionStart = ta.selectionEnd = at + add.length; recount();
+      };
       c.insertAdjacentHTML('beforeend', `<label class="sc-fl" style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12.5px" title="Как смена плана в кино: сцена не продолжает прошлую, а строится заново по вашим изображениям. Качество в ней как в первой сцене. Программа делает так сама после трёх продолжений подряд."><input type="checkbox" class="sc-fresh"> Сменить план здесь (кино-склейка)</label><div class="hint sc-auto" hidden style="font-size:12px;margin-top:6px">Программа сама сделает здесь смену плана: цепочка продолжений стала длинной, а так качество не падает.</div><div class="sc-act" style="display:flex;gap:10px;align-items:center;margin-top:8px"><button class="btn pri sc-do" type="button" style="padding:11px 20px;font-size:15px">Сделать эту сцену</button><button class="btn sc-clear" type="button" title="Стереть текст, изображения и результат только этой сцены">Очистить сцену</button><button class="btn sc-undo" type="button" hidden title="Вернуть то, что было стёрто или удалено (то же, что Ctrl+Z)">↶ Отменить действие</button><button class="btn pri sc-redogo" type="button" hidden title="Эта сцена считается заново, а потом сами пересчитаются все следующие, уже продолжая новую версию">Переделать и продолжить дальше</button><span class="hint sc-state"></span></div>`);
       $('.sc-fresh', c).checked = !!fresh;
       $('.sc-fresh', c).onchange = () => { c._done = null; recount(); };
@@ -5039,6 +5049,18 @@ function makeRefMode(cfg) {
         root._sel = u.sel; recount(); refreshStates(); toast('Действие отменено');
       };
       document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && String(e.key).toLowerCase() === 'z' && $('#view-long.active') && !e.target.closest('textarea, input') && root._undo.length) { e.preventDefault(); root._doUndo(); } });
+      const clrSc = document.createElement('button'); clrSc.type = 'button'; clrSc.className = 'btn mini lm-clearscenes';
+      clrSc.textContent = 'Очистить сцены';
+      clrSc.style.cssText = 'margin:0 0 10px';
+      clrSc.title = 'Стирает тексты сцен и их собственные фото. Общие изображения героя и места остаются на месте';
+      clrSc.onclick = () => confirmBox('Очистить сцены?',
+        'Тексты всех сцен и их собственные фото будут стёрты, останутся две пустые сцены. Общие изображения, звук и готовые видео не трогаются.', 'Очистить', () => {
+          root._pushUndo?.();
+          $$('.sc', root).forEach(x => x.remove());
+          root._run = Math.random().toString(36).slice(2, 12); root._sel = 0;
+          addScene('', 10); addScene('', 10); recount(); refreshStates(); renderTL(); showClip();
+          toast('Сцены очищены: общие фото на месте');
+        });
       const chips = $('.rm-tokens', root)?.closest('.ta-foot'), ta0 = $('.col textarea', root);
       // the names you can insert belong where you write: put them under the card that holds the text
       const host = ta0 && (ta0.closest('.sc') || ta0.closest('.card'));
@@ -5052,8 +5074,11 @@ function makeRefMode(cfg) {
         addScene('', 10); addScene('', 10); recount(); refreshStates(); toast('Проект очищен');
       });
       fin.after(clr);
-      const more2 = document.createElement('details'); more2.className = 'st-more'; more2.innerHTML = '<summary>Ещё: продолжить своё видео, как это работает</summary>';
-      [$('.lm-srcfile', root)?.closest('label'), $('#lmAdd', root), $('.lm-reset', root), [...scCard.children].filter(c => c.classList.contains('note') && !c.classList.contains('lm-src')).pop()].filter(Boolean).forEach(n => more2.append(n));
+      scCard.insertBefore(clrSc, scCard.querySelector('.lm-scenes').nextSibling);   // the scenes card gets its own, smaller clear
+      const more2 = document.createElement('details'); more2.className = 'st-more'; more2.innerHTML = '<summary>Ещё: добавить сцену, начать заново, как это работает</summary>';
+      const ownBtn = $('.lm-srcfile', root)?.closest('label'), rCard = $('.rm-imgs', root)?.closest('.card');
+      if (ownBtn && rCard) { ownBtn.style.marginTop = '0'; ownBtn.style.marginBottom = '10px'; rCard.insertAdjacentElement('beforebegin', ownBtn); }   // start here when the work continues someone's video
+      [$('#lmAdd', root), $('.lm-reset', root), [...scCard.children].filter(c => c.classList.contains('note') && !c.classList.contains('lm-src')).pop()].filter(Boolean).forEach(n => more2.append(n));
       scCard.append(more2);
     }));
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 20) { toast('Не больше 20 сцен — это уже полчаса расчёта'); return; } addScene('', 10); };

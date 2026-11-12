@@ -4746,8 +4746,8 @@ function makeRefMode(cfg) {
       if (ownLabel) ownLabel.hidden = b !== 'cont';
       $('.lm-mode', root).hidden = b === 'cont'; $('.lm-mode-hint', root).hidden = b === 'cont';
       baseHint.innerHTML = b === 'cont'
-        ? 'Продолжаем ваше видео: считается по частям, режим «весь ролик» не нужен. Конец файла займёт одно из 5 общих мест - оно входит в 9 фото на сцену вместе с общими и своими. Нажмите кнопку и выберите файл.'
-        : '';
+        ? '<b>«Продолжить своё видео»</b>: программа берёт последние кадры вашего файла, и первая сцена продолжает их, как будто это была прошлая сцена. Считается только по частям - режим «весь ролик» здесь не нужен и скрыт. Конец файла займёт одно из 5 мест общих изображений; это место входит в 9 фото, которые сцена может нести вместе с общими и своими. Нажмите «Продолжить своё видео с компьютера…» под выбором и укажите файл.'
+        : '<b>«Новые сцены»</b>: ролик строится с нуля по описаниям сцен, доступны оба режима счёта - «по частям» и «весь ролик». Общая картинка сцены и её собственные фото делят 9 мест: сначала идут общие (<Picture 1>…), затем свои (<Picture 10>…).';
       if (b !== 'cont') root._setSrc(null); else setMode('parts');
       refreshStates();
     };
@@ -5081,6 +5081,19 @@ function makeRefMode(cfg) {
       const how2 = mk('row', '<div class="row-l">Как считать</div>'); how2.append(modeSeg, modeHint);
       colL.append(modeRow, how2, sndRow); colR.append(fmt, qual); grid.append(colL, colR);
       (how || hdr).after(grid); grid.after(qh);
+      // what the work stands on is decided first of all, before the settings it changes
+      const baseSeg = $('.lm-base', root), baseHint = $('.lm-base-hint', root), ownBtn = $('.lm-srcfile', root)?.closest('label');
+      if (baseSeg) {
+        const baseRow = mk('row', '<div class="row-l">Основа</div>');
+        baseSeg.style.marginBottom = '0';
+        baseRow.append(baseSeg);
+        if (ownBtn) { ownBtn.style.cssText = 'margin:8px 0 0;display:inline-flex;cursor:pointer'; baseRow.append(ownBtn); }
+        hdr.after(baseRow);
+        if (baseHint && how) {
+          baseHint.style.cssText = 'margin:8px 0 0;font-size:12.5px';
+          (how.querySelector('summary') || how).insertAdjacentElement('afterend', baseHint);   // the reading is in the fold, the choice is on top
+        } else if (baseHint) baseHint.hidden = true;
+      }
       // the rare things go into one fold
       const more = document.createElement('details'); more.className = 'st-more'; more.innerHTML = '<summary>Ещё: свой размер, seed</summary>';
       [own, $('.vwarn', top), ...$$(':scope > details:not(.agvar)', top)].filter(Boolean).forEach(n => more.append(n));
@@ -5132,8 +5145,7 @@ function makeRefMode(cfg) {
       if (chips && host && !host.contains(chips)) host.insertAdjacentElement('afterend', chips);
       fin.after(clrSc);
       $('#lmAdd', root).hidden = true;   // the plus on the ribbon is the way to add a scene
-      const ownBtn = $('.lm-srcfile', root)?.closest('label'), bHint = $('.lm-base-hint', root);
-      if (ownBtn && bHint) { ownBtn.style.cssText = 'margin:0 0 10px;display:inline-flex;cursor:pointer'; bHint.insertAdjacentElement('afterend', ownBtn); }   // the choice and its file button stand together
+      // the base choice and its file button were placed in the settings card above
     }));
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 20) { toast('Не больше 20 сцен — это уже полчаса расчёта'); return; } addScene('', 10); };
     queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done

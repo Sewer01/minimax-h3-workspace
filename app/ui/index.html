@@ -828,6 +828,12 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-strip{display:flex;gap:8px;min-height:60px;padding:4px 0 10px;overflow-x:auto}.mt-item{flex:none}
 .mt-rh{position:absolute;right:0;top:0;bottom:0;width:10px;cursor:ew-resize;background:linear-gradient(90deg,transparent,var(--pink));opacity:.55;z-index:3}.mt-rh:hover{opacity:1}
 .mt-rhl{position:absolute;left:0;top:0;bottom:0;width:10px;cursor:ew-resize;background:linear-gradient(-90deg,transparent,var(--pink));opacity:.55;z-index:3}
+#view-montage .mt-item video{aspect-ratio:auto;height:var(--mt-h,96px);object-fit:cover}
+.mt-scale{display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.mt-scale input[type=range]{flex:1 1 120px;min-width:90px;accent-color:var(--pink)}
+.mt-trim{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;font-size:12.5px}
+.mt-trim input[type=number]{width:76px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:5px 7px;color:var(--text);font-size:12.5px}
+.mt-trim .tt-what{font-weight:800}
 .mt-item{position:relative;width:170px;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;background:var(--bg-2);cursor:grab}
 .mt-item.over{outline:2px solid var(--pink)}
 .mt-item .mt-n{position:absolute;left:5px;top:5px;background:var(--pink);color:#fff;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:700}
@@ -7526,8 +7532,10 @@ applyZoom();
 
 /* ---------- MONTAGE: join library clips in a chosen order (ComfyUI does the work, no ffmpeg) ---------- */
 (function mountMontage() {
-  const root = $('#view-montage'), MT = { ids: [], cuts: [], ins: [], drag: null, busy: false, up: {}, n: 0, px: 26, res: false };
+  const root = $('#view-montage'), MT = { ids: [], cuts: [], ins: [], drag: null, busy: false, up: {}, n: 0, px: 26, hpx: 96, res: false };
   try { MT.px = +localStorage.getItem('h3-mt-px') || 26; } catch {}
+  try { MT.hpx = +localStorage.getItem('h3-mt-h') || 96; } catch {}
+  root.style.setProperty('--mt-h', MT.hpx + 'px');   // one height for every block, whatever its length
   const wOf = d => Math.max(Math.round(MT.px * 2.85), Math.round(d * MT.px));   // block width: the clip length at the chosen scale (short clips keep room for buttons)
    // cuts[i]: seconds the clip is trimmed to (null: whole clip)
   const get = id => id.startsWith('up:') ? MT.up[id.slice(3)] : byId(id);   // a clip of the Library or a file from the computer
@@ -7537,7 +7545,9 @@ applyZoom();
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Клипы из Библиотеки</h3><span class="hint">нажмите на клип, чтобы добавить</span><button type="button" class="btn mini mt-pc" title="Добавить видео со своего компьютера">+ С компьютера</button><input type="file" class="mt-file" accept="video/*" multiple hidden></div><div class="mt-lib"></div><div class="hint mt-hid" style="margin-top:8px"></div></div>
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок склейки</h3><span class="counter mt-total"></span><span class="mt-zoom"><button type="button" class="btn mini" data-z="-1" title="Мельче">−</button><button type="button" class="btn mini" data-z="0" title="Уместить всю ленту по ширине">По ширине</button><button type="button" class="btn mini" data-z="1" title="Крупнее">+</button></span></div>
         <div class="mt-strip"></div>
-        <div class="mt-vh" title="Потяните вниз или вверх, чтобы клипы стали крупнее или мельче. Двойной щелчок: как было"><i></i></div>
+        <div class="mt-vh" title="Потяните вверх или вниз: все блоки станут выше или ниже. Двойной щелчок: как было"><i></i></div>
+        <div class="mt-scale"><span>1 секунда</span><input type="range" class="mt-px" min="8" max="90" step="1" title="Крупнее масштаб - точнее резать по времени"><span class="mt-px-x">26 px</span><span class="hint">этот ползунок и кнопки «−» «+» меняют только ширину ленты</span></div>
+        <div class="mt-trim" hidden></div>
         <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
       <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>добавьте клипы: здесь можно будет посмотреть, как они идут подряд, а потом появится готовый ролик</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
@@ -7577,7 +7587,7 @@ applyZoom();
     const total = MT.ids.reduce((a, id, i) => a + durOf(i), 0);
     $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
     if (MT.ids.length) $('.mt-strip', root).insertAdjacentHTML('beforeend', '<i class="mt-ph"></i>');
-    syncPlayer();
+    syncPlayer(); paintTrim();
     if (window.mtSaveState) { window.mtSaveState(); window.mtPipePaint(); }
   }
 
@@ -7648,7 +7658,34 @@ applyZoom();
     for (let px = 90; px > 8; px--) { const w = MT.ids.reduce((a, _, i) => a + Math.max(Math.round(px * 2.85), Math.round(durOf(i) * px)), 0) + 8 * (n - 1); if (w <= W) return px; }
     return 8;
   }
-  const setPx = v => { MT.px = Math.min(90, Math.max(8, Math.round(v))); try { localStorage.setItem('h3-mt-px', MT.px); } catch {} render(); };
+  const setPx = v => {
+    MT.px = Math.min(90, Math.max(8, Math.round(v)));
+    try { localStorage.setItem('h3-mt-px', MT.px); } catch {}
+    $$('.mt-px', root).forEach(r => { r.value = MT.px; });
+    $$('.mt-px-x', root).forEach(x => { x.textContent = MT.px + ' px'; });
+    render();
+  };
+  const trimI = () => (typeof P !== 'undefined' && MT.ids[P.i]) ? P.i : 0;
+  const paintTrim = () => {
+    const box = $('.mt-trim', root); if (!box) return;
+    if (!MT.ids.length) { box.hidden = true; box.innerHTML = ''; return; }
+    const i = trimI(), full = fullOf(i);
+    box.hidden = false;
+    box.innerHTML = `<span class="tt-what">Обрезка клипа ${i + 1} из ${MT.ids.length}</span>`
+      + `<label>с <input type="number" class="mt-tin" min="0" max="${Math.max(0, full - 0.3).toFixed(2)}" step="0.1" value="${inOf(i).toFixed(1)}"> с</label>`
+      + `<label>до <input type="number" class="mt-tout" min="0.3" max="${full.toFixed(2)}" step="0.1" value="${endOf(i).toFixed(1)}"> с</label>`
+      + `<span class="hint">в монтаже останется ${durOf(i).toFixed(1)} с из ${full.toFixed(1)} с</span>`
+      + `<button type="button" class="btn mini mt-treset">Вернуть целый</button>`;
+  };
+  root.addEventListener('change', e => {
+    const box = e.target.closest('.mt-trim'); if (!box) return;
+    const i = trimI(), full = fullOf(i);
+    if (e.target.matches('.mt-tin')) { MT.ins[i] = Math.min(Math.max(0, +e.target.value || 0), Math.max(0, endOf(i) - 0.3)); render(); }
+    else if (e.target.matches('.mt-tout')) {
+      const v = Math.min(full, Math.max(inOf(i) + 0.3, +e.target.value || 0));
+      MT.cuts[i] = v >= full - 0.05 ? null : v; render();
+    }
+  });
   window.montageLoad = ids => { MT.ids = ids.slice(); MT.cuts = ids.map(() => null); MT.ins = ids.map(() => 0); render(); const st = $('.mt-status', root); st.textContent = 'Сцены из Видеостудии уже стоят по порядку. Нажмите «Склеить»: готовый ролик появится справа и в Библиотеке.'; };
   $('.mt-pc', root).onclick = () => $('.mt-file', root).click();
   $('.mt-file', root).onchange = async e => {
@@ -7683,7 +7720,8 @@ applyZoom();
     const left = h.classList.contains('mt-rhl');   // the same arithmetic, mirrored: the left handle moves the start
     el.draggable = false; try { h.setPointerCapture(e.pointerId); } catch {}
     const move2 = ev => {
-      const px = Math.round(((ev.clientX - x0) * (left ? -1 : 1) / MT.px) * 10) / 10;
+      // both edges mean the same thing when dragged to the right: more seconds cut off
+      const px = Math.round(((ev.clientX - x0) / MT.px) * 10) / 10;
       if (left) { MT.ins[i] = Math.min(Math.max(0, Math.round(((MT.ins[i] || 0) + px) * 10) / 10), Math.max(0, endOf(i) - 0.3)); }
       else { MT.cuts[i] = Math.min(full, Math.max(inOf(i) + 0.3, Math.round((d0 + (ev.clientX - x0) / MT.px) * 10) / 10 + inOf(i))); }
       el.style.width = wOf(durOf(i)) + 'px'; $('.mt-len', el).textContent = trimTxt(i);
@@ -7696,6 +7734,10 @@ applyZoom();
     };
     h.addEventListener('pointermove', move2); h.addEventListener('pointerup', up);
   });
+  root.addEventListener('click', e => {
+    if (e.target.closest('.mt-treset')) { const i = trimI(); MT.cuts[i] = null; MT.ins[i] = 0; render(); toast('Клип снова целиком'); return; }
+  });
+  root.addEventListener('input', e => { if (e.target.matches('.mt-px')) setPx(+e.target.value); });
   root.addEventListener('dblclick', e => {        // a cut clip is easy to bring back: double-click restores it
     const it = e.target.closest('.mt-item'); if (!it) return;
     const i = +it.dataset.i;
@@ -7851,15 +7893,14 @@ applyZoom();
   /* a handle under the strip: drag down or up and the clips grow or shrink (the same scale as «−» «+»); the divider before the preview moves left and right */
   (() => {
     const h = $('.mt-vh', root); let y0 = 0, px0 = 0, on = false;
-    h.addEventListener('pointerdown', e => { e.preventDefault(); h.setPointerCapture(e.pointerId); on = true; y0 = e.clientY; px0 = MT.px; });
+    h.addEventListener('pointerdown', e => { e.preventDefault(); h.setPointerCapture(e.pointerId); on = true; y0 = e.clientY; px0 = MT.hpx; });
     h.addEventListener('pointermove', e => {
       if (!on) return;
-      MT.px = Math.min(90, Math.max(8, px0 + (e.clientY - y0) * 0.35));
-      $$('.mt-item', root).forEach((el, i) => { el.style.width = wOf(durOf(i)) + 'px'; });
-      updateUI();
+      MT.hpx = Math.min(240, Math.max(56, Math.round(px0 + (e.clientY - y0))));
+      root.style.setProperty('--mt-h', MT.hpx + 'px');   // every block the same: only taller or shorter
     });
-    h.addEventListener('pointerup', e => { if (!on) return; on = false; try { h.releasePointerCapture(e.pointerId); } catch {} setPx(MT.px); });
-    h.addEventListener('dblclick', () => setPx(26));
+    h.addEventListener('pointerup', e => { if (!on) return; on = false; try { h.releasePointerCapture(e.pointerId); } catch {} try { localStorage.setItem('h3-mt-h', MT.hpx); } catch {} });
+    h.addEventListener('dblclick', () => { MT.hpx = 96; root.style.setProperty('--mt-h', '96px'); try { localStorage.setItem('h3-mt-h', 96); } catch {} });
   })();
   if (window.gridResize) window.gridResize($('.grid', root));
   IMG_PANELS.push(render);

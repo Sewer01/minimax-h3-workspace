@@ -834,10 +834,12 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-item .mt-b button{background:var(--surface-2);border-radius:7px;padding:2px 9px;font-size:12px}
 .mt-strip{position:relative}.mt-item.cur{border-color:var(--pink)}
 .mt-ph{position:absolute;top:0;bottom:6px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px var(--pink);pointer-events:none;z-index:4}
-.mt-bar{display:flex;align-items:center;gap:10px;margin-top:8px}.mt-bar[hidden],.mt-tabs[hidden]{display:none}
+.mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}.mt-bar[hidden],.mt-tabs[hidden]{display:none}
 .mt-bar .mt-play{min-width:44px;font-size:16px;padding:4px 12px}.mt-seek{flex:1;accent-color:var(--pink)}
 .mt-time{font-size:12px;color:var(--dim);min-width:84px;text-align:right;font-variant-numeric:tabular-nums}
-.mt-upbox{display:flex;gap:8px;margin-top:10px}.mt-upbox select{flex:1;min-width:0;padding:6px 8px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-size:12.5px}
+.mt-upbox{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.mt-upbox select{min-width:0;flex:1 1 190px}
+.mt-upbox .btn{white-space:normal;flex:1 1 auto;text-align:center}.mt-upbox select{flex:1;min-width:0;padding:6px 8px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-size:12.5px}
 .mt-sets{display:grid;gap:8px;margin-top:10px}.mt-sets label{display:block;font-size:12px;color:var(--dim)}.mt-sets label[hidden]{display:none}.mt-sets b{color:var(--text)}.mt-sets i{font-style:normal}.mt-sets input{width:100%;accent-color:var(--pink)}
 .mt-pipe{margin-top:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:10px;font-size:12.5px;line-height:1.7;color:var(--dim)}.mt-pipe[hidden]{display:none}.mt-pipe .ok{color:var(--ok,#3ecf8e);font-weight:700}
 .mt-item .mt-ok{position:absolute;left:5px;bottom:34px;background:#1f9d6b;color:#fff;border-radius:6px;padding:0 6px;font-size:12px;font-weight:700}
@@ -6223,10 +6225,22 @@ $('.nav[data-view="agent"]').addEventListener('click', () => { agStatus(); agCtx
     }
   };
   [['.grid', '--pw', 'h3.pw', 11, 440], ['.ag-grid', '--aw', 'h3.aw', 8, 700]].forEach(([sel, VAR, KEY, half, keep]) => {
-    try { const v = +localStorage.getItem(KEY); if (v >= 260) root.style.setProperty(VAR, v + 'px'); } catch {}
     $$(sel).forEach(g => attach(g, VAR, KEY, half, keep));
   });
   window.gridResize = g => attach(g, '--pw', 'h3.pw', 11, 440);  // for sections built later (the picture sections)
+  // a width dragged in a wide window must not push the middle column out of a narrow one: the page
+  // grew a horizontal scrollbar while nothing had reached any reasonable minimum yet
+  const fitVars = () => {
+    [['--pw', 'h3.pw', 440], ['--aw', 'h3.aw', 700]].forEach(([VAR, KEY, keep]) => {
+      let v = 0;
+      try { v = +localStorage.getItem(KEY); } catch { }
+      if (!(v >= 260)) return;                       // nobody dragged it: let CSS decide
+      const cap = Math.max(260, Math.round(innerWidth - keep - 40));
+      root.style.setProperty(VAR, Math.min(v, cap) + 'px');
+    });
+  };
+  let fitTimer; addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitVars, 150); });
+  fitVars();
 })();
 
 

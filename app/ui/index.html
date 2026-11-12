@@ -7615,15 +7615,16 @@ applyZoom();
   }
 
   /* preview player: the clips in the chosen order play one after another; the slider, a click on a clip and the playhead seek in the whole montage */
-  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, picked: false, mode: 'seq', loading: false, tok: 0, lim: null, mkFrac: {}, miss: null };
+  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, picked: false, mode: 'seq', loading: false, tok: 0, lim: null, mkI: 0, mkFrac: {}, miss: null };
   // The marker always stands on the clip that is in focus (P.i) and remembers its own place for each
   // clip by its name: switching clips cannot leave an invisible marker somewhere and use it later.
   const mkAt = () => {
-    const id = MT.ids[P.i]; if (!id) return { i: 0, off: 0 };
+    if (P.mkI >= MT.ids.length) P.mkI = 0;
+    const id = MT.ids[P.mkI]; if (!id) return { i: 0, off: 0 };
     let f = P.mkFrac[id];
     if (typeof f !== 'number') f = 0.5;                       // a clip nobody marked: the middle of the piece
     P.mkFrac[id] = Math.min(1, Math.max(0, f));               // a share, so it stays in place as lengths arrive
-    return { i: P.i, off: Math.max(0, Math.min(durOf(P.i) - 0.05, P.mkFrac[id] * durOf(P.i))) };
+    return { i: P.mkI, off: Math.max(0, Math.min(durOf(P.mkI) - 0.05, P.mkFrac[id] * durOf(P.mkI))) };
   };
   const xOf = (i, off) => {
     const strip = $('.mt-strip', root), el = $$('.mt-item', strip)[i]; if (!el) return 0;
@@ -7680,6 +7681,7 @@ applyZoom();
   const pieceEnd = i => inOf(i) + durOf(i);   // where the kept piece stops, on the clock of the file
   function atEnd(t) {                          // called by the timer and by the video itself
     if (!P.playing || P.i >= MT.ids.length) return;
+    if (P.lim) { setPlaying(false); P.lim = null; updateUI(); return; }   // a look at one side stops on its own clip, it does not roll on
     if (P.i < MT.ids.length - 1) { P.i++; P.g = startOf(P.i); loadAt(P.i, 0, true); }
     else { setPlaying(false); P.g = totalLen(); updateUI(); }
   }
@@ -7775,7 +7777,7 @@ applyZoom();
       if (k < 0) k = 0;
       const L = items[k].offsetLeft, W = items[k].offsetWidth || 1;
       const f = Math.min(1, Math.max(0, (bx - L) / W));
-      P.i = k; P.mkFrac[MT.ids[k]] = f; P.picked = true;
+      P.mkI = k; P.i = k; P.mkFrac[MT.ids[k]] = f; P.picked = true;
       const off = f * durOf(k);
       P.g = startOf(k) + off; loadAt(k, off, false); updateUI();   // the frame the marker points at shows on the left
     };
@@ -7790,7 +7792,7 @@ applyZoom();
   });
   const focusClip = i => {        // the window follows what the person has just touched
     if (i < 0 || i >= MT.ids.length) return;
-    P.picked = true; P.lim = null; P.i = i;
+    P.picked = true; P.lim = null; P.i = i; P.mkI = i;
     if (P.mode !== 'seq') P.mode = 'seq';
     showMode('seq'); P.g = startOf(i); seekTo(P.g, false);
   };
@@ -7821,7 +7823,7 @@ applyZoom();
     $$('.mt-px-x', root).forEach(x => { x.textContent = MT.px + ' px'; });
     render();
   };
-  const trimI = () => (typeof P !== 'undefined' && MT.ids[P.i]) ? P.i : 0;
+  const trimI = () => (typeof P !== 'undefined' && MT.ids.length && P.mkI < MT.ids.length) ? P.mkI : 0;   // the fields show the clip the marker stands on - the one the scissors will cut
   const paintTrim = () => {
     const box = $('.mt-trim', root); if (!box) return;
     if (!MT.ids.length) { box.hidden = true; box.innerHTML = ''; return; }
@@ -7878,7 +7880,7 @@ applyZoom();
     const r = it.getBoundingClientRect();
     const at = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * durOf(i);   // where in this clip they clicked
     P.picked = true;   // the clip you touched is the one the window shows
-    P.i = i;           // and its own marker: each clip keeps the place you put it on
+    P.i = i; P.mkI = i;   // and its own marker: each clip keeps the place you put it on
     const m = mkAt();
     if (i === m.i && Math.abs(at - m.off) > 0.02) {
       // left of the marker: show the kept beginning up to the marker; right of it: from the marker to the kept end

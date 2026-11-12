@@ -849,6 +849,9 @@ body.dropping::after{content:'Отпустите — программа разл
   background:#fff;clip-path:polygon(0 0,100% 0,50% 100%);filter:drop-shadow(0 0 2px rgba(0,0,0,.9)) drop-shadow(0 0 1px var(--pink))}
 .mt-ph:hover{background:var(--pink)}
 .mt-ph:active,.mt-ph.drag{cursor:grabbing;background:var(--pink)}
+.mt-fr{position:absolute;top:0;width:22px;height:18px;z-index:7;display:grid;place-items:center;font-size:11px;line-height:1;
+  background:rgba(0,0,0,.72);border:1px solid var(--line-2);border-radius:6px;color:#fff;cursor:pointer}
+.mt-fr:hover{background:var(--pink);color:#111}
 .mt-line{position:absolute;top:17px;bottom:4px;width:3px;margin-left:-1.5px;background:#fff;box-shadow:0 0 0 1px var(--pink),0 0 6px rgba(255,255,255,.5);pointer-events:none;z-index:8}
 .mt-pv{cursor:pointer}
 .mt-run{position:absolute;top:17px;bottom:4px;width:2px;margin-left:-1px;background:var(--cloud,#9fd4ff);opacity:.85;pointer-events:none;z-index:4}
@@ -7607,7 +7610,9 @@ applyZoom();
     const total = MT.ids.reduce((a, id, i) => a + durOf(i), 0);
     $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
     if (MT.ids.length) $('.mt-strip', root).insertAdjacentHTML('beforeend',
-      '<i class="mt-ph" title="Потяните за этот треугольник: метка встанет туда, где нужен рез. Слева показывается кадр, на который она указывает"></i><i class="mt-line"></i>'
+      `<i class="mt-fr" data-fr="-1" title="На один кадр левее (${frameStep().toFixed(3)} с)">◀</i>`
+      + '<i class="mt-ph" title="Потяните за этот треугольник: метка встанет туда, где нужен рез. Слева показывается кадр, на который она указывает"></i><i class="mt-line"></i>'
+      + `<i class="mt-fr" data-fr="1" title="На один кадр правее (${frameStep().toFixed(3)} с)">▶</i>`
       + '<i class="mt-run"></i>'
       + '<i class="mt-cut" data-cut="in" title="Отрезать начало: убрать всё до метки">✂</i>'
       + '<i class="mt-cut out" data-cut="out" title="Отрезать конец: убрать всё после метки">✂</i>');
@@ -7627,6 +7632,15 @@ applyZoom();
     P.mkFrac[id] = Math.min(1, Math.max(0, f));               // a share, so it stays in place as lengths arrive
     return { i: P.mkI, off: Math.max(0, Math.min(durOf(P.mkI) - 0.05, P.mkFrac[id] * durOf(P.mkI))) };
   };
+  // one frame of this clip: the frame rate comes with the generated video, otherwise 24 as the
+  // generator makes them
+  const frameStep = () => { const it = get(MT.ids[mkAt().i]); const f = (it && (it.fps || (it.meta && it.meta.fps))) || 24; return 1 / Math.max(1, f); };
+  function nudge(dir) {                 // step the marker by one frame and show that frame in the window
+    const mk = mkAt(), i = mk.i, d = durOf(i); if (!MT.ids.length || d <= 0.05) return;
+    const f = Math.min(1, Math.max(0, (mk.off + dir * frameStep()) / d));
+    P.mkFrac[MT.ids[i]] = f; P.picked = true; P.mkI = i; P.i = i;
+    const off = f * d; P.g = startOf(i) + off; loadAt(i, off, false); updateUI(); paintTrim();
+  }
   const xOf = (i, off) => {
     const strip = $('.mt-strip', root), el = $$('.mt-item', strip)[i]; if (!el) return 0;
     return el.offsetLeft + Math.min(1, Math.max(0, off / (durOf(i) || 1))) * el.offsetWidth;
@@ -7666,7 +7680,8 @@ applyZoom();
     if (P.i >= items.length) { P.i = Math.max(0, items.length - 1); P.g = Math.min(P.g, totalLen()); }
     const mk = mkAt();
     const mx = xOf(mk.i, mk.off);   // drawn where it truly is: a "keep it in view" clamp here puts the screen out of step with the mouse
-    ph.style.left = mx + 'px'; ph.style.display = 'block'; if (ln) ln.style.left = mx + 'px';
+    ph.style.left = mx + 'px'; if (ln) ln.style.left = mx + 'px';
+    $$('.mt-fr', strip).forEach(b => { b.style.left = (mx + (+b.dataset.fr === 1 ? 14 : -36)) + 'px'; });
     // the scissors stand on both sides of the marker: one click and the piece is cut there
     $$('.mt-cut', strip).forEach(b => {
       const out = b.dataset.cut === 'out';
@@ -7880,6 +7895,7 @@ applyZoom();
     render();
   };
   root.addEventListener('click', e => {
+    const fr = e.target.closest('.mt-fr'); if (fr) { nudge(+fr.dataset.fr); return; }
     if (e.target.closest('[data-showall]')) { hideSet([]); render(); return; }
     const zb = e.target.closest('[data-z]'); if (zb) { const k = +zb.dataset.z; setPx(k > 0 ? MT.px * 1.25 : k < 0 ? MT.px * 0.8 : fitPx()); return; }
     const tb = e.target.closest('[data-pv]'); if (tb) { showMode(tb.dataset.pv); return; }

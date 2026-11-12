@@ -4956,18 +4956,21 @@ function makeRefMode(cfg) {
           : `в сцену влезет ещё 9 фото (загружено: общих ${common}, своих ${own})`;
         el.style.color = left <= 0 ? 'var(--pink)' : left <= 2 ? 'var(--warn, #e8a31d)' : '';
         // at the limit the pictures the text does not call are locked until another tag is removed
-        const sel = $$('.sc', root)[root._sel] === c;
-        const mark = (host, num) => $$('.token', host).forEach(b => {
+        // only the scene you are looking at owns the shared row of common chips: the hidden scenes
+        // must not re-enable it from their own texts after every recount
+        const owner = (root._ta && root._ta.closest && root._ta.closest('.sc')) || $$('.sc', root)[root._sel];
+        const mine = owner === c || c.offsetParent !== null;   // the scene you write in owns the shared row
+        const mark = host => $$('.token', host).forEach(b => {
           const k = +(b.textContent.match(/\d+/) || [0])[0];
+          if (!b.dataset.otitle) b.dataset.otitle = b.title;
           const free = used.has(k) || left > 0;
           b.disabled = !free;
           b.style.opacity = free ? '' : '.38';
           b.style.cursor = free ? '' : 'not-allowed';
-          b.title = free ? (b.dataset.otitle || b.title) : 'Мест в сцене нет: уберите из текста другой тег';
-          if (!b.dataset.otitle) b.dataset.otitle = b.title;
+          b.title = free ? b.dataset.otitle : 'Мест в сцене нет: уберите из текста другой тег';
         });
-        mark($('.sc-tokens', c) || document.createElement('i'), 10);
-        if (sel) mark($('.rm-tokens', root) || document.createElement('i'), 1);
+        mark($('.sc-tokens', c) || document.createElement('i'));
+        if (mine) mark($('.rm-tokens', root) || document.createElement('i'));
       };
       $('.sc-tokens', c).onclick = e => {   // a chip puts its tag where the cursor stands
         const b = e.target.closest('[data-ins]'); if (!b) return;
@@ -4997,7 +5000,7 @@ function makeRefMode(cfg) {
         refreshStates(); recount(); toast('Сцена очищена');
       };
       $('textarea', c).addEventListener('input', () => { c._counter?.(); refreshStates(); });   // the count follows the tags you type
-      $('textarea', c).addEventListener('focus', e => { root._ta = e.target; });
+      $('textarea', c).addEventListener('focus', e => { root._ta = e.target; c._counter?.(); });   // the row of common chips follows the scene you picked up
       $('input[type=range]', c).oninput = recount; $('.x', c).onclick = () => { root._pushUndo?.(); c.remove(); recount(); };
       fin.addEventListener('change', () => refreshStates());
       recount();

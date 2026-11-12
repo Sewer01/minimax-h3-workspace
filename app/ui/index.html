@@ -845,12 +845,12 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-item.narrow .mt-b button{padding:2px 5px}
 .mt-item.narrow .mt-len{display:none}
 .mt-strip{padding-top:20px}
-.mt-ph{position:absolute;top:0;width:22px;height:16px;margin-left:-11px;pointer-events:auto;cursor:grab;z-index:6;
-  background:var(--pink);clip-path:polygon(0 0,100% 0,50% 100%);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
-.mt-ph:hover{background:#fff}
+.mt-ph{position:absolute;top:0;width:24px;height:18px;margin-left:-12px;pointer-events:auto;cursor:grab;z-index:9;
+  background:#fff;clip-path:polygon(0 0,100% 0,50% 100%);filter:drop-shadow(0 0 2px rgba(0,0,0,.9)) drop-shadow(0 0 1px var(--pink))}
+.mt-ph:hover{background:var(--pink)}
 .mt-ph:active{cursor:grabbing}
-.mt-line{position:absolute;top:15px;bottom:4px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px var(--pink);pointer-events:none;z-index:5}
-.mt-run{position:absolute;top:15px;bottom:4px;width:2px;margin-left:-1px;background:var(--cloud,#9fd4ff);opacity:.85;pointer-events:none;z-index:4}
+.mt-line{position:absolute;top:17px;bottom:4px;width:3px;margin-left:-1.5px;background:#fff;box-shadow:0 0 0 1px var(--pink),0 0 6px rgba(255,255,255,.5);pointer-events:none;z-index:8}
+.mt-run{position:absolute;top:17px;bottom:4px;width:2px;margin-left:-1px;background:var(--cloud,#9fd4ff);opacity:.85;pointer-events:none;z-index:4}
 .mt-cut{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:26px;height:26px;border-radius:9px;background:rgba(0,0,0,.78);
   border:1px solid var(--pink);color:#fff;font-size:13px;line-height:1;display:grid;place-items:center;cursor:pointer}
 .mt-cut.out{transform:translateY(-50%) scaleX(-1)}
@@ -7559,10 +7559,11 @@ applyZoom();
     <div class="grid"><div class="col">
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Клипы из Библиотеки</h3><span class="hint">нажмите на клип, чтобы добавить</span><button type="button" class="btn mini mt-pc" title="Добавить видео со своего компьютера">+ С компьютера</button><input type="file" class="mt-file" accept="video/*" multiple hidden></div><div class="mt-lib"></div><div class="hint mt-hid" style="margin-top:8px"></div></div>
       <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок склейки</h3><span class="counter mt-total"></span><span class="mt-zoom"><button type="button" class="btn mini" data-z="-1" title="Мельче">−</button><button type="button" class="btn mini" data-z="0" title="Уместить всю ленту по ширине">По ширине</button><button type="button" class="btn mini" data-z="1" title="Крупнее">+</button></span>
-        <button type="button" class="btn mini mt-clear" title="Убрать из ленты все клипы (сами видео останутся в Библиотеке)">Очистить монтаж</button></div>
+        </div>
         <div class="mt-strip"></div>
         <div class="mt-vh" title="Потяните вверх или вниз: все блоки станут выше или ниже. Двойной щелчок: как было"><i></i></div>
-        <div class="mt-scale"><span>1 секунда</span><input type="range" class="mt-px" min="8" max="90" step="1" title="Крупнее масштаб - точнее резать по времени"><span class="mt-px-x">26 px</span><span class="hint">этот ползунок и кнопки «−» «+» меняют только ширину ленты</span></div>
+        <div class="mt-scale"><span>1 секунда</span><input type="range" class="mt-px" min="8" max="90" step="1" title="Крупнее масштаб - точнее резать по времени"><span class="mt-px-x">26 px</span><span class="hint">этот ползунок и кнопки «−» «+» меняют только ширину ленты</span>
+        <button type="button" class="btn mini mt-clear" title="Убрать из ленты все клипы (сами видео останутся в Библиотеке)">Очистить ленту</button></div>
         <div class="mt-trim" hidden></div>
         <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Метка реза (треугольник сверху) стоит там, куда её поставили, и не убегает во время показа; голубая линия - это бегунок воспроизведения. Клик по клипу слева от метки играет от начала оставленного куска до метки, клик справа - от метки до конца куска. Ножницы: левая убирает всё до метки, правая - всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
@@ -7612,13 +7613,16 @@ applyZoom();
   }
 
   /* preview player: the clips in the chosen order play one after another; the slider, a click on a clip and the playhead seek in the whole montage */
-  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, picked: false, mode: 'seq', loading: false, tok: 0, lim: null, mk: { i: 0, off: 0 } };
-  // P.mk - the place of the cut (a clip and seconds inside its kept piece); P.g - where playback is.
-  // They are separate on purpose: the preview must not carry the marker away.
+  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, picked: false, mode: 'seq', loading: false, tok: 0, lim: null, mkOff: {} };
+  // The marker always stands on the clip that is in focus (P.i) and remembers its own place for each
+  // clip by its name: switching clips cannot leave an invisible marker somewhere and use it later.
   const mkAt = () => {
-    if (P.mk.i >= MT.ids.length) P.mk = { i: 0, off: 0 };
-    P.mk.off = Math.min(Math.max(0, P.mk.off), durOf(P.mk.i));
-    return P.mk;
+    const id = MT.ids[P.i]; if (!id) return { i: 0, off: 0 };
+    const half = durOf(P.i) / 2;
+    let off = P.mkOff[id];
+    if (typeof off !== 'number') off = half;                                  // a new clip: the marker in the middle
+    P.mkOff[id] = Math.min(Math.max(0, off), Math.max(0, durOf(P.i) - 0.05));  // never outside the kept piece
+    return { i: P.i, off: P.mkOff[id] };
   };
   const xOf = (i, off) => {
     const strip = $('.mt-strip', root), el = $$('.mt-item', strip)[i]; if (!el) return 0;
@@ -7649,11 +7653,18 @@ applyZoom();
     timeEl.textContent = mmss(P.g) + ' / ' + mmss(tot);
     const strip = $('.mt-strip', root), ph = $('.mt-ph', strip), ln = $('.mt-line', strip), run = $('.mt-run', strip), items = $$('.mt-item', strip); if (!ph || !items.length) return;
     items.forEach((x, k) => x.classList.toggle('cur', k === P.i));
-    if (!items[P.i]) return;
-    const mk = mkAt(), mx = xOf(mk.i, mk.off);   // the cut marker: it stays where you put it
-    ph.style.left = mx + 'px'; if (ln) ln.style.left = mx + 'px';
+    if (P.i >= items.length) { P.i = Math.max(0, items.length - 1); P.g = Math.min(P.g, totalLen()); }
+    const mk = mkAt();
+    // the marker must always be reachable: never let it sit outside the visible part of the ribbon
+    const mx = Math.max(14, Math.min(xOf(mk.i, mk.off), strip.scrollLeft + strip.clientWidth - 14));
+    ph.style.left = mx + 'px'; ph.style.display = 'block'; if (ln) ln.style.left = mx + 'px';
     // the scissors stand on both sides of the marker: one click and the piece is cut there
-    $$('.mt-cut', strip).forEach(b => { b.style.left = (mx + (b.dataset.cut === 'out' ? 10 : -36)) + 'px'; });
+    $$('.mt-cut', strip).forEach(b => {
+      const out = b.dataset.cut === 'out', lim = strip.scrollLeft + strip.clientWidth - 28;
+      let want = mx + (out ? 10 : -36);
+      if (want < 2 || want > lim) want = mx + (out ? -36 : 10);   // no room outside - stand on the other side
+      b.style.left = Math.max(2, Math.min(lim, want)) + 'px';
+    });
     const gx = xOf(P.i, P.g - startOf(P.i));     // the running playhead: this one may move
     if (run) run.style.left = gx + 'px';
     if (P.playing && (gx < strip.scrollLeft + 20 || gx > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, gx - 60);
@@ -7698,7 +7709,8 @@ applyZoom();
   function syncPlayer() {
     const n = MT.ids.length, tot = totalLen(); seek.max = Math.round(tot * 10);
     const blank = () => { pv.removeAttribute('src'); delete pv.dataset.id; try { pv.load(); } catch { } };   // without load() the old frame stays on screen
-    if (!n) { P.picked = false; setPlaying(false); blank(); P.g = 0; P.i = 0; if (P.mode === 'seq') P.mode = MT.res ? 'res' : 'seq'; }
+    // an empty ribbon is an empty window: the last joined video is only shown when it is asked for
+    if (!n) { P.picked = false; setPlaying(false); blank(); P.g = 0; P.i = 0; P.mode = 'seq'; }
     else if (!P.picked) { setPlaying(false); blank(); }   // nothing chosen yet: the window stays empty
     else { setPlaying(false); seekTo(Math.min(P.g, tot), false); }
     showMode(P.mode); updateUI();
@@ -7724,8 +7736,9 @@ applyZoom();
       const left = cut.dataset.cut === 'in';
       if ((left ? durOf(i) - at : at) < 0.3) { toast('После такой обрезки не останется и трети секунды'); return; }
       P.picked = true;
-      if (left) { MT.ins[i] = +Math.min(999, inOf(i) + at).toFixed(2); P.mk = { i, off: 0 }; }   // the cut point became the new beginning
-      else { MT.cuts[i] = (inOf(i) + at) >= fullOf(i) - 0.05 ? null : +(inOf(i) + at).toFixed(2); P.mk = { i, off: durOf(i) }; }   // and stays at the new end
+      const id = MT.ids[i];
+      if (left) { MT.ins[i] = +Math.min(999, inOf(i) + at).toFixed(2); P.mkOff[id] = 0; }   // the cut point became the new beginning
+      else { MT.cuts[i] = (inOf(i) + at) >= fullOf(i) - 0.05 ? null : +(inOf(i) + at).toFixed(2); P.mkOff[id] = durOf(i); }   // and stays at the new end
       setPlaying(false); render();
       return;
     }
@@ -7733,11 +7746,11 @@ applyZoom();
     e.preventDefault(); e.stopPropagation();
     const was = P.playing; setPlaying(false);
     const mk = mkAt(), grabAt = timeAtX(e.clientX).g;   // how far from the marker the pointer took it
-    const grabOff = grabAt - (startOf(mk.i) + mk.off);
+    const grabOff = grabAt - (startOf(P.i) + mk.off);
     const mv = ev => {
       const p = locate(timeAtX(ev.clientX).g - grabOff);
       P.picked = true;
-      P.mk = { i: p.i, off: p.off };
+      P.i = p.i; P.mkOff[MT.ids[p.i]] = p.off;   // the marker moves with the focus: it is always the visible one
       P.i = p.i; P.g = startOf(p.i) + p.off; loadAt(p.i, p.off, false); updateUI();   // the frame under the marker shows on the left
     };
     const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); if (was) setPlaying(true); };
@@ -7746,7 +7759,7 @@ applyZoom();
   });
   const focusClip = i => {        // the window follows what the person has just touched
     if (i < 0 || i >= MT.ids.length) return;
-    P.picked = true; P.lim = null; P.i = i; P.mk = { i, off: 0 };
+    P.picked = true; P.lim = null; P.i = i;
     if (P.mode !== 'seq') P.mode = 'seq';
     showMode('seq'); P.g = startOf(i); seekTo(P.g, false);
   };
@@ -7818,6 +7831,7 @@ applyZoom();
     const r = it.getBoundingClientRect();
     const at = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * durOf(i);   // where in this clip they clicked
     P.picked = true;   // the clip you touched is the one the window shows
+    P.i = i;           // and its own marker: each clip keeps the place you put it on
     const m = mkAt();
     if (i === m.i && Math.abs(at - m.off) > 0.02) {
       // left of the marker: show the kept beginning up to the marker; right of it: from the marker to the kept end

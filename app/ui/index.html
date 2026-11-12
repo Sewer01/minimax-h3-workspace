@@ -844,7 +844,11 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-item.narrow .mt-b{justify-content:center}
 .mt-item.narrow .mt-b button{padding:2px 5px}
 .mt-item.narrow .mt-len{display:none}
-.mt-ph{position:absolute;top:0;bottom:6px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px var(--pink);pointer-events:none;z-index:4}
+.mt-ph{position:absolute;top:0;bottom:6px;width:14px;margin-left:-7px;cursor:ew-resize;pointer-events:auto;z-index:5;
+  background:linear-gradient(90deg,transparent 5px,#fff 5px,#fff 9px,transparent 9px);filter:drop-shadow(0 0 1px var(--pink))}
+.mt-cut{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:26px;height:26px;border-radius:9px;background:rgba(0,0,0,.78);
+  border:1px solid var(--pink);color:#fff;font-size:13px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.mt-cut:hover{background:var(--pink);color:#111}
 .mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}.mt-bar[hidden],.mt-tabs[hidden]{display:none}
 .mt-b button:disabled{opacity:.3;cursor:default}
 .mt-bar .mt-play{min-width:44px;font-size:16px;padding:4px 12px}.mt-seek{flex:1;accent-color:var(--pink)}
@@ -7553,7 +7557,7 @@ applyZoom();
         <div class="mt-vh" title="Потяните вверх или вниз: все блоки станут выше или ниже. Двойной щелчок: как было"><i></i></div>
         <div class="mt-scale"><span>1 секунда</span><input type="range" class="mt-px" min="8" max="90" step="1" title="Крупнее масштаб - точнее резать по времени"><span class="mt-px-x">26 px</span><span class="hint">этот ползунок и кнопки «−» «+» меняют только ширину ленты</span></div>
         <div class="mt-trim" hidden></div>
-        <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
+        <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Белая метка перетаскивается - слева показывается кадр, на который она указывает; ножницы по бокам метки убирают всё до неё или всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
       <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>добавьте клипы: здесь можно будет посмотреть, как они идут подряд, а потом появится готовый ролик</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
@@ -7591,7 +7595,10 @@ applyZoom();
       : '<div class="hint">Пока пусто: нажмите на клипы сверху.</div>';
     const total = MT.ids.reduce((a, id, i) => a + durOf(i), 0);
     $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
-    if (MT.ids.length) $('.mt-strip', root).insertAdjacentHTML('beforeend', '<i class="mt-ph"></i>');
+    if (MT.ids.length) $('.mt-strip', root).insertAdjacentHTML('beforeend',
+      '<i class="mt-ph" title="Потяните метку: слева показывается тот кадр, на который она указывает"></i>'
+      + '<i class="mt-cut" data-cut="in" title="Убрать всё до метки (начало куска встанет сюда)">✂</i>'
+      + '<i class="mt-cut" data-cut="out" title="Убрать всё после метки (конец куска встанет сюда)">✂</i>');
     syncPlayer(); paintTrim();
     if (window.mtSaveState) { window.mtSaveState(); window.mtPipePaint(); }
   }
@@ -7606,7 +7613,13 @@ applyZoom();
   function loadAt(i, off, play) {
     const id = MT.ids[i], it = get(id); if (!it) return;
     const tok = ++P.tok, go = () => { if (tok !== P.tok) return; P.loading = false; try { pv.currentTime = inOf(i) + off; } catch {} if (play) pv.play().catch(() => {}); };
-    if (pv.dataset.id !== id) { P.loading = true; pv.dataset.id = id; pv.src = it.url; pv.addEventListener('loadedmetadata', go, { once: true }); pv.load(); } else go();
+    if (pv.dataset.id !== id) {
+      P.loading = true; pv.dataset.id = id; pv.src = it.url;
+      pv.addEventListener('loadedmetadata', () => { P.loading = false; go(); }, { once: true });
+      pv.addEventListener('error', () => { P.loading = false; }, { once: true });
+      setTimeout(() => { if (tok === P.tok) P.loading = false; }, 4000);   // a frame that never announces itself must not freeze the player
+      pv.load();
+    } else go();
   }
   function seekTo(g, play) {
     if (!MT.ids.length) return;
@@ -7618,15 +7631,26 @@ applyZoom();
     const strip = $('.mt-strip', root), ph = $('.mt-ph', strip), items = $$('.mt-item', strip); if (!ph || !items.length) return;
     items.forEach((x, k) => x.classList.toggle('cur', k === P.i));
     const el = items[P.i]; if (!el) return;
-    const x = el.offsetLeft + Math.min(1, Math.max(0, (P.g - startOf(P.i)) / durOf(P.i))) * el.offsetWidth; ph.style.left = x + 'px';
+    const x = el.offsetLeft + Math.min(1, Math.max(0, (P.g - startOf(P.i)) / durOf(P.i))) * el.offsetWidth;
+    ph.style.left = x + 'px';
+    // the scissors stand on both sides of the marker: one click and the piece is cut there
+    $$('.mt-cut', strip).forEach(b => { b.style.left = (x + (+b.dataset.cut === 1 ? 10 : -36)) + 'px'; });
     if (P.playing && (x < strip.scrollLeft + 20 || x > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, x - 60);
   }
   function setPlaying(on) { P.playing = on; playBtn.textContent = on ? '⏸' : '▶'; clearInterval(P.raf); if (on) P.raf = setInterval(tick, 40); else pv.pause(); }
+  const pieceEnd = i => inOf(i) + durOf(i);   // where the kept piece stops, on the clock of the file
+  function atEnd(t) {                          // called by the timer and by the video itself
+    if (!P.playing || P.i >= MT.ids.length) return;
+    if (P.i < MT.ids.length - 1) { P.i++; P.g = startOf(P.i); loadAt(P.i, 0, true); }
+    else { setPlaying(false); P.g = totalLen(); updateUI(); }
+  }
   function tick() {
     if (!P.playing) return;
-    if (!P.loading) {
+    if (pv.readyState >= 2) {
       const d = durOf(P.i), t = pv.currentTime, from = inOf(P.i);   // the video counts from the whole file, we keep a piece of it
-      if (!pv.seeking && (t >= from + d - 0.04 || pv.ended)) {
+      if (pv.dataset.id === MT.ids[P.i] && t > pieceEnd(P.i) + 0.25) { pv.currentTime = from; return; }   // never let it run past the cut
+      if (!pv.seeking && (t >= pieceEnd(P.i) - 0.04 || pv.ended)) {
+        atEnd(t);
         if (P.i < MT.ids.length - 1) { P.i++; P.g = startOf(P.i); loadAt(P.i, 0, true); }
         else { setPlaying(false); P.g = totalLen(); updateUI(); return; }
       } else P.g = startOf(P.i) + Math.max(0, t - from);
@@ -7651,6 +7675,39 @@ applyZoom();
     else { setPlaying(false); seekTo(Math.min(P.g, tot), false); }
     showMode(P.mode); updateUI();
   }
+  pv.addEventListener('timeupdate', () => { if (P.playing && pv.currentTime >= pieceEnd(P.i) - 0.04) atEnd(); });
+  const timeAtX = clientX => {              // which second of the montage is under this point of the screen
+    const strip = $('.mt-strip', root), items = $$('.mt-item', strip);
+    const box = strip.getBoundingClientRect();
+    const x = clientX - box.left + strip.scrollLeft;
+    let a = 0;
+    for (let i = 0; i < items.length; i++) {
+      const w = items[i].offsetWidth || 1;
+      if (x <= a + w || i === items.length - 1) return { i, g: startOf(i) + Math.min(1, Math.max(0, (x - a) / w)) * durOf(i) };
+      a += w + 8;                            // the gap between the blocks
+    }
+    return { i: 0, g: 0 };
+  };
+  root.addEventListener('pointerdown', e => {
+    const cut = e.target.closest('.mt-cut');
+    if (cut) {                               // one click of the scissors cuts the clip at the marker
+      e.preventDefault(); e.stopPropagation();
+      const i = P.i, at = inOf(i) + Math.max(0, Math.min(durOf(i), P.g - startOf(i)));
+      const left = cut.dataset.cut === 'in';
+      if ((left ? pieceEnd(i) - at : at - inOf(i)) < 0.3) { toast('После такой обрезки не останется и трети секунды'); return; }
+      if (left) MT.ins[i] = +at.toFixed(2);
+      else MT.cuts[i] = at >= fullOf(i) - 0.05 ? null : +at.toFixed(2);
+      setPlaying(false); render();
+      return;
+    }
+    if (!e.target.closest('.mt-ph')) return;  // the marker: drag it and the preview shows that frame
+    e.preventDefault(); e.stopPropagation();
+    const was = P.playing; setPlaying(false);
+    const mv = ev => { const p = timeAtX(ev.clientX); P.i = p.i; seekTo(p.g, false); };
+    const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); if (was) setPlaying(true); };
+    addEventListener('pointermove', mv); addEventListener('pointerup', up);
+    mv(e);
+  });
   playBtn.onclick = togglePlay;
   seek.oninput = () => { P.drag = true; seekTo(seek.value / 10, P.playing); };
   seek.onchange = () => { P.drag = false; };

@@ -859,7 +859,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-b button:disabled{opacity:.3;cursor:default}
 .mt-bar .mt-play{min-width:44px;font-size:16px;padding:4px 12px}
 .mt-bar .mt-restart{min-width:40px;font-size:14px;padding:4px 10px;opacity:.85}
-.mt-now{margin:4px 2px 0;min-height:14px;text-align:center}.mt-seek{flex:1;accent-color:var(--pink)}
+.mt-seek{flex:1;accent-color:var(--pink)}
 .mt-time{font-size:12px;color:var(--dim);min-width:84px;text-align:right;font-variant-numeric:tabular-nums}
 .mt-upbox{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .mt-upbox select{min-width:0;flex:1 1 190px}
@@ -7571,7 +7571,6 @@ applyZoom();
     </div><div class="preview">
       <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж пуст</b>добавьте клипы из Библиотеки - они появятся в ленте, и здесь сразу покажется кадр, на который указывает метка реза. Кнопка «▶» играет всю ленту по порядку, после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-restart" title="Смотреть с начала ленты">⏮</button><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
-      <div class="mt-now hint"></div>
       <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button></div>
       <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
       <div class="mt-upbox"><select class="mt-upeng" title="Чем увеличивать каждый клип"><option value="relay">Быстро (RelayVSR, в 2 раза)</option><option value="seed">Качественно (SeedVR2, в 2 раза, долго)</option></select><button type="button" class="btn mt-upgo" title="Каждый клип увеличивается отдельно (быстро, память не переполняется), потом увеличенные склеиваются. Исходные клипы остаются.">Увеличить каждый клип и склеить</button></div>
@@ -7630,7 +7629,7 @@ applyZoom();
     const strip = $('.mt-strip', root), el = $$('.mt-item', strip)[i]; if (!el) return 0;
     return el.offsetLeft + Math.min(1, Math.max(0, off / (durOf(i) || 1))) * el.offsetWidth;
   };
-  const pv = $('.mt-pv', root), bar = $('.mt-bar', root), seek = $('.mt-seek', root), playBtn = $('.mt-play', root), timeEl = $('.mt-time', root), nowEl = $('.mt-now', root);
+  const pv = $('.mt-pv', root), bar = $('.mt-bar', root), seek = $('.mt-seek', root), playBtn = $('.mt-play', root), timeEl = $('.mt-time', root);
   const blank = () => { pv.removeAttribute('src'); delete pv.dataset.id; try { pv.load(); } catch { } };   // without load() the old frame stays on screen
   const mmss = s => { s = Math.max(0, s); return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); };
   const totalLen = () => MT.ids.reduce((a, _, i) => a + durOf(i), 0);
@@ -7674,7 +7673,6 @@ applyZoom();
       if (want < 2 || want > lim) want = mx + (out ? -36 : 10);   // no room outside - stand on the other side
       b.style.left = Math.max(2, Math.min(lim, want)) + 'px';
     });
-    if (nowEl) { const it = get(MT.ids[P.i]); nowEl.textContent = it ? `в окне: клип ${P.i + 1} из ${MT.ids.length} · ${String(it.prompt || it.name || '').slice(0, 60)}` : ''; nowEl.hidden = !it; }
     const gx = xOf(P.i, P.g - startOf(P.i));     // the running playhead: this one may move
     if (run) run.style.left = gx + 'px';
     if (P.playing && (gx < strip.scrollLeft + 20 || gx > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, gx - 60);
@@ -7690,9 +7688,6 @@ applyZoom();
     if (!P.playing) return;
     if (P.lim && P.g >= P.lim[1] - 0.03) { setPlaying(false); P.g = P.lim[1]; P.lim = null; updateUI(); return; }   // a preview of one side stops at the marker
     if (pv.readyState >= 2) {
-      if (!P.loading && pv.dataset.id !== MT.ids[P.i] && Date.now() - (P.heal || 0) > 800) {   // the screen shows another clip than the focused one: put the right one back, not more often than twice a second
-        P.heal = Date.now(); loadAt(P.i, Math.max(0, P.g - startOf(P.i)), P.playing); return;
-      }
       const d = durOf(P.i), t = pv.currentTime, from = inOf(P.i);   // the video counts from the whole file, we keep a piece of it
       if (pv.dataset.id === MT.ids[P.i] && t > pieceEnd(P.i) + 0.25) { pv.currentTime = from; return; }   // never let it run past the cut
       if (!pv.seeking && (t >= pieceEnd(P.i) - 0.04 || pv.ended)) {

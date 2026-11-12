@@ -218,6 +218,59 @@ class App:
         d = self.config.get("install_dir")
         return Path(d) / catalog.COMFY_DIRNAME if d else None
 
+    def _ffmpeg(self):
+        """The decoder that ships with the ComfyUI portable: the browser window cannot read HEVC or
+        an unusual container, so the picture a video continues from is taken with a real ffmpeg."""
+        r = self.comfy_root()
+        if not r:
+            return None
+        for pat in ("python_embeded/Lib/site-packages/imageio_ffmpeg/binaries/ffmpeg-*.exe", "**/ffmpeg.exe"):
+            for p in sorted(r.glob(pat), reverse=True):
+                if p.is_file():
+                    return p
+        w = shutil.which("ffmpeg")
+        return Path(w) if w else None
+
+    async def h_video_lastframe(self, request):
+        """POST a video file, get back its last frame as a PNG. The name comes in the query string."""
+        ff = self._ffmpeg()
+        if not ff:
+            return web.json_response({"error": "декодер не найден"}, status=404)
+        data = await request.read()
+        if not data:
+            return web.json_response({"error": "пустой файл"}, status=400)
+        if len(data) > 300 * 1024 * 1024:
+            return web.json_response({"error": "файл больше 300 МБ"}, status=413)
+        name = urllib.parse.unquote(request.query.get("name") or "video.mp4")
+        suffix = Path(name).suffix.lower()
+        if suffix not in (".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v", ".mts", ".ts", ".wmv", ".flv", ".mpg", ".mpeg", ".3gp"):
+            suffix = ".mp4"
+        work = Path(os.environ.get("TEMP", ".")) / ("h3frame-" + uuid.uuid4().hex)
+        work.mkdir(parents=True, exist_ok=True)
+        src, out = work / ("in" + suffix), work / "last.png"
+        try:
+            src.write_bytes(data)
+            base = [str(ff), "-hide_banner", "-loglevel", "error", "-y"]
+            # the tail of the file: -sseof counts back from the end, -update writes over one picture
+            for extra in (["-sseof", "-1.0", "-i", str(src), "-update", "1", "-frames:v", "1"],
+                          [ "-i", str(src), "-update", "1", "-an", "-sn"]):
+                try:
+                    proc = await asyncio.create_subprocess_exec(*(base + extra + [str(out)]),
+                                                                stdout=asyncio.subprocess.DEVNULL,
+                                                                stderr=asyncio.subprocess.PIPE)
+                    await asyncio.wait_for(proc.communicate(), timeout=120)
+                except asyncio.TimeoutError:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                if out.is_file() and out.stat().st_size:
+                    return web.Response(body=out.read_bytes(), content_type="image/png",
+                                        headers={"Content-Disposition": 'inline; filename="last.png"'})
+            return web.json_response({"error": "кадр не читается"}, status=422)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
     def choice(self):
         raw = {**catalog.DEFAULT_CHOICE, **(self.config.get("choice") or {}), **(self.config.get("choice_override") or {})}
         # a role or a variant renamed in catalog used to raise KeyError in /api/status (the interface then said
@@ -3577,6 +3630,7 @@ def build_app(comfy_override=None):
         web.get("/api/system", state.h_system),
         web.get("/api/audio/info", state.h_audio_info),
         web.post("/api/audio/separate", state.h_audio_separate),
+        web.post("/api/video/lastframe", state.h_video_lastframe),   # the browser cannot decode everything
         web.get("/api/setup/info", state.h_setup_info),
         web.post("/api/setup/external", state.h_setup_external),
         web.post("/api/setup/install", state.h_setup_install),

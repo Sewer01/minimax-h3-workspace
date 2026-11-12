@@ -4675,6 +4675,11 @@ function makeRefMode(cfg) {
     S.len = () => { if (root._mode !== 'parts') return total(); const r = $$('.sc input[type=range]', root)[root._next()]; return r ? +r.value : total(); };
     root._src = null;
     const lastFrameFile = async file => {   // the last picture of a video file from the computer
+      // ask the program first: it has a real decoder, so HEVC and odd containers work there
+      try {
+        const r = await fetch('/api/video/lastframe?name=' + encodeURIComponent(file.name), { method: 'POST', body: file });
+        if (r.ok) { const b = await r.blob(); if (b && b.size > 512) return new File([b], 'last_frame.png', { type: 'image/png' }); }
+      } catch (e) { /* the window method below still has a chance */ }
       const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = URL.createObjectURL(file);
       const fail = new Error(`Браузер не открыл это видео (${file.name}): обычно так ведут себя HEVC или редкий контейнер. Сохраните его как MP4 (H.264).`);
       const open = await new Promise(res => { v.onloadedmetadata = () => res(true); v.onerror = () => res(false); setTimeout(() => res(v.readyState > 0), 15000); });
@@ -4704,8 +4709,8 @@ function makeRefMode(cfg) {
     };
     // nine pictures in a scene, counted from the text; a chip for a picture the text does not call
     // has no right to add itself when all nine places are taken
-    root._free = (k, sc) => {
-      if (!sc || !sc._used || sc._used.size < 9 || sc._used.has(k)) return true;
+      root._free = (k, sc) => {
+      if (!sc || !sc._used || sc._used.size + (sc._res || 0) < 9 || sc._used.has(k)) return true;
       toast('В сцене занято все 9 фото. Уберите из текста другой тег - тогда это фото освободит себе место.');
       return false;
     };
@@ -4958,10 +4963,16 @@ function makeRefMode(cfg) {
           const k = +x.replace(/\D+/g, '');
           if (k < 10 ? k >= 1 && k <= common : (k - 10) < own) used.add(k);
         });
-        const n = used.size, left = 9 - n;
+        const taken = root._srcFrame ? 1 : 0;   // the frame of your own video goes to the model anyway
+        c._res = taken;
+        const n = used.size + taken, left = 9 - n;
         c._used = used;   // what the text calls - the chip clicks ask this, not the colours
-        el.textContent = n > 9 ? `в тексте ${n} разных фото - в модель войдут первые 9, новых тегов не берите` : n ? (left > 2 ? `в тексте занято ${n} из 9 фото` : left > 0 ? `занято ${n} из 9 - свободно ещё ${left}` : `занято все 9 фото - новых теги не примутся`)
-          : `в сцену влезет ещё 9 фото (загружено: общих ${common}, своих ${own})`;
+        let line = '';
+        if (n > 9) line = `в тексте ${n} разных фото - в модель войдут первые 9, новых тегов не берите`;
+        else if (n === 0) line = `в сцену влезет ещё 9 фото (загружено: общих ${common}, своих ${own})`;
+        else line = left > 2 ? `в тексте занято ${n} из 9 фото` : left > 0 ? `занято ${n} из 9 - свободно ещё ${left}` : `занято все 9 фото - новых теги не примутся`;
+        if (taken) line += (line ? ' · ' : '') + 'кадр из вашего видео держит 1 место из 9';
+        el.textContent = line;
         el.style.color = left <= 0 ? 'var(--pink)' : left <= 2 ? 'var(--warn, #e8a31d)' : '';
         // at the limit the pictures the text does not call are locked until another tag is removed
         // only the scene you are looking at owns the shared row of common chips: the hidden scenes
@@ -5219,7 +5230,8 @@ function makeRefMode(cfg) {
       // the names you can insert belong where you write: put them under the card that holds the text
       const host = ta0 && (ta0.closest('.sc') || ta0.closest('.card'));
       if (chips && host && !host.contains(chips)) host.insertAdjacentElement('afterend', chips);
-      fin.after(clrSc);
+      const tlRow = ($('.tl', root) || {}).nextElementSibling || $('.tl', root);
+      if (tlRow) tlRow.insertAdjacentElement('afterend', clrSc); else fin.after(clrSc);   // right under the scene chips
       $('#lmAdd', root).hidden = true;   // the plus on the ribbon is the way to add a scene
       // the base choice and its file button were placed in the settings card above
     }));

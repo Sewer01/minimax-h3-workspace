@@ -91,7 +91,10 @@
 #cmpFull{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:2vh 2vw}
 #cmpFull .cmp-in{height:88vh;width:auto;max-width:96vw;max-height:none;margin:0}
 .tl{display:flex;gap:5px;align-items:stretch;margin:6px 0 12px;overflow-x:auto;padding-bottom:4px}
-.tl-b{position:relative;box-sizing:border-box;height:60px;border-radius:10px;border:1.5px solid var(--line-2);background:var(--surface-2);padding:6px 8px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;font-size:12.5px}
+.tl-b{position:relative;box-sizing:border-box;height:34px;border-radius:9px;border:1.5px solid var(--line-2);background:var(--surface-2);padding:0 8px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px}
+.tl-l{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.tl-x{flex:none;width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:10px;font-style:normal;color:var(--muted)}
+.tl-x:hover{background:#c0303f;color:#fff}
 .tl-b.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.3)}
 .tl-b.stale{background:rgba(150,150,150,.14);border-style:dashed}.tl-b.done{background:rgba(47,191,113,.18)}.tl-b.draft{background:rgba(232,163,23,.18)}
 .tl-b.cut{border-left:4px solid var(--accent)}
@@ -4380,8 +4383,8 @@ function makeRefMode(cfg) {
     <div class="head"><div><h1>${cfg.title}</h1><p>${cfg.sub}</p></div><div class="mode-pill"><i></i><span class="rm-pill">${cfg.pill}</span></div></div>
     <div class="grid"><div class="col">
       <div class="card">
-        <div class="card-h"><h3><span class="n">1</span>Референсы</h3><span class="counter rm-count"></span> <button class="btn mini rm-clr" type="button" title="Убрать все изображения сразу">Очистить всё</button>
-          <button class="btn mini rm-clear" type="button" title="Убрать все картинки, видео, аудио и промпт этого раздела">Очистить</button></div>
+        <div class="card-h"><h3><span class="n">1</span>Референсы</h3><span class="counter rm-count"></span> <button class="btn mini rm-clr" type="button" title="Убрать все изображения сразу">Очистить изображения</button>
+          <button class="btn mini rm-clear" type="button" title="Убрать всё в этом разделе: картинки, видео, аудио и текст">Очистить всё</button></div>
         <div class="refs rm-imgs"></div>
         <div class="rm-media">
           ${cfg.videos ? `<div><div class="sub-l"><span>Референс-видео</span></div><div class="slots rm-vids"></div><small class="media-hint">движение, камера, хореография · 2–15 с</small></div>` : ''}
@@ -4873,7 +4876,7 @@ function makeRefMode(cfg) {
       all.forEach((c, j) => c.classList.toggle('sel', j === root._sel));
       tl.innerHTML = all.map((c, i) => {
         const sec = +$('input[type=range]', c).value, done = sigOk(c), draft = root._q === 'draft', old = !done && !!(c._old || {})[root._q];
-        return `<div class="tl-b${i === root._sel ? ' sel' : ''}${done ? (draft ? ' draft' : ' done') : old ? ' stale' : ''}${fr[i] ? ' cut' : ''}" data-i="${i}" style="flex:0 0 ${sec * TL_PPS}px" title="${fr[i] ? 'Новый план (смена кадра). ' : ''}Потяните правый край, чтобы изменить длину"><div><b>${i + 1}</b> · ${sec} с</div><div class="hint" style="font-size:11px;white-space:nowrap;overflow:hidden">${done ? (draft ? 'черновик ✓' : 'готово ✓') : old ? 'старая версия' : ''}${fr[i] ? ' ✂ новый план' : ''}</div><i class="tl-h"></i></div>`;
+        return `<div class="tl-b${i === root._sel ? ' sel' : ''}${done ? (draft ? ' draft' : ' done') : old ? ' stale' : ''}${fr[i] ? ' cut' : ''}" data-i="${i}" style="flex:0 0 ${sec * TL_PPS}px" title="${fr[i] ? 'Новый план (смена кадра). ' : ''}Потяните правый край, чтобы изменить длину"><div class="tl-l"><b>${i + 1}</b> · ${sec} с${done ? (draft ? ' · черновик ✓' : ' · готово ✓') : old ? ' · старая версия' : ''}${fr[i] ? ' · ✂ новый план' : ''}</div><i class="tl-x" data-scdel="${i}" title="Удалить эту сцену">✕</i><i class="tl-h"></i></div>`;
       }).join('') + '<div class="tl-b tl-add" data-add="1" style="flex:0 0 56px;align-items:center;justify-content:center" title="Добавить фрагмент">+</div>';
       const dmb = $('.lm-q button[data-mq="draft"]', root);
       dmb.disabled = false;   // pressing it is how you find out you need a file - and how you get it
@@ -4901,6 +4904,13 @@ function makeRefMode(cfg) {
     tl.addEventListener('pointercancel', () => { root._drag = null; });
     tl.onclick = e => {
       if (e.target.closest('.tl-h')) return;
+      const x = e.target.closest('[data-scdel]');
+      if (x) {                          // a scene can be dropped right on the ribbon
+        e.stopPropagation();
+        if ($$('.sc', root).length < 2) { toast('Оставлена одна сцена - из одной ролик не соберёшь'); return; }
+        const c = $$('.sc', root)[+x.dataset.scdel]; if (!c) return;
+        $('.x', c)?.click(); renderTL(); showClip(); return;
+      }
       const b = e.target.closest('.tl-b'); if (!b) return;
       if (b.dataset.add) { $('#lmAdd', root).click(); return; }
       root._sel = +b.dataset.i; renderTL(); showClip();
@@ -5029,8 +5039,12 @@ function makeRefMode(cfg) {
         root._sel = u.sel; recount(); refreshStates(); toast('Действие отменено');
       };
       document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && String(e.key).toLowerCase() === 'z' && $('#view-long.active') && !e.target.closest('textarea, input') && root._undo.length) { e.preventDefault(); root._doUndo(); } });
-      const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'btn lm-clearall'; clr.textContent = 'Очистить всё и начать заново'; clr.style.cssText = 'margin:0 0 12px;width:100%';
-      clr.title = 'Стирает все сцены, изображения и готовые результаты проекта. Библиотека не затрагивается';
+      const chips = $('.rm-tokens', root)?.closest('.ta-foot'), ta0 = $('.col textarea', root);
+      // the names you can insert belong where you write: put them under the card that holds the text
+      const host = ta0 && (ta0.closest('.sc') || ta0.closest('.card'));
+      if (chips && host && !host.contains(chips)) host.insertAdjacentElement('afterend', chips);
+      const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'btn lm-clearall'; clr.textContent = 'Очистить проект'; clr.style.cssText = 'margin:0 0 12px;width:auto';
+      clr.title = 'Стирает описания всех сцен, изображения и готовые результаты этого проекта. Библиотека не затрагивается';
       clr.onclick = () => confirmBox('Очистить весь проект?', 'Все сцены, изображения героя и результаты этого проекта будут стёрты со страницы, останутся две пустые сцены. Готовые видео в Библиотеке не удаляются.', 'Очистить', () => {
         root._pushUndo();
         $$('.sc', root).forEach(c => c.remove()); root._run = Math.random().toString(36).slice(2, 12); root._sel = 0;
@@ -5038,8 +5052,8 @@ function makeRefMode(cfg) {
         addScene('', 10); addScene('', 10); recount(); refreshStates(); toast('Проект очищен');
       });
       fin.after(clr);
-      const more2 = document.createElement('details'); more2.className = 'st-more'; more2.innerHTML = '<summary>Ещё: добавить сцену, продолжить своё видео, как это работает</summary>';
-      [$('#lmAdd', root), $('.lm-reset', root), $('.lm-srcfile', root)?.closest('label'), [...scCard.children].filter(c => c.classList.contains('note') && !c.classList.contains('lm-src')).pop()].filter(Boolean).forEach(n => more2.append(n));
+      const more2 = document.createElement('details'); more2.className = 'st-more'; more2.innerHTML = '<summary>Ещё: продолжить своё видео, как это работает</summary>';
+      [$('.lm-srcfile', root)?.closest('label'), $('#lmAdd', root), $('.lm-reset', root), [...scCard.children].filter(c => c.classList.contains('note') && !c.classList.contains('lm-src')).pop()].filter(Boolean).forEach(n => more2.append(n));
       scCard.append(more2);
     }));
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 20) { toast('Не больше 20 сцен — это уже полчаса расчёта'); return; } addScene('', 10); };

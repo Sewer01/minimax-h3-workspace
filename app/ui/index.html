@@ -850,6 +850,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-ph:hover{background:var(--pink)}
 .mt-ph:active,.mt-ph.drag{cursor:grabbing;background:var(--pink)}
 .mt-line{position:absolute;top:17px;bottom:4px;width:3px;margin-left:-1.5px;background:#fff;box-shadow:0 0 0 1px var(--pink),0 0 6px rgba(255,255,255,.5);pointer-events:none;z-index:8}
+.mt-pv{cursor:pointer}
 .mt-run{position:absolute;top:17px;bottom:4px;width:2px;margin-left:-1px;background:var(--cloud,#9fd4ff);opacity:.85;pointer-events:none;z-index:4}
 .mt-cut{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:26px;height:26px;border-radius:9px;background:rgba(0,0,0,.78);
   border:1px solid var(--pink);color:#fff;font-size:13px;line-height:1;display:grid;place-items:center;cursor:pointer}
@@ -7677,7 +7678,16 @@ applyZoom();
     if (run) run.style.left = gx + 'px';
     if (P.playing && (gx < strip.scrollLeft + 20 || gx > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, gx - 60);
   }
-  function setPlaying(on) { P.playing = on; playBtn.textContent = on ? '⏸' : '▶'; clearInterval(P.raf); if (on) P.raf = setInterval(tick, 40); else pv.pause(); }
+  function setPlaying(on) {
+    P.playing = on; playBtn.textContent = on ? '⏸' : '▶'; clearInterval(P.raf);
+    if (on) { P.raf = setInterval(tick, 40); return; }
+    try { pv.pause(); } catch { }
+    const rv = $('.mt-res', root); try { if (rv && !rv.paused) rv.pause(); } catch { }   // nothing keeps running behind the preview
+  }
+  // the button tells the truth about the element, whoever started or stopped it
+  pv.addEventListener('play', () => { if (!P.playing) { P.playing = true; playBtn.textContent = '⏸'; clearInterval(P.raf); P.raf = setInterval(tick, 40); } });
+  pv.addEventListener('pause', () => { if (P.playing) setPlaying(false); });
+  pv.addEventListener('ended', () => { if (P.playing) atEnd(pv.currentTime); });
   const pieceEnd = i => inOf(i) + durOf(i);   // where the kept piece stops, on the clock of the file
   function atEnd(t) {                          // called by the timer and by the video itself
     if (!P.playing || P.i >= MT.ids.length) return;
@@ -7805,6 +7815,7 @@ applyZoom();
     seekTo(0, true); setPlaying(true);
   };
   playBtn.onclick = togglePlay;
+  pv.onclick = () => togglePlay();          // a click on the picture pauses and resumes, like any player
   seek.oninput = () => { P.drag = true; P.picked = true; if (P.mode !== 'seq') showMode('seq'); seekTo(seek.value / 10, P.playing); };
   seek.onchange = () => { P.drag = false; };
   addEventListener('keydown', e => {

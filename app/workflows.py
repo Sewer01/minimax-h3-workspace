@@ -104,17 +104,21 @@ def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None, 
     return g, stages
 
 
-def scene_prompt(prompt, n_common, n_own):
+def scene_prompt(prompt, n_common, n_own, shift=0):
     """The interface writes a scene's own pictures as <Picture 10>, <Picture 11>... - a range of its
     own, so nobody can mix them up with the common references numbered from 1. The node takes one
-    ordered list, so those numbers are moved onto the places the own pictures really occupy."""
-    total = min(9, n_common + n_own)
+    ordered list, so those numbers are moved onto the places the own pictures really occupy.
+
+    `shift` is 1 when the last frame of a continued video stands in front of the list: it is always
+    there, has no number of its own and cannot be called, so the pictures the text names move back."""
+    total = min(9, shift + n_common + n_own)
 
     def rep(m):
         k = int(m.group(1))
         if k < 10:
-            return m.group(0)                      # the common pictures keep their numbers
-        slot = n_common + (k - 10)                 # the j-th own picture sits after the common ones
+            n = k + shift                          # the frame is not anyone's number
+            return m.group(0) if n > total else f"<Picture {n}>"
+        slot = shift + n_common + (k - 10)         # the j-th own picture sits after the common ones
         return m.group(0) if slot >= total else f"<Picture {slot + 1}>"
 
     return re.sub(r"<\s*Picture\s*(\d+)\s*>", rep, prompt or "")
@@ -638,7 +642,7 @@ def _audio_continue(add, old_audio, new_audio, ov, total):
     return [add("SetLatentNoiseMask", samples=[cut2, 0], mask=[mask, 0]), 0]
 
 
-def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pika=None, extra_loras=(), ref_size="match", vocals=None, preview=None, fresh=(), audio_cont=False, draft=False):
+def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pika=None, extra_loras=(), ref_size="match", vocals=None, preview=None, fresh=(), audio_cont=False, draft=False, frame=None):
     """Scenes [(prompt, seconds), ...] rendered one after another; every next scene continues the last second of the
     previous one (latent cut + noise mask), with the same reference pictures, and optionally follows a music track.
 
@@ -669,8 +673,9 @@ def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pi
     scene_of = {}
     for i, (sc, p) in enumerate(zip(scenes, plan)):
         own = list(sc[2]) if len(sc) > 2 and sc[2] else []  # this scene's own pictures, counted from <Picture 10>
-        refs = list(images) + own[:max(0, 9 - len(images))]   # the scene sees both: common first, its own after
-        prompt = scene_prompt(sc[0], len(images), len(own))   # <Picture 10> -> the place its own picture takes
+        shift = 1 if frame else 0                   # the continued video's frame stands in front, nameless
+        refs = ([frame] if frame else []) + list(images) + own[:max(0, 9 - shift - len(images))]
+        prompt = scene_prompt(sc[0], len(images), len(own), shift)   # the named pictures move back by the frame
         total, ov = p["total"], p["ov"]
         ref = add("MiniMaxH3ReferenceToVideo", clip=["5", 0], vae=["6", 0], audio_vae=["7", 0], prompt=prompt,
                   width=width, height=height, length=total, ref_image_size=ref_size)

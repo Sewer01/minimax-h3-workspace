@@ -4982,10 +4982,10 @@ function makeRefMode(cfg) {
       };
       $('.sc-tokens', c).onclick = e => {   // a chip puts its tag where the cursor stands
         const b = e.target.closest('[data-ins]'); if (!b) return;
-        if (!root._free(+$b.dataset.ins.replace(/\D+/g, ''), c)) return;
-        const ta = $('textarea', c), at = ta.selectionStart == null ? ta.value.length : ta.selectionStart, add = b.dataset.ins;
+        if (root._free && !root._free(+b.dataset.ins.replace(/\D+/g, ''), c)) return;
+        const ta = $('textarea', c), at = ta.selectionStart == null ? ta.value.length : ta.selectionStart, add = b.dataset.ins + ' ';
         ta.value = ta.value.slice(0, at) + add + ta.value.slice(at);
-        ta.focus(); ta.selectionStart = ta.selectionEnd = at + add.length; recount();
+        ta.focus(); ta.selectionStart = ta.selectionEnd = at + add.length; recount(); c._counter?.();
       };
       c.insertAdjacentHTML('beforeend', `<label class="sc-fl" style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:12.5px" title="Как смена плана в кино: сцена не продолжает прошлую, а строится заново по вашим изображениям. Качество в ней как в первой сцене. Программа делает так сама после трёх продолжений подряд."><input type="checkbox" class="sc-fresh"> Сменить план здесь (кино-склейка)</label><div class="hint sc-auto" hidden style="font-size:12px;margin-top:6px">Программа сама сделает здесь смену плана: цепочка продолжений стала длинной, а так качество не падает.</div><div class="sc-act" style="display:flex;gap:10px;align-items:center;margin-top:8px"><button class="btn pri sc-do" type="button" style="padding:11px 20px;font-size:15px">Сделать эту сцену</button><button class="btn sc-clear" type="button" title="Стереть текст, изображения и результат только этой сцены">Очистить сцену</button><button class="btn sc-undo" type="button" hidden title="Вернуть то, что было стёрто или удалено (то же, что Ctrl+Z)">↶ Отменить действие</button><button class="btn pri sc-redogo" type="button" hidden title="Эта сцена считается заново, а потом сами пересчитаются все следующие, уже продолжая новую версию">Переделать и продолжить дальше</button><span class="hint sc-state"></span></div>`);
       $('.sc-fresh', c).checked = !!fresh;

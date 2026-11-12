@@ -844,7 +844,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-item.narrow .mt-b{justify-content:center}
 .mt-item.narrow .mt-b button{padding:2px 5px}
 .mt-item.narrow .mt-len{display:none}
-.mt-strip{padding-top:20px}
+.mt-strip{padding:20px 16px 10px}
 .mt-ph{position:absolute;top:0;width:24px;height:18px;margin-left:-12px;pointer-events:auto;cursor:grab;z-index:9;
   background:#fff;clip-path:polygon(0 0,100% 0,50% 100%);filter:drop-shadow(0 0 2px rgba(0,0,0,.9)) drop-shadow(0 0 1px var(--pink))}
 .mt-ph:hover{background:var(--pink)}
@@ -7663,15 +7663,14 @@ applyZoom();
     items.forEach((x, k) => x.classList.toggle('cur', k === P.i));
     if (P.i >= items.length) { P.i = Math.max(0, items.length - 1); P.g = Math.min(P.g, totalLen()); }
     const mk = mkAt();
-    // the marker must always be reachable: never let it sit outside the visible part of the ribbon
-    const mx = Math.max(14, Math.min(xOf(mk.i, mk.off), strip.scrollLeft + strip.clientWidth - 14));
+    const mx = xOf(mk.i, mk.off);   // drawn where it truly is: a "keep it in view" clamp here puts the screen out of step with the mouse
     ph.style.left = mx + 'px'; ph.style.display = 'block'; if (ln) ln.style.left = mx + 'px';
     // the scissors stand on both sides of the marker: one click and the piece is cut there
     $$('.mt-cut', strip).forEach(b => {
-      const out = b.dataset.cut === 'out', lim = strip.scrollLeft + strip.clientWidth - 28;
+      const out = b.dataset.cut === 'out';
       let want = mx + (out ? 10 : -36);
-      if (want < 2 || want > lim) want = mx + (out ? -36 : 10);   // no room outside - stand on the other side
-      b.style.left = Math.max(2, Math.min(lim, want)) + 'px';
+      if (want < 2) want = Math.max(2, mx + (out ? -36 : 10));    // no room outside - stand on the other side
+      b.style.left = want + 'px';
     });
     const gx = xOf(P.i, P.g - startOf(P.i));     // the running playhead: this one may move
     if (run) run.style.left = gx + 'px';
@@ -7757,16 +7756,22 @@ applyZoom();
     // The marker follows the mouse one for one: the distance the pointer travelled is the distance
     // along this block, measured in its own pixels. No trip through the ribbon's seconds, so it can
     // neither run ahead of the pointer nor stick at one side.
-    const strip = $('.mt-strip', root), el = $$('.mt-item', strip)[P.i];
-    const mk = mkAt(), id = MT.ids[P.i], x0 = e.clientX;
-    const w0 = Math.max(40, (el && el.offsetWidth) || 1), f0 = mk.off / Math.max(0.05, durOf(P.i));
+    const strip = $('.mt-strip', root);
+    const mk = mkAt();
+    const ruler = ev => ev.clientX - strip.getBoundingClientRect().left + strip.scrollLeft;   // one ruler for the pointer and the blocks
+    const pxGrab = ruler(e) - xOf(mk.i, mk.off);   // how far from the marker the pointer took it, in pixels
     head.classList.add('drag');
     try { head.setPointerCapture(e.pointerId); } catch { }
     const mv = ev => {
-      const f = Math.min(1, Math.max(0, f0 + (ev.clientX - x0) / w0));
-      P.mkFrac[id] = f; P.picked = true;
-      const off = f * durOf(P.i);
-      P.g = startOf(P.i) + off; loadAt(P.i, off, false); updateUI();   // the frame the marker points at shows on the left
+      const bx = ruler(ev) - pxGrab, items = $$('.mt-item', strip);
+      let k = items.length - 1;
+      for (let j = 0; j < items.length; j++) { const L = items[j].offsetLeft, W = items[j].offsetWidth || 1; if (bx <= L + W) { k = j; break; } }
+      if (k < 0) k = 0;
+      const L = items[k].offsetLeft, W = items[k].offsetWidth || 1;
+      const f = Math.min(1, Math.max(0, (bx - L) / W));
+      P.i = k; P.mkFrac[MT.ids[k]] = f; P.picked = true;
+      const off = f * durOf(k);
+      P.g = startOf(k) + off; loadAt(k, off, false); updateUI();   // the frame the marker points at shows on the left
     };
     const up = ev => {
       head.classList.remove('drag');

@@ -124,6 +124,8 @@
 .mf{cursor:copy;text-decoration:underline dotted;user-select:all}
 .cw-zb{position:absolute;right:10px;top:10px;width:36px;height:36px;border-radius:10px;background:rgba(var(--ov-rgb),.78);display:grid;place-items:center;color:var(--text);z-index:2;backdrop-filter:blur(6px)}
 .cw-zb:hover{background:var(--accent);color:#fff}
+.cw-zb.rm{right:52px}
+.cw-zb.rm:hover{background:#c0303f}
 .cw-frame img#cwImage{cursor:zoom-in}
 .cw-th{position:relative}
 .cw-pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:14px}
@@ -2506,6 +2508,7 @@ function previewPanel(el, st, opts) {
       <img class="live-img" alt="" hidden>
       <video class="live-vid" autoplay loop muted playsinline hidden style="width:100%;height:100%;object-fit:contain"></video>
       <video class="result" controls loop playsinline hidden></video>
+      <button class="cw-zb rm" type="button" hidden title="Удалить этот ролик из Библиотеки: файл переместится в корзину Windows" aria-label="Удалить ролик"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>
       <button class="cw-zb expand" type="button" title="Развернуть в большое окно" aria-label="Развернуть в большое окно"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
       <div class="wait" hidden></div>
       <div class="live-hud" hidden><span class="live-dot"></span><span class="hud-t">Предпросмотр</span><span class="hud-s"></span></div>
@@ -2532,6 +2535,23 @@ function previewPanel(el, st, opts) {
   const liveImg = $('.live-img', el), result = $('.result', el), wait = $('.wait', el), liveVid = $('.live-vid', el);
   const expand = $('.expand', el);   // the clip finished: open it in the big viewer, as from the library
   expand.onclick = () => { if (result.dataset.dragid) openViewer(result.dataset.dragid, el._done ? normItem(el._done) : null); };
+  const rmBtn = $('.rm', el);        // ...and the same clip can be thrown away right here
+  rmBtn.onclick = () => {
+    const id = result.dataset.dragid; if (!id) return;
+    confirmBox('Удалить этот ролик?', 'Файл переместится в корзину Windows, оттуда его можно вернуть. Клипы и изображения, из которых он сделан, останутся в Библиотеке.', 'Удалить', async () => {
+      try {
+        const r = await fetch('/api/library/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [id] }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { toast(j.error || 'Не удалось удалить'); return; }
+        if ((j.failed || []).length) { toast('Файл не удалился, остался на месте'); return; }
+        const at = LIB.findIndex(x => x.id === id); if (at >= 0) LIB.splice(at, 1);
+        if (typeof selected !== 'undefined') selected.delete(id);
+        renderLib();
+      } catch (e) { toast(e.message); return; }
+      resetFrame(); $('.status', el).textContent = 'Ролик удалён из Библиотеки.';
+      toast('Ролик удалён в корзину');
+    });
+  };
   const STEP_MS = 420;
   let run = null;
   const pbox = $('.pbox', el), pboxBar = $('.pbox-bar i', el), pboxChip = $('.pbox-chip', el);
@@ -2565,7 +2585,7 @@ function previewPanel(el, st, opts) {
     liveVid.pause(); liveVid.removeAttribute('src'); liveVid.load();   // скрытое зацикленное видео иначе продолжает декодироваться
     pbox.hidden = true;
     [live, hud, liveImg, liveVid, result, wait].forEach(x => x.hidden = true);
-    result.pause(); result.removeAttribute('src'); el._done = null;
+    result.pause(); result.removeAttribute('src'); delete result.dataset.dragid; el._done = null; rmBtn.hidden = true;
     $('.res', frame).hidden = false; frame.classList.remove('done');
   }
   // «Очистить» in the section must empty this preview too, not only the fields
@@ -2692,7 +2712,7 @@ function previewPanel(el, st, opts) {
     if (kind === 'done') {
       liveVid.pause(); liveVid.removeAttribute('src'); liveVid.load();   // скрытое зацикленное видео иначе продолжает декодироваться
         [liveImg, liveVid, wait].forEach(x => x.hidden = true);
-      result.src = data.url; result.dataset.dragid = data.id; result.draggable = true; result.hidden = false; result.muted = true; result.play().catch(() => {});
+      result.src = data.url; result.dataset.dragid = data.id; result.draggable = true; result.hidden = false; result.muted = true; result.play().catch(() => {}); rmBtn.hidden = false;
       el._done = data;   // in the rare case the library has not caught up, the viewer still has the item
       frame.classList.add('done'); $('.hud-t', el).textContent = 'Готово'; $('.hud-s', el).textContent = took;
       status.innerHTML = `Готово за ${took} — видео в библиотеке. Seed: <b style="font-family:var(--mono)">${esc(String(data.seed ?? '—'))}</b> `

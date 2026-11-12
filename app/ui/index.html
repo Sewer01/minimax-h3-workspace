@@ -7558,7 +7558,8 @@ applyZoom();
     <div class="head"><div><h1>Монтаж</h1><p>Склейте клипы из Библиотеки в один ролик: добавьте их по порядку, при необходимости поменяйте местами и нажмите «Склеить»</p></div></div>
     <div class="grid"><div class="col">
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Клипы из Библиотеки</h3><span class="hint">нажмите на клип, чтобы добавить</span><button type="button" class="btn mini mt-pc" title="Добавить видео со своего компьютера">+ С компьютера</button><input type="file" class="mt-file" accept="video/*" multiple hidden></div><div class="mt-lib"></div><div class="hint mt-hid" style="margin-top:8px"></div></div>
-      <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок склейки</h3><span class="counter mt-total"></span><span class="mt-zoom"><button type="button" class="btn mini" data-z="-1" title="Мельче">−</button><button type="button" class="btn mini" data-z="0" title="Уместить всю ленту по ширине">По ширине</button><button type="button" class="btn mini" data-z="1" title="Крупнее">+</button></span></div>
+      <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок склейки</h3><span class="counter mt-total"></span><span class="mt-zoom"><button type="button" class="btn mini" data-z="-1" title="Мельче">−</button><button type="button" class="btn mini" data-z="0" title="Уместить всю ленту по ширине">По ширине</button><button type="button" class="btn mini" data-z="1" title="Крупнее">+</button></span>
+        <button type="button" class="btn mini mt-clear" title="Убрать из ленты все клипы (сами видео останутся в Библиотеке)">Очистить монтаж</button></div>
         <div class="mt-strip"></div>
         <div class="mt-vh" title="Потяните вверх или вниз: все блоки станут выше или ниже. Двойной щелчок: как было"><i></i></div>
         <div class="mt-scale"><span>1 секунда</span><input type="range" class="mt-px" min="8" max="90" step="1" title="Крупнее масштаб - точнее резать по времени"><span class="mt-px-x">26 px</span><span class="hint">этот ползунок и кнопки «−» «+» меняют только ширину ленты</span></div>
@@ -7696,8 +7697,9 @@ applyZoom();
   }
   function syncPlayer() {
     const n = MT.ids.length, tot = totalLen(); seek.max = Math.round(tot * 10);
-    if (!n) { P.picked = false; setPlaying(false); pv.removeAttribute('src'); delete pv.dataset.id; P.g = 0; P.i = 0; if (P.mode === 'seq') P.mode = MT.res ? 'res' : 'seq'; }
-    else if (!P.picked) { setPlaying(false); pv.removeAttribute('src'); delete pv.dataset.id; }   // nothing chosen yet: the window stays empty
+    const blank = () => { pv.removeAttribute('src'); delete pv.dataset.id; try { pv.load(); } catch { } };   // without load() the old frame stays on screen
+    if (!n) { P.picked = false; setPlaying(false); blank(); P.g = 0; P.i = 0; if (P.mode === 'seq') P.mode = MT.res ? 'res' : 'seq'; }
+    else if (!P.picked) { setPlaying(false); blank(); }   // nothing chosen yet: the window stays empty
     else { setPlaying(false); seekTo(Math.min(P.g, tot), false); }
     showMode(P.mode); updateUI();
   }
@@ -7742,6 +7744,13 @@ applyZoom();
     addEventListener('pointermove', mv); addEventListener('pointerup', up);
     mv(e);
   });
+  const focusClip = i => {        // the window follows what the person has just touched
+    if (i < 0 || i >= MT.ids.length) return;
+    P.picked = true; P.lim = null; P.i = i; P.mk = { i, off: 0 };
+    if (P.mode !== 'seq') P.mode = 'seq';
+    showMode('seq'); P.g = startOf(i); seekTo(P.g, false);
+  };
+  window.mtFocusClip = focusClip;
   playBtn.onclick = togglePlay;
   seek.oninput = () => { P.drag = true; P.picked = true; if (P.mode !== 'seq') showMode('seq'); seekTo(seek.value / 10, P.playing); };
   seek.onchange = () => { P.drag = false; };
@@ -7801,7 +7810,7 @@ applyZoom();
     const zb = e.target.closest('[data-z]'); if (zb) { const k = +zb.dataset.z; setPx(k > 0 ? MT.px * 1.25 : k < 0 ? MT.px * 0.8 : fitPx()); return; }
     const tb = e.target.closest('[data-pv]'); if (tb) { showMode(tb.dataset.pv); return; }
     const x = e.target.closest('[data-hide]'); if (x) { e.stopPropagation(); const id = x.dataset.hide; hideSet([...hidden(), id]); const k2 = MT.ids.map(v => v !== id); MT.cuts = MT.cuts.filter((_, i) => k2[i]); MT.ins = MT.ins.filter((_, i) => k2[i]); MT.ids = MT.ids.filter((_, i) => k2[i]); render(); return; }
-    const c = e.target.closest('.mt-card'); if (c) { MT.ids.push(c.dataset.id); MT.cuts.push(null); MT.ins.push(0); render(); return; }
+    const c = e.target.closest('.mt-card'); if (c) { MT.ids.push(c.dataset.id); MT.cuts.push(null); MT.ins.push(0); render(); focusClip(MT.ids.length - 1); return; }
     const it = e.target.closest('.mt-item'); if (!it) return; const i = +it.dataset.i;
     if (e.target.closest('[data-rm]')) { MT.ids.splice(i, 1); MT.cuts.splice(i, 1); MT.ins.splice(i, 1); render(); return; }
     const mv = e.target.closest('[data-mv]'); if (mv) { move(i, i + +mv.dataset.mv); return; }
@@ -7841,6 +7850,13 @@ applyZoom();
     h.addEventListener('pointermove', move2); h.addEventListener('pointerup', up);
   });
   root.addEventListener('click', e => {
+    if (e.target.closest('.mt-clear')) {
+      if (!MT.ids.length) { toast('Лента уже пуста'); return; }
+      const wipe = () => { MT.ids = []; MT.cuts = []; MT.ins = []; P.picked = false; P.lim = null; render(); toast('Лента очищена: клипы остались в Библиотеке'); };
+      if (MT.ids.length < 2) { wipe(); return; }
+      confirmBox('Очистить монтаж?', 'Из ленты уберутся все клипы. Сами видео останутся в Библиотеке, готовый ролик - тоже.', 'Очистить', wipe);
+      return;
+    }
     if (e.target.closest('.mt-treset')) { const i = trimI(); MT.cuts[i] = null; MT.ins[i] = 0; render(); toast('Клип снова целиком'); return; }
   });
   root.addEventListener('input', e => { if (e.target.matches('.mt-px')) setPx(+e.target.value); });

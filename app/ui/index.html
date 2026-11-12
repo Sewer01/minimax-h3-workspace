@@ -853,6 +853,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-run{position:absolute;top:15px;bottom:4px;width:2px;margin-left:-1px;background:var(--cloud,#9fd4ff);opacity:.85;pointer-events:none;z-index:4}
 .mt-cut{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:26px;height:26px;border-radius:9px;background:rgba(0,0,0,.78);
   border:1px solid var(--pink);color:#fff;font-size:13px;line-height:1;display:grid;place-items:center;cursor:pointer}
+.mt-cut.out{transform:translateY(-50%) scaleX(-1)}
 .mt-cut:hover{background:var(--pink);color:#111}
 .mt-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:8px}.mt-bar[hidden],.mt-tabs[hidden]{display:none}
 .mt-b button:disabled{opacity:.3;cursor:default}
@@ -7603,8 +7604,8 @@ applyZoom();
     if (MT.ids.length) $('.mt-strip', root).insertAdjacentHTML('beforeend',
       '<i class="mt-ph" title="Потяните за этот треугольник: метка встанет туда, где нужен рез. Слева показывается кадр, на который она указывает"></i><i class="mt-line"></i>'
       + '<i class="mt-run"></i>'
-      + '<i class="mt-cut" data-cut="in" title="Убрать всё до метки (начало куска встанет сюда)">✂</i>'
-      + '<i class="mt-cut" data-cut="out" title="Убрать всё после метки (конец куска встанет сюда)">✂</i>');
+      + '<i class="mt-cut" data-cut="in" title="Отрезать начало: убрать всё до метки">✂</i>'
+      + '<i class="mt-cut out" data-cut="out" title="Отрезать конец: убрать всё после метки">✂</i>');
     syncPlayer(); paintTrim();
     if (window.mtSaveState) { window.mtSaveState(); window.mtPipePaint(); }
   }
@@ -7651,7 +7652,7 @@ applyZoom();
     const mk = mkAt(), mx = xOf(mk.i, mk.off);   // the cut marker: it stays where you put it
     ph.style.left = mx + 'px'; if (ln) ln.style.left = mx + 'px';
     // the scissors stand on both sides of the marker: one click and the piece is cut there
-    $$('.mt-cut', strip).forEach(b => { b.style.left = (mx + (+b.dataset.cut === 1 ? 10 : -36)) + 'px'; });
+    $$('.mt-cut', strip).forEach(b => { b.style.left = (mx + (b.dataset.cut === 'out' ? 10 : -36)) + 'px'; });
     const gx = xOf(P.i, P.g - startOf(P.i));     // the running playhead: this one may move
     if (run) run.style.left = gx + 'px';
     if (P.playing && (gx < strip.scrollLeft + 20 || gx > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, gx - 60);

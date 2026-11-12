@@ -7613,16 +7613,15 @@ applyZoom();
   }
 
   /* preview player: the clips in the chosen order play one after another; the slider, a click on a clip and the playhead seek in the whole montage */
-  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, picked: false, mode: 'seq', loading: false, tok: 0, lim: null, mkOff: {} };
+  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, picked: false, mode: 'seq', loading: false, tok: 0, lim: null, mkFrac: {} };
   // The marker always stands on the clip that is in focus (P.i) and remembers its own place for each
   // clip by its name: switching clips cannot leave an invisible marker somewhere and use it later.
   const mkAt = () => {
     const id = MT.ids[P.i]; if (!id) return { i: 0, off: 0 };
-    const half = durOf(P.i) / 2;
-    let off = P.mkOff[id];
-    if (typeof off !== 'number') off = half;                                  // a new clip: the marker in the middle
-    P.mkOff[id] = Math.min(Math.max(0, off), Math.max(0, durOf(P.i) - 0.05));  // never outside the kept piece
-    return { i: P.i, off: P.mkOff[id] };
+    let f = P.mkFrac[id];
+    if (typeof f !== 'number') f = 0.5;                       // a clip nobody marked: the middle of the piece
+    P.mkFrac[id] = Math.min(1, Math.max(0, f));               // a share, so it stays in place as lengths arrive
+    return { i: P.i, off: Math.max(0, Math.min(durOf(P.i) - 0.05, P.mkFrac[id] * durOf(P.i))) };
   };
   const xOf = (i, off) => {
     const strip = $('.mt-strip', root), el = $$('.mt-item', strip)[i]; if (!el) return 0;
@@ -7740,8 +7739,8 @@ applyZoom();
       if ((left ? durOf(i) - at : at) < 0.3) { toast('После такой обрезки не останется и трети секунды'); return; }
       P.picked = true;
       const id = MT.ids[i];
-      if (left) { MT.ins[i] = +Math.min(999, inOf(i) + at).toFixed(2); P.mkOff[id] = 0; }   // the cut point became the new beginning
-      else { MT.cuts[i] = (inOf(i) + at) >= fullOf(i) - 0.05 ? null : +(inOf(i) + at).toFixed(2); P.mkOff[id] = durOf(i); }   // and stays at the new end
+      if (left) { MT.ins[i] = +Math.min(999, inOf(i) + at).toFixed(2); P.mkFrac[id] = 0; }   // the cut point became the new beginning
+      else { MT.cuts[i] = (inOf(i) + at) >= fullOf(i) - 0.05 ? null : +(inOf(i) + at).toFixed(2); P.mkFrac[id] = 1; }   // and stays at the new end
       setPlaying(false); render();
       return;
     }
@@ -7753,7 +7752,8 @@ applyZoom();
     const mv = ev => {
       const p = locate(timeAtX(ev.clientX).g - grabOff);
       P.picked = true;
-      P.i = p.i; P.mkOff[MT.ids[p.i]] = p.off;   // the marker moves with the focus, and the window shows its frame
+      P.i = p.i;   // the marker moves with the focus, and the window shows its frame
+      const dd = durOf(p.i); P.mkFrac[MT.ids[p.i]] = dd > 0.05 ? Math.min(1, Math.max(0, p.off / dd)) : 0.5;
       P.i = p.i; P.g = startOf(p.i) + p.off; loadAt(p.i, p.off, false); updateUI();   // the frame under the marker shows on the left
     };
     const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); if (was) setPlaying(true); };
@@ -7918,16 +7918,16 @@ applyZoom();
     box.innerHTML = h; box.hidden = !h;
   }
   window.mtPipePaint = pipePaint;
-  function showDone(item) {
+  function showDone(item, quiet) {   // quiet: remember the result, but do not steal the window from the ribbon
     const st = $('.mt-status', root), v = $('.mt-res', root);
-    v.src = item.url; v.muted = true; MT.res = true; showMode('res');
+    v.src = item.url; v.muted = true; MT.res = true; if (!quiet) showMode('res');
     st.innerHTML = 'Склейка завершена: ролик лежит в Библиотеке. <button class="btn pri" id="mtSave" type="button" style="padding:4px 12px;font-size:12px" title="Сохранить готовый ролик целиком на компьютер">Сохранить на компьютер</button> <button class="btn" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>';
     $('#mtSave', root).onclick = () => saveItems([byId(item.id) || normItem(item)]);
     $('#mtUp', root).onclick = () => openUpscale(byId(item.id) || normItem(item));
   }
   window.mtRestoreResult = () => {   // after a restart: show the joined video again if it is still in the Library
     const j = PIPE.joined, it = j && byId(j.id); if (!it || MT.res || it.missing) return;
-    showDone(it);
+    showDone(it, true);   // the tab appears and is clickable, the window keeps showing the ribbon
   };
 
   $('.mt-go', root).onclick = () => { if (+$('.mt-grain', root).value > 0) chain('none'); else joinNow(MT.ids.slice(), durList(), inList()); };

@@ -7636,6 +7636,20 @@ applyZoom();
   const totalLen = () => MT.ids.reduce((a, _, i) => a + durOf(i), 0);
   const startOf = i => { let a = 0; for (let j = 0; j < i; j++) a += durOf(j); return a; };
   function locate(g) { let a = 0; const n = MT.ids.length; for (let i = 0; i < n; i++) { const d = durOf(i); if (g < a + d - 1e-6 || i === n - 1) return { i, off: Math.min(d, Math.max(0, g - a)) }; a += d; } return { i: 0, off: 0 }; }
+  const absUrl = u => { try { return new URL(u, location.href).href; } catch { return String(u); } };
+  // What the element really shows is only known from currentSrc: the label we put on it is set
+  // before the browser has switched, and a clip nobody has in the ribbon could stay on screen while
+  // the code believed the right one was loaded. This puts the focused clip back, at most a bit/second.
+  const verifySource = () => {
+    const it = get(MT.ids[P.i]);
+    if (!P.picked || !it || !it.url) return;
+    if (Date.now() - (P.heal || 0) < 700) return;
+    const want = absUrl(it.url), real = pv.currentSrc || '';
+    if (real && real === want) return;
+    P.heal = Date.now();
+    loadAt(P.i, Math.max(0, P.g - startOf(P.i)), P.playing);
+  };
+  ['loadeddata', 'durationchange', 'error', 'emptied', 'stalled'].forEach(ev => pv.addEventListener(ev, () => setTimeout(verifySource, 120)));
   function loadAt(i, off, play) {
     const id = MT.ids[i], it = get(id);
     if (!it) {           // a clip that left the Library: never keep somebody else's video on screen
@@ -7645,7 +7659,7 @@ applyZoom();
     }
     P.miss = null;
     const tok = ++P.tok, go = () => { if (tok !== P.tok) return; P.loading = false; try { pv.currentTime = inOf(i) + off; } catch {} if (play) pv.play().catch(() => {}); };
-    if (pv.dataset.id !== id) {
+    if (pv.dataset.id !== id || (pv.currentSrc && pv.currentSrc !== absUrl(it.url))) {   // the label may lie; the loaded address does not
       P.loading = true; pv.dataset.id = id; pv.src = it.url;
       pv.addEventListener('loadedmetadata', () => { P.loading = false; go(); }, { once: true });
       pv.addEventListener('error', () => { P.loading = false; }, { once: true });
@@ -7656,6 +7670,7 @@ applyZoom();
   function seekTo(g, play) {
     if (!MT.ids.length) return;
     g = Math.min(Math.max(0, g), totalLen()); const L = locate(g); P.g = g; P.i = L.i; loadAt(L.i, L.off, play); updateUI();
+    setTimeout(verifySource, 350);   // a seek is a promise that the window shows this clip
   }
   function updateUI() {
     const tot = totalLen(); if (!P.drag) { seek.value = Math.round(P.g * 10); paintRange(seek); }   // the fill follows playback, not only the hand
@@ -7679,7 +7694,7 @@ applyZoom();
     if (run) run.style.left = gx + 'px';
     if (P.playing && (gx < strip.scrollLeft + 20 || gx > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, gx - 60);
   }
-  function setPlaying(on) { P.playing = on; playBtn.textContent = on ? '⏸' : '▶'; clearInterval(P.raf); if (on) P.raf = setInterval(tick, 40); else pv.pause(); }
+  function setPlaying(on) { P.playing = on; playBtn.textContent = on ? '⏸' : '▶'; clearInterval(P.raf); if (on) P.raf = setInterval(tick, 40); else pv.pause(); setTimeout(verifySource, 200); }
   const pieceEnd = i => inOf(i) + durOf(i);   // where the kept piece stops, on the clock of the file
   function atEnd(t) {                          // called by the timer and by the video itself
     if (!P.playing || P.i >= MT.ids.length) return;
@@ -7689,10 +7704,8 @@ applyZoom();
   function tick() {
     if (!P.playing) return;
     if (P.lim && P.g >= P.lim[1] - 0.03) { setPlaying(false); P.g = P.lim[1]; P.lim = null; updateUI(); return; }   // a preview of one side stops at the marker
+    if (pv.readyState >= 2) verifySource();
     if (pv.readyState >= 2) {
-      if (!P.loading && pv.dataset.id !== MT.ids[P.i] && Date.now() - (P.heal || 0) > 800) {   // the screen shows another clip than the focused one: put the right one back, not more often than twice a second
-        P.heal = Date.now(); loadAt(P.i, Math.max(0, P.g - startOf(P.i)), P.playing); return;
-      }
       const d = durOf(P.i), t = pv.currentTime, from = inOf(P.i);   // the video counts from the whole file, we keep a piece of it
       if (pv.dataset.id === MT.ids[P.i] && t > pieceEnd(P.i) + 0.25) { pv.currentTime = from; return; }   // never let it run past the cut
       if (!pv.seeking && (t >= pieceEnd(P.i) - 0.04 || pv.ended)) {

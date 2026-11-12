@@ -7682,10 +7682,9 @@ applyZoom();
       const d = durOf(P.i), t = pv.currentTime, from = inOf(P.i);   // the video counts from the whole file, we keep a piece of it
       if (pv.dataset.id === MT.ids[P.i] && t > pieceEnd(P.i) + 0.25) { pv.currentTime = from; return; }   // never let it run past the cut
       if (!pv.seeking && (t >= pieceEnd(P.i) - 0.04 || pv.ended)) {
-        atEnd(t);
-        if (P.i < MT.ids.length - 1) { P.i++; P.g = startOf(P.i); loadAt(P.i, 0, true); }
-        else { setPlaying(false); P.g = totalLen(); updateUI(); return; }
-      } else P.g = startOf(P.i) + Math.max(0, t - from);
+        atEnd(t); return;   // atEnd itself moves to the next clip or stops: moving twice here skipped one
+      }
+      P.g = startOf(P.i) + Math.max(0, t - from);
       updateUI();
     }
   }
@@ -7820,7 +7819,16 @@ applyZoom();
     }
     render();
   };
-  const move = (i, j) => { if (j < 0 || j >= MT.ids.length) return; const [x] = MT.ids.splice(i, 1), [c] = MT.cuts.splice(i, 1), [bi] = MT.ins.splice(i, 1); MT.ids.splice(j, 0, x); MT.cuts.splice(j, 0, c); MT.ins.splice(j, 0, bi); render(); };
+  const move = (i, j) => {
+    if (j < 0 || j >= MT.ids.length) return;
+    const id = MT.ids[i];
+    const [x] = MT.ids.splice(i, 1), [c] = MT.cuts.splice(i, 1), [bi] = MT.ins.splice(i, 1);
+    MT.ids.splice(j, 0, x); MT.cuts.splice(j, 0, c); MT.ins.splice(j, 0, bi);
+    // the focus follows the clip it was on, and the playhead goes to that clip's marker: positions in
+    // the old order must not point at another clip after a swap
+    P.i = Math.max(0, MT.ids.indexOf(id)); P.lim = null; P.g = startOf(P.i) + mkAt().off;
+    render();
+  };
   root.addEventListener('click', e => {
     if (e.target.closest('[data-showall]')) { hideSet([]); render(); return; }
     const zb = e.target.closest('[data-z]'); if (zb) { const k = +zb.dataset.z; setPx(k > 0 ? MT.px * 1.25 : k < 0 ? MT.px * 0.8 : fitPx()); return; }

@@ -4697,10 +4697,33 @@ function makeRefMode(cfg) {
       if (!blob) throw fail;
       return new File([blob], 'last_frame.png', { type: 'image/png' });
     };
+    // the frame taken from your video is not "just another picture": it stands first, the rest
+    // shift behind it and the fifth one leaves - the model gets nine pictures in total
+    const frameToFirst = async file => {
+      const slots = () => $$('.ref', imgsEl), max = slots().length;
+      let target = slots().find(r => !r.classList.contains('filled'));
+      let pushed = false;
+      if (!target) {
+        const last = [...slots()].reverse().find(r => r.classList.contains('filled'));
+        if (!last) return null;
+        last.querySelector('.x')?.click(); pushed = true;
+        target = slots().find(r => !r.classList.contains('filled'));
+      }
+      if (!target) return null;
+      await putInto($('input', target), file);
+      imgsEl.prepend(target);
+      slots().forEach((r, i) => { const cn = $('.cnt', r); if (cn) cn.textContent = `${i + 1}/${max}`; });
+      let b = target.querySelector('.fromvid');
+      if (!b) { b = document.createElement('i'); b.className = 'fromvid'; b.textContent = 'кадр видео'; target.append(b); }
+      b.style.cssText = 'position:absolute;left:4px;bottom:4px;font-style:normal;font-size:10px;padding:2px 6px;border-radius:6px;background:rgba(232,38,79,.92);color:#fff;z-index:3';
+      changed();
+      root._srcFrame = target;
+      return { slot: target, pushed };
+    };
     root._setSrc = (src, fresh = true) => {   // src: { id } of a library clip or { file } from the computer; null removes it
       root._src = src || null;
       $('.lm-src', root).hidden = !src; $('.lm-srcname', root).textContent = src ? src.name : '';
-      if (!src && root._srcFrame) { const el = root._srcFrame; root._srcFrame = null; $('.x', el)?.click(); }   // the frame taken from your video leaves together with it
+      if (!src && root._srcFrame) { const el = root._srcFrame; root._srcFrame = null; $('.fromvid', el)?.remove(); $('.x', el)?.click(); $$('.ref', imgsEl).forEach((r, i) => { const cn = $('.cnt', r); if (cn) cn.textContent = `${i + 1}/${$$('.ref', imgsEl).length}`; }); }   // the frame of your video leaves with it, the numbers come back
       if (src && fresh) { root._run = Math.random().toString(36).slice(2, 12); $$('.sc', root).forEach(c => { c._dn = { draft: null, final: null }; }); }
       if (src) setMode('parts');
       $('.lm-mode [data-m="all"]', root).disabled = !!src;
@@ -4710,8 +4733,11 @@ function makeRefMode(cfg) {
     // nine pictures in a scene, counted from the text; a chip for a picture the text does not call
     // has no right to add itself when all nine places are taken
       root._free = (k, sc) => {
-      if (!sc || !sc._used || sc._used.size + (sc._res || 0) < 9 || sc._used.has(k)) return true;
-      toast('В сцене занято все 9 фото. Уберите из текста другой тег - тогда это фото освободит себе место.');
+      if (!sc || !sc._used) return true;
+      const cap = sc._cap || 9;
+      if (sc._frame && k === 1) return true;   // the frame of your video: always there, not your place
+      if (sc._used.size < cap || sc._used.has(k)) return true;
+      toast(`В сцене занято все ${cap} мест${sc._frame ? ' (<Picture 1> держит кадр вашего видео)' : ''}. Уберите из текста другой тег - тогда это фото освободит себе место.`);
       return false;
     };
     $('.lm-srcx', root).onclick = () => root._setSrc(null);
@@ -4720,10 +4746,9 @@ function makeRefMode(cfg) {
       root._setSrc({ id: it.id, name: (it.label || it.prompt || it.sub || 'видео из Библиотеки').slice(0, 50) });
       if (root._base !== 'cont') setBase('cont');
       try {
-        const frame = await lastFrameFile(await libToFile(it));
-        const slot = $$('.ref:not(.filled) input', imgsEl)[0];
-        if (slot) { root._srcFrame = slot.closest('.ref'); await putInto(slot, frame); }
-        toast('Взяли видео из Библиотеки: его последний кадр встал первым общим референсом.');
+        const place = await frameToFirst(await lastFrameFile(await libToFile(it)));
+        if (place) toast('Взяли видео из Библиотеки. Его последний кадр - теперь <Picture 1> (помечен «кадр видео»' + (place.pushed ? ', пятая картинка освободила для него место' : '') + '); вам доступно 8 мест.');
+        else toast('Видео принято, но свободных мест под кадр нет - добавьте изображения героя и места сами.');
       } catch (err) { toast('Видео принято. Последний кадр прочитать не удалось - добавьте изображения героя и места сами.'); }
     };
     $('.lm-srclib', root).onclick = () => {
@@ -4747,14 +4772,9 @@ function makeRefMode(cfg) {
         let frame = null, why = '';
         try { frame = await lastFrameFile(f); } catch (err) { why = err.message; }
         root._setSrc({ file: f, name: f.name });   // the video itself is usable even when its last frame cannot be read
-        if (frame && $$('.ref:not(.filled) input', imgsEl)[0]) {
-          const slot = $$('.ref:not(.filled) input', imgsEl)[0];
-          root._srcFrame = slot.closest('.ref');
-          await putInto(slot, frame);
-          toast('Видео загружено: последний кадр встал первым референсом, добавьте остальные изображения и опишите сцену.');
-        } else {
-          toast(why + ' Видео принято - сцена продолжит его, но первый референс не подставился: добавьте изображения героя и места сами.');
-        }
+        const place = frame ? await frameToFirst(frame) : null;
+        if (place) toast('Видео загружено. Его последний кадр - теперь <Picture 1> (помечен «кадр видео»' + (place.pushed ? ', пятая картинка освободила для него место' : '') + '); остальные сдвинулись, вам доступно 8 мест.');
+        else toast((why || 'Кадр взять не удалось') + ' Видео принято - сцена продолжит его, но первым референсом кадр не стал: добавьте изображения героя и места сами.');
       } catch (err) { toast(err.message); }
     };
     root._setScenes = list => {   // from the agent: replace all scenes
@@ -4809,7 +4829,7 @@ function makeRefMode(cfg) {
       if (b === 'cont') setMode('parts');
       root._lockBase();
       baseHint.innerHTML = b === 'cont'
-        ? '<b>«Продолжить своё видео»</b>: программа берёт последние кадры вашего файла, и первая сцена продолжает их, как будто это была прошлая сцена. Считается только по частям - режим «весь ролик» здесь не нужен и скрыт. Конец файла займёт одно из 5 мест общих изображений; это место входит в 9 фото, которые сцена может нести вместе с общими и своими. Нажмите «Загрузи своё видео» под выбором: «С компьютера…» или «Из Библиотеки…».'
+        ? '<b>«Продолжить своё видео»</b>: программа берёт последние кадры вашего файла, и первая сцена продолжает их, как будто это была прошлая сцена. Считается только по частям - режим «весь ролик» здесь не нужен и скрыт. Конец файла становится первым общим референсом <Picture 1> (плитка помечена «кадр видео»): остальные изображения сдвигаются, пятое уходит, и вам остаётся 8 мест в сцене. Нажмите «Загрузи своё видео» под выбором: «С компьютера…» или «Из Библиотеки…».'
         : '<b>«Новые сцены»</b>: ролик строится с нуля по описаниям сцен, доступны оба режима счёта - «по частям» и «весь ролик». Общая картинка сцены и её собственные фото делят 9 мест: сначала идут общие (<Picture 1>…), затем свои (<Picture 10>…).';
       if (b !== 'cont') root._setSrc(null);
       refreshStates();
@@ -4955,38 +4975,37 @@ function makeRefMode(cfg) {
       $('textarea', c).insertAdjacentHTML('afterend', '<div class="sc-tokens" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0"></div>');
       box.append(c); attachRu($('textarea', c));
       $('.ru-wrap', c)?.insertAdjacentHTML('beforeend', '<span class="sc-left hint" style="font-size:12px;margin-left:10px"></span>');
-      c._counter = () => {   // what counts is what the text actually calls: <Picture 1..9> and <Picture 10..>
+      c._counter = () => {   // what counts is what the text calls; the frame of your video holds <Picture 1>
         const el = $('.sc-left', c); if (!el) return;
         const common = $$('.ref.filled', imgsEl).length, own = c._files.length;
+        const frame = !!root._srcFrame, cap = frame ? 8 : 9;   // the ninth place is the frame's, not yours
         const used = new Set();
         ($('textarea', c).value.match(/<\s*Picture\s*(\d+)\s*>/g) || []).forEach(x => {
           const k = +x.replace(/\D+/g, '');
+          if (k === 1 && frame) return;   // <Picture 1> is the frame: it is there anyway
           if (k < 10 ? k >= 1 && k <= common : (k - 10) < own) used.add(k);
         });
-        const taken = root._srcFrame ? 1 : 0;   // the frame of your own video goes to the model anyway
-        c._res = taken;
-        const n = used.size + taken, left = 9 - n;
-        c._used = used;   // what the text calls - the chip clicks ask this, not the colours
-        let line = '';
-        if (n > 9) line = `в тексте ${n} разных фото - в модель войдут первые 9, новых тегов не берите`;
-        else if (n === 0) line = `в сцену влезет ещё 9 фото (загружено: общих ${common}, своих ${own})`;
-        else line = left > 2 ? `в тексте занято ${n} из 9 фото` : left > 0 ? `занято ${n} из 9 - свободно ещё ${left}` : `занято все 9 фото - новых теги не примутся`;
-        if (taken) line += (line ? ' · ' : '') + 'кадр из вашего видео держит 1 место из 9';
-        el.textContent = line;
+        c._used = used; c._cap = cap; c._frame = frame;
+        const n = used.size, left = cap - n;
+        el.textContent = (n > cap ? `в тексте ${n} разных фото - в модель войдут первые ${cap}, новых тегов не берите`
+          : n === 0 ? `свободно все ${cap} фото (загружено: общих ${common}, своих ${own})`
+          : left > 2 ? `занято ${n} из ${cap} фото`
+          : left > 0 ? `занято ${n} из ${cap} - свободно ещё ${left}`
+          : `все ${cap} мест заняты - уберите тег, чтобы добавить другое фото`)
+          + (frame ? ' · <Picture 1> - кадр вашего видео' : '');
         el.style.color = left <= 0 ? 'var(--pink)' : left <= 2 ? 'var(--warn, #e8a31d)' : '';
-        // at the limit the pictures the text does not call are locked until another tag is removed
-        // only the scene you are looking at owns the shared row of common chips: the hidden scenes
+        // only the scene you write in owns the shared row of common chips: the hidden scenes
         // must not re-enable it from their own texts after every recount
         const owner = (root._ta && root._ta.closest && root._ta.closest('.sc')) || $$('.sc', root)[root._sel];
-        const mine = owner === c || c.offsetParent !== null;   // the scene you write in owns the shared row
+        const mine = owner === c || c.offsetParent !== null;
         const mark = host => $$('.token', host).forEach(b => {
           const k = +(b.textContent.match(/\d+/) || [0])[0];
           if (!b.dataset.otitle) b.dataset.otitle = b.title;
-          const free = used.has(k) || left > 0;
+          const free = (frame && k === 1) || used.has(k) || left > 0;
           b.disabled = !free;
           b.style.opacity = free ? '' : '.38';
           b.style.cursor = free ? '' : 'not-allowed';
-          b.title = free ? b.dataset.otitle : 'Мест в сцене нет: уберите из текста другой тег';
+          b.title = free ? b.dataset.otitle : `Мест нет: все ${cap} заняты. Уберите из текста другой тег`;
         });
         mark($('.sc-tokens', c) || document.createElement('i'));
         if (mine) mark($('.rm-tokens', root) || document.createElement('i'));

@@ -4838,10 +4838,12 @@ function makeRefMode(cfg) {
         const bx = $('.sc-thumbs', c); bx.querySelectorAll('.sc-th').forEach(x => x.remove());
         c._files.forEach((f, j) => {
           const sp = document.createElement('span'); sp.className = 'sc-th'; sp.style.cssText = 'position:relative;display:inline-block';
+          const tag = document.createElement('i'); tag.textContent = `Pic ${10 + j}`;
+          tag.style.cssText = 'position:absolute;left:4px;top:4px;font-style:normal;font-size:10px;padding:1px 5px;border-radius:6px;background:rgba(0,0,0,.65);color:#fff';
           const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.title = `<Picture ${10 + j}>`; im.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line-2);display:block';
           const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.className = 'btn'; x.style.cssText = 'position:absolute;top:-7px;right:-7px;padding:0 6px;font-size:11px;line-height:18px';
           x.onclick = () => { c._files.splice(j, 1); paintRefs(); refreshStates(); };
-          sp.append(im, x); bx.insertBefore(sp, bx.querySelector('.sc-img'));
+          sp.append(im, tag, x); bx.insertBefore(sp, bx.querySelector('.sc-img'));
         });
         const tk = $('.sc-tokens', c);
         if (tk) tk.innerHTML = c._files.map((_, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="Вставить в текст сцены тег <Picture ${10 + j}> - это ваше фото номер ${j + 1}">&lt;Pic ${10 + j}&gt;</button>`).join('');
@@ -4866,10 +4868,17 @@ function makeRefMode(cfg) {
       $('textarea', c).insertAdjacentHTML('afterend', '<div class="sc-tokens" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0"></div>');
       box.append(c); attachRu($('textarea', c));
       $('.ru-wrap', c)?.insertAdjacentHTML('beforeend', '<span class="sc-left hint" style="font-size:12px;margin-left:10px"></span>');
-      c._counter = () => {   // the model takes nine pictures in total: the common ones and this scene's own share that number
+      c._counter = () => {   // what counts is what the text actually calls: <Picture 1..9> and <Picture 10..>
         const el = $('.sc-left', c); if (!el) return;
-        const common = $$('.ref.filled', imgsEl).length, own = c._files.length, left = 9 - common - own;
-        el.textContent = left > 2 ? `в сцену влезет ещё ${left} фото` : left > 0 ? `осталось ${left} фото из 9` : `предел: 9 фото (общие ${common} + свои ${own})`;
+        const common = $$('.ref.filled', imgsEl).length, own = c._files.length;
+        const used = new Set();
+        ($('textarea', c).value.match(/<\s*Picture\s*(\d+)\s*>/g) || []).forEach(x => {
+          const k = +x.replace(/\D+/g, '');
+          if (k < 10 ? k >= 1 && k <= common : (k - 10) < own) used.add(k);
+        });
+        const n = used.size, left = 9 - n;
+        el.textContent = n ? (left > 2 ? `в тексте занято ${n} из 9 фото` : left > 0 ? `занято ${n} из 9 - свободно ещё ${left}` : `занято все 9 фото - новых теги не примутся`)
+          : `в сцену влезет ещё 9 фото (загружено: общих ${common}, своих ${own})`;
         el.style.color = left <= 0 ? 'var(--pink)' : left <= 2 ? 'var(--warn, #e8a31d)' : '';
       };
       $('.sc-tokens', c).onclick = e => {   // a chip puts its tag where the cursor stands
@@ -4899,7 +4908,7 @@ function makeRefMode(cfg) {
         const sf = $('.sc-fresh', c); if (sf) sf.checked = false;
         refreshStates(); recount(); toast('Сцена очищена');
       };
-      $('textarea', c).addEventListener('input', () => refreshStates());
+      $('textarea', c).addEventListener('input', () => { c._counter?.(); refreshStates(); });   // the count follows the tags you type
       $('textarea', c).addEventListener('focus', e => { root._ta = e.target; });
       $('input[type=range]', c).oninput = recount; $('.x', c).onclick = () => { root._pushUndo?.(); c.remove(); recount(); };
       fin.addEventListener('change', () => refreshStates());
@@ -5099,6 +5108,8 @@ function makeRefMode(cfg) {
       if (chips && host && !host.contains(chips)) host.insertAdjacentElement('afterend', chips);
       fin.after(clrSc);
       $('#lmAdd', root).hidden = true;   // the plus on the ribbon is the way to add a scene
+      const ownBtn = $('.lm-srcfile', root)?.closest('label'), rCard = $('.rm-imgs', root)?.closest('.card');
+      if (ownBtn && rCard) { ownBtn.style.marginTop = '0'; ownBtn.style.marginBottom = '12px'; rCard.insertAdjacentElement('beforebegin', ownBtn); }   // the work in this mode starts here
     }));
     $('#lmAdd', root).onclick = () => { if ($$('.sc', root).length >= 20) { toast('Не больше 20 сцен — это уже полчаса расчёта'); return; } addScene('', 10); };
     queueMicrotask(() => { addScene('', 10); addScene('', 10); });  // after the rest of the set-up is done

@@ -850,6 +850,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-ph:hover{background:#fff}
 .mt-ph:active{cursor:grabbing}
 .mt-line{position:absolute;top:15px;bottom:4px;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px var(--pink);pointer-events:none;z-index:5}
+.mt-run{position:absolute;top:15px;bottom:4px;width:2px;margin-left:-1px;background:var(--cloud,#9fd4ff);opacity:.85;pointer-events:none;z-index:4}
 .mt-cut{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:26px;height:26px;border-radius:9px;background:rgba(0,0,0,.78);
   border:1px solid var(--pink);color:#fff;font-size:13px;line-height:1;display:grid;place-items:center;cursor:pointer}
 .mt-cut:hover{background:var(--pink);color:#111}
@@ -7561,7 +7562,7 @@ applyZoom();
         <div class="mt-vh" title="Потяните вверх или вниз: все блоки станут выше или ниже. Двойной щелчок: как было"><i></i></div>
         <div class="mt-scale"><span>1 секунда</span><input type="range" class="mt-px" min="8" max="90" step="1" title="Крупнее масштаб - точнее резать по времени"><span class="mt-px-x">26 px</span><span class="hint">этот ползунок и кнопки «−» «+» меняют только ширину ленты</span></div>
         <div class="mt-trim" hidden></div>
-        <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Метка перетаскивается за треугольник сверху - слева показывается кадр, на который она указывает. Клик по клипу слева от метки играет от начала оставленного куска до метки, клик справа - от метки до конца куска. Ножницы: левая убирает всё до метки, правая - всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
+        <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Метка реза (треугольник сверху) стоит там, куда её поставили, и не убегает во время показа; голубая линия - это бегунок воспроизведения. Клик по клипу слева от метки играет от начала оставленного куска до метки, клик справа - от метки до конца куска. Ножницы: левая убирает всё до метки, правая - всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
       <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж</b>добавьте клипы: здесь можно будет посмотреть, как они идут подряд, а потом появится готовый ролик</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
@@ -7601,6 +7602,7 @@ applyZoom();
     $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
     if (MT.ids.length) $('.mt-strip', root).insertAdjacentHTML('beforeend',
       '<i class="mt-ph" title="Потяните за этот треугольник: метка встанет туда, где нужен рез. Слева показывается кадр, на который она указывает"></i><i class="mt-line"></i>'
+      + '<i class="mt-run"></i>'
       + '<i class="mt-cut" data-cut="in" title="Убрать всё до метки (начало куска встанет сюда)">✂</i>'
       + '<i class="mt-cut" data-cut="out" title="Убрать всё после метки (конец куска встанет сюда)">✂</i>');
     syncPlayer(); paintTrim();
@@ -7608,7 +7610,18 @@ applyZoom();
   }
 
   /* preview player: the clips in the chosen order play one after another; the slider, a click on a clip and the playhead seek in the whole montage */
-  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, mode: 'seq', loading: false, tok: 0, lim: null };
+  const P = { g: 0, i: 0, playing: false, raf: 0, drag: false, mode: 'seq', loading: false, tok: 0, lim: null, mk: { i: 0, off: 0 } };
+  // P.mk - the place of the cut (a clip and seconds inside its kept piece); P.g - where playback is.
+  // They are separate on purpose: the preview must not carry the marker away.
+  const mkAt = () => {
+    if (P.mk.i >= MT.ids.length) P.mk = { i: 0, off: 0 };
+    P.mk.off = Math.min(Math.max(0, P.mk.off), durOf(P.mk.i));
+    return P.mk;
+  };
+  const xOf = (i, off) => {
+    const strip = $('.mt-strip', root), el = $$('.mt-item', strip)[i]; if (!el) return 0;
+    return el.offsetLeft + Math.min(1, Math.max(0, off / (durOf(i) || 1))) * el.offsetWidth;
+  };
   const pv = $('.mt-pv', root), bar = $('.mt-bar', root), seek = $('.mt-seek', root), playBtn = $('.mt-play', root), timeEl = $('.mt-time', root);
   const mmss = s => { s = Math.max(0, s); return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0'); };
   const totalLen = () => MT.ids.reduce((a, _, i) => a + durOf(i), 0);
@@ -7632,14 +7645,16 @@ applyZoom();
   function updateUI() {
     const tot = totalLen(); if (!P.drag) seek.value = Math.round(P.g * 10);
     timeEl.textContent = mmss(P.g) + ' / ' + mmss(tot);
-    const strip = $('.mt-strip', root), ph = $('.mt-ph', strip), ln = $('.mt-line', strip), items = $$('.mt-item', strip); if (!ph || !items.length) return;
+    const strip = $('.mt-strip', root), ph = $('.mt-ph', strip), ln = $('.mt-line', strip), run = $('.mt-run', strip), items = $$('.mt-item', strip); if (!ph || !items.length) return;
     items.forEach((x, k) => x.classList.toggle('cur', k === P.i));
-    const el = items[P.i]; if (!el) return;
-    const x = el.offsetLeft + Math.min(1, Math.max(0, (P.g - startOf(P.i)) / durOf(P.i))) * el.offsetWidth;
-    ph.style.left = x + 'px'; if (ln) ln.style.left = x + 'px';
+    if (!items[P.i]) return;
+    const mk = mkAt(), mx = xOf(mk.i, mk.off);   // the cut marker: it stays where you put it
+    ph.style.left = mx + 'px'; if (ln) ln.style.left = mx + 'px';
     // the scissors stand on both sides of the marker: one click and the piece is cut there
-    $$('.mt-cut', strip).forEach(b => { b.style.left = (x + (+b.dataset.cut === 1 ? 10 : -36)) + 'px'; });
-    if (P.playing && (x < strip.scrollLeft + 20 || x > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, x - 60);
+    $$('.mt-cut', strip).forEach(b => { b.style.left = (mx + (+b.dataset.cut === 1 ? 10 : -36)) + 'px'; });
+    const gx = xOf(P.i, P.g - startOf(P.i));     // the running playhead: this one may move
+    if (run) run.style.left = gx + 'px';
+    if (P.playing && (gx < strip.scrollLeft + 20 || gx > strip.scrollLeft + strip.clientWidth - 20)) strip.scrollLeft = Math.max(0, gx - 60);
   }
   function setPlaying(on) { P.playing = on; playBtn.textContent = on ? '⏸' : '▶'; clearInterval(P.raf); if (on) P.raf = setInterval(tick, 40); else pv.pause(); }
   const pieceEnd = i => inOf(i) + durOf(i);   // where the kept piece stops, on the clock of the file
@@ -7698,18 +7713,24 @@ applyZoom();
     const cut = e.target.closest('.mt-cut');
     if (cut) {                               // one click of the scissors cuts the clip at the marker
       e.preventDefault(); e.stopPropagation();
-      const i = P.i, at = inOf(i) + Math.max(0, Math.min(durOf(i), P.g - startOf(i)));
+      const mk = mkAt(), i = mk.i, at = mk.off;      // the cut happens where the marker stands
       const left = cut.dataset.cut === 'in';
-      if ((left ? pieceEnd(i) - at : at - inOf(i)) < 0.3) { toast('После такой обрезки не останется и трети секунды'); return; }
-      if (left) MT.ins[i] = +at.toFixed(2);
-      else MT.cuts[i] = at >= fullOf(i) - 0.05 ? null : +at.toFixed(2);
+      if ((left ? durOf(i) - at : at) < 0.3) { toast('После такой обрезки не останется и трети секунды'); return; }
+      if (left) { MT.ins[i] = +Math.min(999, inOf(i) + at).toFixed(2); P.mk = { i, off: 0 }; }   // the cut point became the new beginning
+      else { MT.cuts[i] = (inOf(i) + at) >= fullOf(i) - 0.05 ? null : +(inOf(i) + at).toFixed(2); P.mk = { i, off: durOf(i) }; }   // and stays at the new end
       setPlaying(false); render();
       return;
     }
     if (!e.target.closest('.mt-ph')) return;  // the marker: drag it and the preview shows that frame
     e.preventDefault(); e.stopPropagation();
     const was = P.playing; setPlaying(false);
-    const mv = ev => { const p = timeAtX(ev.clientX); P.i = p.i; seekTo(p.g, false); };
+    const mk = mkAt(), grabAt = timeAtX(e.clientX).g;   // how far from the marker the pointer took it
+    const grabOff = grabAt - (startOf(mk.i) + mk.off);
+    const mv = ev => {
+      const p = locate(timeAtX(ev.clientX).g - grabOff);
+      P.mk = { i: p.i, off: p.off };
+      P.i = p.i; P.g = startOf(p.i) + p.off; loadAt(p.i, p.off, false); updateUI();   // the frame under the marker shows on the left
+    };
     const up = () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); if (was) setPlaying(true); };
     addEventListener('pointermove', mv); addEventListener('pointerup', up);
     mv(e);
@@ -7780,9 +7801,10 @@ applyZoom();
     if (e.target.closest('.mt-rh') || P.mode !== 'seq') { if (P.mode !== 'seq') showMode('seq'); else return; }
     const r = it.getBoundingClientRect();
     const at = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * durOf(i);   // where in this clip they clicked
-    if (i === P.i && Math.abs(at - (P.g - startOf(P.i))) > 0.02) {
+    const m = mkAt();
+    if (i === m.i && Math.abs(at - m.off) > 0.02) {
       // left of the marker: show the kept beginning up to the marker; right of it: from the marker to the kept end
-      const mk = Math.max(0, Math.min(durOf(i), P.g - startOf(P.i)));
+      const mk = Math.max(0, Math.min(durOf(i), m.off));
       P.lim = at < mk ? [startOf(P.i), startOf(P.i) + mk] : [startOf(P.i) + mk, startOf(P.i) + durOf(i)];
       seekTo(P.lim[0], true); setPlaying(true); updateUI(); return;
     }

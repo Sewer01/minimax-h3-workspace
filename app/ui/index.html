@@ -481,8 +481,8 @@ details[open] summary::before{content:'－ '}
 .drop.filled .cnt{right:40px}
 /* зоны, которые начали принимать перетаскивание, подсвечиваются так же, как рамки */
 .slot.over,.ref.over,#agAtt.over{outline:2px dashed var(--accent);outline-offset:-2px}
-.refs{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:10px}
-.ref{position:relative;aspect-ratio:3/4;border-radius:12px;border:1.5px dashed var(--line-2);background:var(--bg-2);display:grid;place-items:center;cursor:pointer;overflow:hidden;transition:.15s}
+.refs{--refh:148px;--refw:112px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+.ref{position:relative;height:var(--refh,148px);width:var(--refw,112px);border-radius:12px;border:1.5px dashed var(--line-2);background:var(--bg-2);display:grid;place-items:center;cursor:pointer;overflow:hidden;transition:.15s}
 .ref:hover{border-color:var(--accent)}
 .ref .plus{display:grid;justify-items:center;gap:4px;color:var(--dim);font-size:11.5px}
 .ref .plus svg{width:20px;height:20px}
@@ -760,8 +760,8 @@ body.dropping::after{content:'Отпустите — программа разл
 .slot:hover{border-color:var(--accent)}
 .slot.filled{border-style:solid;border-color:var(--line)}
 .slot.filled.bad{border-color:var(--pink)}
-.refs .slot{aspect-ratio:3/4}   /* the video slot in the row of pictures has the same empty size as a picture slot */
-.refs .slot.wide{grid-column:span 2}
+.refs .slot{height:var(--refh,148px);width:var(--refw,112px)}   /* the video slot in the row of pictures has the same empty size as a picture slot */
+.refs .slot.wide{width:calc(var(--refw,112px) * 1.6)}
 .slot.vthumb{background-size:cover;background-position:center;border-color:#3fd18b}
 .slot.vthumb svg{display:none}
 .slot.vthumb span{color:#3fd18b;font-weight:800;font-size:13px;text-shadow:0 1px 4px #000}
@@ -2852,11 +2852,12 @@ function loraForm(st, fd) { Object.entries(st.loras || {}).forEach(([k, s]) => f
 function fitSlot(r, img) {
   const go = () => {
     const ratio = Math.min(16 / 9, Math.max(9 / 16, img.naturalWidth / img.naturalHeight));
-    r.style.aspectRatio = ratio.toFixed(4); r.classList.toggle('wide', ratio > 1.2);
+    r.style.width = `calc(var(--refh, 148px) * ${ratio.toFixed(4)})`;   // the row keeps one height, the width follows the photo
+    r.classList.toggle('wide', ratio > 1.2);
   };
   img.complete && img.naturalWidth ? go() : img.addEventListener('load', go, { once: true });
 }
-function resetSlot(r) { r.style.aspectRatio = ''; r.classList.remove('wide'); }
+function resetSlot(r) { r.style.aspectRatio = ''; r.style.width = ''; r.classList.remove('wide'); }
 
 /* ---------- cells of pictures ----------
    dragging a filled cell onto another swaps them: the order of the cells is the order of

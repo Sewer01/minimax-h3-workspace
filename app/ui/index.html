@@ -4424,6 +4424,27 @@ function makeRefMode(cfg) {
       });
   };
 
+  // references are numbered without gaps, in the order they stand: when one leaves or steps in front,
+  // the tags in the scene texts follow it, so <Picture 3> keeps pointing at the same face
+  const tagShift = (from, delta, drop) => {
+    let touched = false;
+    $$('.sc', root).forEach(c => {
+      const ta = $('textarea', c); if (!ta || !ta.value) return;
+      const out = ta.value.replace(/<\s*Picture\s*(\d+)\s*>/g, (m, k) => {
+        const n = +k;
+        if (n >= 10) return m;                                  // the scene's own pictures have their own range
+        if (drop && n === from) { touched = true; return ''; }   // this picture is gone - its tag goes too
+        if (drop ? n > from : n >= from) { touched = true; return `<Picture ${Math.max(1, n + delta)}>`; }
+        return m;
+      });
+      if (out !== ta.value) ta.value = out;
+    });
+    $$('.sc', root).forEach(x => x._counter?.());
+    if (touched) toast('Номера картинок в текстах сцен подвинуты следом за фото');
+  };
+  root._refGone = at => tagShift(at, -1, true);
+  root._refAdded = at => tagShift(at, 1, false);
+
   // picture slots (same behaviour as Lipsync)
   for (let i = 0; i < cfg.maxImages; i++) {
     const r = document.createElement('label'); r.className = 'ref';
@@ -4436,12 +4457,19 @@ function makeRefMode(cfg) {
       const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
       fitSlot(r, img);
       if (!$$('.ref.filled', imgsEl).length) fitAspect(S, img, () => upd());
-      r.classList.add('filled'); $('.plus', r).hidden = true; $('.tag', r).hidden = false; changed();
+      const at = $$('.ref.filled', imgsEl).filter(x => x.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).length + 1;
+      r.classList.add('filled'); $('.plus', r).hidden = true; $('.tag', r).hidden = false;
+      root._refAdded?.(at); changed();   // a picture put in front of others shifts their numbers
     };
     input.onchange = () => set(input.files[0]);
     r.addEventListener('dragover', e => e.preventDefault());
     r.addEventListener('drop', e => { e.preventDefault(); set(e.dataTransfer.files[0]); });
-    $('.x', r).onclick = e => { e.preventDefault(); e.stopPropagation(); $('img', r)?.remove(); input.value = ''; r._file = null; resetSlot(r); r.classList.remove('filled'); $('.plus', r).hidden = false; $('.tag', r).hidden = true; changed(); };
+    $('.x', r).onclick = e => {
+      e.preventDefault(); e.stopPropagation();
+      const at = $$('.ref.filled', imgsEl).indexOf(r) + 1;   // the number your texts used for this picture
+      $('img', r)?.remove(); input.value = ''; r._file = null; resetSlot(r); r.classList.remove('filled'); $('.plus', r).hidden = false; $('.tag', r).hidden = true;
+      if (at > 0) root._refGone?.(at); changed();
+    };
   }
   wireSlotSwap($$('.ref', imgsEl), changed);
   $('.rm-clr', root)?.addEventListener('click', () => clearSlots($$('.ref', imgsEl)));
@@ -5368,7 +5396,11 @@ function makeRefMode(cfg) {
   const files = sel => $$(sel, root).filter(x => x._file);
   function changed() {
     const imgs = $$('.ref.filled', imgsEl);
-    imgs.forEach((r, i) => $('.tag', r).textContent = `Picture ${i + 1}`);
+    imgs.forEach((r, i) => {
+      $('.tag', r).textContent = `Picture ${i + 1}`;
+      const cn = $('.cnt', r); if (cn) { cn.hidden = false; cn.textContent = `${i + 1}/${imgs.length}`; }   // one number for the tile and for the text
+    });
+    $$('.ref:not(.filled) .cnt', imgsEl).forEach(cn => { cn.hidden = true; });   // an empty place is not a number
     const nv = vidsEl ? files('.rm-vids .slot').length : 0, na = files('.rm-auds .slot').length;
     const total = imgs.length + nv + na;
     $('.rm-count', root).textContent = `${total} / 12`;

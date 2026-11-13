@@ -783,7 +783,7 @@ class App:
             # ComfyUI is not up (yet): the page needs the flag and the mode list anyway, so that
             # «Настройки» is not an empty hole while the core is loading
             return web.json_response({**base, "online": False, "modes": self.modes(),
-                                      "window_mode": self.config.get("window_mode") or "max",
+                                      "window_mode": self.config.get("window_mode") or "geo",
                                       "can_restore": bool(self.config.get("setup_backup")),
                                       "probe": getattr(self, "probe", {"url": self.comfy})})
         dev = (stats.get("devices") or [{}])[0]
@@ -834,7 +834,7 @@ class App:
             **base, "online": True, "modes": self.modes(), "add_modes": add_modes,
             "hf_mirror": bool(self.config.get("hf_mirror")),
             "can_restore": bool(self.config.get("setup_backup")),
-            "window_mode": self.config.get("window_mode") or "max",
+            "window_mode": self.config.get("window_mode") or "geo",
             "probe": getattr(self, "probe", {"url": self.comfy}),
             "offer_modes": [{"mode": m, "gb": add_modes[m]} for m in catalog.OFFER_MODES
                             if m in add_modes and m not in (self.config.get("offered_modes") or [])],
@@ -1564,7 +1564,7 @@ class App:
         except Exception:
             return web.json_response({"error": "Не понял запрос"}, status=400)
         mode = str((body or {}).get("mode") or "")
-        if mode not in ("max", "window", "fullscreen"):
+        if mode not in ("geo", "max", "window", "fullscreen"):
             return web.json_response({"error": "Неизвестный режим окна"}, status=400)
         self.config.update(window_mode=mode)
         applog(f"окно при запуске: {mode}")

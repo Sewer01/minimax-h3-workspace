@@ -1516,9 +1516,10 @@ body.dropping::after{content:'Отпустите — программа разл
         </div>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
           <b style="font-size:13.5px">Окно при запуске</b>
-          <div class="seg" id="winMode" style="grid-template-columns:repeat(3,minmax(0,1fr));max-width:520px">
+          <div class="seg" id="winMode" style="grid-template-columns:repeat(4,minmax(0,1fr));max-width:680px">
+            <button type="button" data-w="geo">Как при закрытии<small>помнит размер</small></button>
             <button type="button" data-w="max">Развёрнутое<small>панель задач видна</small></button>
-            <button type="button" data-w="window">В окне<small>1440×920</small></button>
+            <button type="button" data-w="window">В окне<small>1760×1040</small></button>
             <button type="button" data-w="fullscreen">Во весь экран<small>без панелей</small></button>
           </div>
           <span class="hint">применится после перезапуска программы</span>
@@ -3785,7 +3786,7 @@ $('#wzRestore').onclick = async () => {
 };
 (function () {   // which window the program opens in next time
   const box = $('#winMode'); if (!box) return;
-  window.paintWin = v => $$('#winMode button').forEach(x => x.classList.toggle('on', x.dataset.w === (v || 'max')));
+  window.paintWin = v => $$('#winMode button').forEach(x => x.classList.toggle('on', x.dataset.w === (v || 'geo')));
   box.onclick = async e => {
     const b = e.target.closest('button[data-w]'); if (!b) return;
     try { await postJSON('/api/window_mode', { mode: b.dataset.w }); paintWin(b.dataset.w); toast('При следующем запуске окно откроется так'); }
@@ -5674,8 +5675,8 @@ function fitTopBar() {
   mb.style.right = (w ? w + 18 : 24) + 'px';
   /* a tab that is not visible is worse than a tab without a word under it: names go away first,
      and only what still does not fit stays behind the edge that fades out */
-      mb.classList.remove('tight');   // old saved state; nothing adds it anymore
-      // the names stay on the buttons: a strip that does not fit is scrolled, not stripped to icons
+  mb.classList.remove('tight');
+  if (mb.scrollWidth > mb.clientWidth + 4) mb.classList.add('tight');   // узкое окно - полоса сжимается в иконки
   mb.classList.toggle('can-right', mb.scrollWidth > mb.clientWidth + 4);
   const on = mb.querySelector('.mb.on');
   if (on && mb.scrollWidth > mb.clientWidth) {

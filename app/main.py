@@ -146,9 +146,9 @@ def window_mode():
     try:
         import json
         v = json.loads((server.DATA_DIR / "config.json").read_text(encoding="utf-8")).get("window_mode")
-        return v if v in ("max", "window", "fullscreen") else "max"
+        return v if v in ("geo", "max", "window", "fullscreen") else "geo"
     except Exception:
-        return "max"
+        return "geo"
 
 
 def window_geo():
@@ -161,7 +161,7 @@ def window_geo():
             return w, h
     except Exception:
         pass
-    return 1440, 920
+    return 1760, 1040   # the width at which every tab still shows its name
 
 
 def show_running_window(base):

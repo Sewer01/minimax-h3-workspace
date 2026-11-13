@@ -133,7 +133,12 @@ def scene_prompt(prompt, images, own, frame=None):
             n = place(own, j, filled_common)
         return m.group(0) if n > total else f"<Picture {n}>"
 
-    return re.sub(r"<\s*Picture\s*(\d+)\s*>", rep, prompt or "")
+    # <Frame> is how the agent may point at the last frame of the video being continued: that frame is
+    # the first picture in the node's list. The marker is put in AFTER the places have been recounted,
+    # so that its own number is not shifted a second time. Without a frame the marker would be a lie,
+    # so it turns into plain words instead of a wrong number.
+    out = re.sub(r"<\s*Picture\s*(\d+)\s*>", rep, prompt or "")
+    return re.sub(r"<\s*Frame\s*>", "<Picture 1>" if frame else "the previous shot", out)
 
 
 def _refs(g, cond_node, images, videos=(), audios=(), base=100, vsize=None):

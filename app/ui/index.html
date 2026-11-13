@@ -1325,8 +1325,8 @@ body.dropping::after{content:'Отпустите — программа разл
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
             </button>
             <button class="btn" type="button" id="agClear" title="Очистить поле ввода">Очистить</button>
-            <textarea id="agIn" rows="2" placeholder="Опишите сцену, сценарий или вставьте реплики… (Enter — отправить, Shift+Enter — новая строка)"></textarea>
-            <button class="btn pri" id="agSend">Отправить</button>
+            <textarea id="agIn" rows="2" placeholder="Опишите сцену, сценарий или вставьте реплики… (Enter — создать промт, Shift+Enter — новая строка)"></textarea>
+            <button class="btn pri" id="agSend" title="Агент составит промпты по вашему описанию и приложенным кадрам; в раздел они уйдут кнопкой «В …» под ответом">Создать промт</button>
           </div>
         </div>
         <div class="col">
@@ -5893,21 +5893,40 @@ async function agVideoFrames(file, n = 8) {
   URL.revokeObjectURL(v.src);
   return { frames: out, dur: v.duration };
 }
-const AG_VIDEO_MAX = 3, AG_FRAME_MAX = 12;   // references take three videos; twelve frames is what the agent can hold
+const AG_VIDEO_MAX = 3, AG_FRAME_MAX = 15;   // three videos, as many as the reference places; their frames share this lot
+function agShareFrames() {
+  /* A second and a third video must not force the person to clear the tray by hand: the program leaves
+     an even spread over the whole length of each video - the beginning, the middle, the end - and takes
+     away the frames that repeat what is already shown. */
+  const names = [];
+  AG.att.forEach(a => { if (a.frame && !names.includes(a.vname)) names.push(a.vname); });
+  if (names.length <= 1) return 0;
+  const per = Math.max(4, Math.floor(AG_FRAME_MAX / names.length));
+  const keep = new Set();
+  names.forEach(nm => {
+    const g = AG.att.filter(a => a.frame && a.vname === nm);
+    if (g.length <= per) { g.forEach(x => keep.add(x)); return; }
+    for (let i = 0; i < per; i++) keep.add(g[Math.round(i * (g.length - 1) / (per - 1))]);
+  });
+  const before = AG.att.length;
+  AG.att = AG.att.filter(a => !a.frame || keep.has(a));
+  return before - AG.att.length;
+}
 async function agFramesFromFile(f) {   // the only way the agent can look at a video: pieces of it
   const again = AG.att.some(a => a.frame && a.vname === f.name);
   if (again) AG.att = AG.att.filter(a => !(a.frame && a.vname === f.name));   // the same video lays its frames out anew
   const seen = new Set(AG.att.filter(a => a.frame).map(a => a.vname));
   if (!again && seen.size >= AG_VIDEO_MAX) { toast('Агент разбирает не больше ' + AG_VIDEO_MAX + ' видео: уберите одно из лотка'); return false; }
-  const room = AG_FRAME_MAX - AG.att.filter(a => a.frame).length;
-  if (room < 3) { toast('Для кадров в лотке почти не места: уберите лишние картинки'); return false; }
   toast('Вырезаем кадры из видео…');
   try {
-    const { frames, dur } = await agVideoFrames(f, Math.min(8, room));
+    const { frames, dur } = await agVideoFrames(f, 8);
     frames.forEach(fr => AG.att.push({ file: fr.file, url: fr.url, frame: true, label: fr.t.toFixed(1) + ' с', vname: f.name, vdur: dur, vfile: f }));
+    const cut = agShareFrames();
     renderAtt(); agCtx();
-    const nv = new Set(AG.att.filter(a => a.frame).map(a => a.vname)).size;
-    toast(`Из видео взято ${frames.length} кадров${nv > 1 ? ` (видео в лотке: ${nv})` : ''}. Теперь напишите, кого на что заменить`);
+    const fr = AG.att.filter(a => a.frame);
+    const nv = new Set(fr.map(a => a.vname)).size;
+    toast(`Из видео взято ${frames.length} кадров` + (cut ? `, повторы убраны: ${cut}` : '')
+      + (nv > 1 ? ` · всего ${fr.length} кадров с ${nv} видео` : '') + '. Теперь напишите, кого на что заменить');
   } catch (err) { toast(err.message); return false; }
   return true;
 }
@@ -6044,7 +6063,11 @@ $('#agAudioFile').onchange = async e => {
   } catch { toast('Не удалось прочитать аудиофайл'); }
 };
 // attach something from the Library to the chat: a picture (or the last frame of a video), or the sound of a video
-const agAttachFile = async f => { const u = await fileToDataURL(f); if (!u) { toast('Картинка не открылась: ' + f.name); return; } AG.att.push({ file: f, url: u }); renderAtt(); agCtx(); };
+const agAttachFile = async f => {
+  if (fileKind(f) === 'video') return agFramesFromFile(f);   // a video is always frames: this was the reason a second clip vanished
+  const u = await fileToDataURL(f); if (!u) { toast('Картинка не открылась: ' + f.name); return false; }
+  AG.att.push({ file: f, url: u }); renderAtt(); agCtx(); return true;
+};
 $('#agLib').onclick = () => {
   let m = $('#agLibM'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'agLibM'; document.body.append(m); }
   m.hidden = false; let tab = 'img';
@@ -6166,7 +6189,7 @@ async function agSend() {
       }
     }
   } catch (e) { if (e.name !== 'AbortError') reply.error = e.message; }
-  AG.busy = false; $('#agSend').textContent = 'Отправить'; reply.status = null;
+  AG.busy = false; $('#agSend').textContent = 'Создать промт'; reply.status = null;
   if (!reply.content && !reply.error) reply.error = 'Остановлено';
   renderAssistant(el, reply); agStatus(); saveChat();
 }

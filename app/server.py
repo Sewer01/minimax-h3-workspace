@@ -3339,6 +3339,9 @@ class App:
             counted = users[-1:] if editing and users else users
             ctx["images"] = sum(max(0, len(m.get("images") or []) - int(m.get("frames") or 0)) for m in counted)
             active = self.skills.active(ag.chat_text(messages), target)
+            if ctx.get("cont") and not any(s["id"] == "prodolzhenie-video" for s in active):
+                # continuing a finished video has its own craft rules, whatever the words happened to match
+                active += [s for s in self.skills.list() if s["id"] == "prodolzhenie-video" and s["mode"] != "off"]
             if target == "actor" and not any(s["id"] == "akterskaya-igra" for s in active):
                 # this mode is acting-first: its skill is always on here
                 active += [s for s in self.skills.list() if s["id"] == "akterskaya-igra" and s["mode"] != "off"]

@@ -6114,8 +6114,20 @@ function agVidNote() {
   const max = agVideoMax();
   return max > 1 ? ` В раздел уйдёт до ${max} видео: ${names.join(', ')}.` : ` В раздел уйдёт видео «${names[0]}».`;
 }
+const AG_IN_HINT = 'Опишите сцену, сценарий или вставьте реплики… (Enter — создать промт, Shift+Enter — новая строка)';
+function agPlaceholder() {
+  /* When the studio is going to continue a video, the person should read that in the field they are
+     about to type into - not only in a line above, which the eye skips. */
+  const el = $('#agIn'); if (!el) return;
+  const v = [...new Set(AG.att.filter(a => a.frame).map(a => a.vname))];
+  const src = (RM.long && RM.long.root && RM.long.root._src) || null;
+  const nm = v[0] || (src && src.name) || 'ваше видео';
+  el.placeholder = AG.target === 'long' && (v.length || src)
+    ? `Видеостудия продолжит «${nm.length > 28 ? nm.slice(0, 28) + '…' : nm}» с его последнего кадра. Напишите, что происходит дальше: одно движение, один ход камеры. (Enter — создать промт)`
+    : AG_IN_HINT;
+}
 function agCtx() {
-  agEditLabels();   // названия переключателя зависят от того, добавляет ли режим что-то к готовому
+  agEditLabels(); agPlaceholder();   // названия переключателя зависят от того, добавляет ли режим что-то к готовому
   const n = (AG.edit ? 0 : agImgCount()) + AG.att.filter(a => !a.frame).length;   // a fix counts only the pictures of this message
   $('#agStoryF').hidden = AG.target !== 'story';
   $('#agStoryM').hidden = AG.target !== 'story';

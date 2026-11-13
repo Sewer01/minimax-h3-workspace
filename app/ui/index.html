@@ -3307,9 +3307,16 @@ function syncSel() {
   drawWave(); lPrev();
 }
 let drag = null;
+// The whole interface is scaled with CSS zoom, so the cursor coordinates (screen pixels) and the
+// element's own width (layout pixels) are two different rulers: dividing one by the other made the
+// markers jump aside and run faster than the hand. The wave's real, on-screen width is the right divisor.
+const waveAt = e => {
+  const r = wave.getBoundingClientRect();
+  return Math.min(L.dur0, Math.max(0, (e.clientX - r.left) / (r.width || 1) * L.dur0));
+};
 wave.addEventListener('pointerdown', e => {
   if (!L.dur0) return;
-  const w = wave.clientWidth, x = e.clientX - wave.getBoundingClientRect().left, t = x / w * L.dur0;
+  const t = waveAt(e);
   const h = e.target.dataset.h;
   if (editMode === 'cut' && !(h === 'cl' || h === 'cr')) { drag = { mode: 'cnew', anchor: t }; cut = { a: t, b: t }; }
   else if (h === 'cl' || h === 'cr') drag = { mode: h };
@@ -3318,8 +3325,7 @@ wave.addEventListener('pointerdown', e => {
 });
 wave.addEventListener('pointermove', e => {
   if (!drag) return;
-  const w = wave.clientWidth;
-  const t = Math.min(L.dur0, Math.max(0, (e.clientX - wave.getBoundingClientRect().left) / w * L.dur0));
+  const t = waveAt(e);
   const MIN = 1;
   if (drag.mode === 'cnew') { cut = { a: Math.min(drag.anchor, t), b: Math.max(drag.anchor, t) }; syncCut(); return; }
   if (drag.mode === 'cl') { cut.a = Math.min(t, cut.b - 0.05); syncCut(); return; }
@@ -7727,7 +7733,7 @@ fetch('/api/version').then(r => r.json()).then(v => { $('#appVer').textContent =
 document.addEventListener('pointerdown', e => {
   const h = e.target.closest('#cwRs'); if (!h) return;
   const cols = h.parentElement, box = $('#cwBody'); h.classList.add('drag'); h.setPointerCapture(e.pointerId);
-  const move = ev => { const r = cols.getBoundingClientRect(); const w = Math.round(Math.min(r.width * .7, Math.max(300, r.right - ev.clientX - 5))); box.style.setProperty('--cw-rw', w + 'px'); try { localStorage.setItem('h3-cw-rw', w); } catch {} };
+  const move = ev => { const r = cols.getBoundingClientRect(); const k = (cols.clientWidth || r.width) / (r.width || 1); const w = Math.round(Math.min(r.width * .7 * k, Math.max(300, (r.right - ev.clientX - 5) * k))); box.style.setProperty('--cw-rw', w + 'px'); try { localStorage.setItem('h3-cw-rw', w); } catch {} };
   const up = () => { h.classList.remove('drag'); h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); };
   h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
 });

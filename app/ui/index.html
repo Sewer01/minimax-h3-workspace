@@ -440,6 +440,10 @@ details[open] summary::before{content:'－ '}
 .ctxm button{display:block;width:100%;text-align:left;padding:8px 12px;border-radius:8px;font-size:13px;color:var(--text)}
 .ctxm button:hover{background:var(--accent-soft)}
 .ctxm button:disabled{opacity:.4;pointer-events:none}
+.a-zoom{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12.5px;color:var(--muted)}
+.a-zoom input[type=range]{flex:1 1 140px;min-width:120px}
+.a-zoom b{font-family:var(--mono);color:var(--text);font-size:12px;min-width:120px}
+.a-zoom button{padding:4px 10px;font-size:12.5px}
 .wave{position:relative;height:110px;border-radius:12px;background:var(--bg-2);border:1px solid var(--line);overflow:hidden;touch-action:none;user-select:none}
 .wave canvas{position:absolute;inset:0;width:100%;height:100%}
 .wave .sel{position:absolute;top:0;bottom:0;background:rgba(var(--accent-rgb),.13);border-left:2px solid var(--accent);border-right:2px solid var(--accent-2);cursor:grab}
@@ -1201,10 +1205,19 @@ body.dropping::after{content:'Отпустите — программа разл
                   <button type="button" data-m="cut">Вырезание<small>убрать кусок из аудио</small></button>
                 </div>
                 <div class="a-btnrow">
-                  <button class="btn" type="button" id="aCutDel" disabled>✂ Удалить вырезанное</button>
+                  <button class="btn" type="button" id="aCutDel" disabled>✂ Удалить выделенное</button>
                   <button class="btn" type="button" id="aPauses">Убрать паузы</button>
                   <button class="btn" type="button" id="aVocals" title="Оставить только голос, без музыки">Отделить голос</button>
                   <button class="btn" type="button" id="aUndo" disabled>↶ Отменить</button>
+                  <button class="btn" type="button" id="aToAgent" disabled title="Выделенный кусок уйдёт в Агент: он послушает слова и ответит с учётом них">🤖 В агент</button>
+                </div>
+                <div class="a-zoom" id="aZoom">
+                  <span>Резать удобнее с приближением:</span>
+                  <button class="btn" type="button" id="azOut" title="Показать больше аудио">−</button>
+                  <input type="range" id="azPan" min="0" max="1000" value="0" step="1" title="Какую часть аудио показывает волна">
+                  <button class="btn" type="button" id="azIn" title="Приблизить, чтобы ставить метки точнее">+</button>
+                  <b id="azInfo">весь фрагмент</b>
+                  <button class="btn" type="button" id="azAll">Весь фрагмент</button>
                 </div>
                 <div class="a-pauses" id="aPausesBox" hidden>
                   <span>Паузы длиннее</span><input type="number" id="apMin" value="0.6" step="0.1" min="0.2" max="5"><span>с сократить до</span><input type="number" id="apKeep" value="0.25" step="0.05" min="0.05" max="1"><span>с</span>
@@ -3180,15 +3193,33 @@ let audioName = '', editMode = 'clip', cut = null, undoStack = [];
 function setEditMode(m) {
   editMode = m; wave.classList.toggle('cutmode', m === 'cut');
   $$('.a-mode button').forEach(b => b.classList.toggle('on', b.dataset.m === m));
-  $('#aToolHint').textContent = m === 'cut' ? 'Проведите мышью по волне, чтобы выделить кусок, который нужно убрать (края можно двигать), и нажмите «Удалить вырезанное».' : '';
+  $('#aToolHint').textContent = m === 'cut'
+    ? 'Проведите мышью по волне, чтобы выделить кусок, который нужно убрать (края можно двигать), и нажмите «Удалить выделенное».'
+    : 'Выделите, что оставить в клипе, и нажмите «Оставить выделенное» - остальное аудио уберётся.';
+  syncCutBtn();
   if (m === 'clip') { cut = null; syncCut(); }
+}
+function syncCutBtn() {
+  // one scissors button, two honest names: in the selection mode it keeps what is chosen, in the cut
+  // mode it removes what is chosen
+  const btn = $('#aCutDel'); if (!btn) return;
+  const ag = $('#aToAgent'); if (ag) ag.disabled = !L.dur0;
+  if (editMode === 'cut') return;                       // the cut mode paints the button itself
+  if (!L.dur0) { btn.disabled = true; btn.textContent = '✂ Оставить выделенное'; return; }
+  const whole = L.start <= 0.001 && L.end >= L.dur0 - 0.001;
+  btn.disabled = whole || L.len() < 0.05;
+  btn.textContent = whole ? '✂ Оставить выделенное' : `✂ Оставить выделенное (${(L.dur0 - L.len()).toFixed(1)} с лишнего)`;
 }
 function syncCut() {
   const el = $('#cutSel'), btn = $('#aCutDel');
-  if (!cut || !L.dur0) { el.hidden = true; btn.disabled = true; btn.textContent = '✂ Удалить вырезанное'; return; }
+  if (!cut || !L.dur0) {
+    el.hidden = true;
+    if (editMode === 'cut') { btn.disabled = true; btn.textContent = '✂ Удалить выделенное'; } else syncCutBtn();
+    return;
+  }
   const w = wave.clientWidth; el.hidden = false;
-  el.style.left = (cut.a / L.dur0 * w) + 'px'; el.style.width = ((cut.b - cut.a) / L.dur0 * w) + 'px';
-  btn.disabled = cut.b - cut.a < 0.05; btn.textContent = `✂ Удалить вырезанное (${(cut.b - cut.a).toFixed(1)} с)`;
+  el.style.left = (fracAt(cut.a) * w) + 'px'; el.style.width = ((fracAt(cut.b) - fracAt(cut.a)) * w) + 'px';
+  btn.disabled = cut.b - cut.a < 0.05; btn.textContent = `✂ Удалить выделенное (${(cut.b - cut.a).toFixed(1)} с)`;
 }
 // the pieces [a,b] (seconds) of buf that stay, joined with tiny fades so the joins do not click
 function keepRanges(buf, ranges) {
@@ -3217,6 +3248,14 @@ function commitEdit(newBuf, mapT) {
 }
 $('.a-mode').onclick = e => { const b = e.target.closest('button[data-m]'); if (b && L.dur0) setEditMode(b.dataset.m); };
 $('#aCutDel').onclick = () => {
+  if (editMode !== 'cut') {   // the selection mode: keep the chosen piece, throw the rest away
+    if (!L.dur0 || L.len() < 0.05) return;
+    if (L.start <= 0.001 && L.end >= L.dur0 - 0.001) { toast('Выделено всё аудио: убирать нечего'); return; }
+    const left = L.dur0 - L.len(), from = L.start, to = L.end;
+    commitEdit(keepRanges(abuf, [[from, to]]), t => t - from);
+    toast(`Оставлено ${L.len().toFixed(1)} с · убрано ${left.toFixed(1)} с`);
+    return;
+  }
   if (!cut || cut.b - cut.a < 0.05) return;
   const { a, b } = cut, keep = [[0, a], [b, abuf.duration]].filter(([x, y]) => y - x > 0.001);
   if (!keep.length) { toast('Нельзя вырезать всё аудио'); return; }
@@ -3285,18 +3324,19 @@ function drawWave() {
   const cs = getComputedStyle(document.documentElement);
   const wc = { accent: cs.getPropertyValue('--accent').trim(), accent2: cs.getPropertyValue('--accent-2').trim(), idle: cs.getPropertyValue('--line-2').trim() };
   const bars = Math.floor(r.width / 3), mid = r.height / 2;
-  const a = L.start / L.dur0, b = L.end / L.dur0;
+  const a = fracAt(L.start), b = fracAt(L.end);
   for (let i = 0; i < bars; i++) {
-    const p = peaks[Math.floor(i / bars * peaks.length)] || 0, hgt = Math.max(2, p * (r.height - 16));
-    const t = i / bars;
+    const t = i / bars;                                  // a place on the screen, 0..1
+    const p = peaks[Math.min(peaks.length - 1, Math.max(0, Math.floor((VIEW.a + t * viewSpan()) * peaks.length)))] || 0;
+    const hgt = Math.max(2, p * (r.height - 16));
     c.fillStyle = t >= a && t <= b ? (t < (a + b) / 2 ? wc.accent : wc.accent2) : wc.idle;
     c.fillRect(i * 3, mid - hgt / 2, 2, hgt);
   }
 }
 function syncSel() {
   const w = wave.clientWidth;
-  selEl.style.left = (L.start / L.dur0 * w) + 'px';
-  selEl.style.width = ((L.end - L.start) / L.dur0 * w) + 'px';
+  selEl.style.left = (fracAt(L.start) * w) + 'px';
+  selEl.style.width = ((fracAt(L.end) - fracAt(L.start)) * w) + 'px';
   $('#aStart').value = L.start.toFixed(1); $('#aEnd').value = L.end.toFixed(1);
   const len = L.len();
   $('#aLen').textContent = `${len.toFixed(1)} с`;
@@ -3304,15 +3344,49 @@ function syncSel() {
   if (len > MAX_LEN) { n.className = 'note warn'; n.querySelector('span').textContent = `Максимум ${MAX_LEN} секунд — укоротите фрагмент.`; }
   else if (len > REC_LEN) { n.className = 'note warn'; n.querySelector('span').textContent = `Лучше держать фрагмент до ${REC_LEN} секунд — так синхронизация губ точнее. Длинный трек можно разбить на несколько клипов.`; }
   else { n.className = 'note'; n.querySelector('span').textContent = 'Оставьте небольшую паузу до и после слов — так губы начинают и заканчивают движение естественно.'; }
-  drawWave(); lPrev();
+  syncCutBtn(); drawWave(); lPrev();
 }
 let drag = null;
-// The whole interface is scaled with CSS zoom, so the cursor coordinates (screen pixels) and the
-// element's own width (layout pixels) are two different rulers: dividing one by the other made the
-// markers jump aside and run faster than the hand. The wave's real, on-screen width is the right divisor.
+// The wave can show the whole audio or a piece of it, so that the markers can be placed to a tenth of
+// a second. VIEW holds which part is shown, as fractions of the length.
+let VIEW = { a: 0, b: 1 };
+const ZOOMS = [1, 2, 4, 8, 16]; let zi = 0;
+const viewSpan = () => Math.max(0.0001, VIEW.b - VIEW.a);
+const fracAt = t => (t / L.dur0 - VIEW.a) / viewSpan();      // a moment -> a place on the wave
+const tAtFrac = f => (VIEW.a + f * viewSpan()) * L.dur0;     // a place on the wave -> a moment
+function azPaint() {
+  const box = $('#aZoom'); if (!box) return;
+  box.style.opacity = L.dur0 ? '1' : '.45';
+  $('#azOut').disabled = zi === 0;
+  $('#azIn').disabled = zi >= ZOOMS.length - 1;
+  $('#azInfo').textContent = zi === 0 ? 'весь фрагмент'
+    : `${(VIEW.a * L.dur0).toFixed(1)}–${(VIEW.b * L.dur0).toFixed(1)} с из ${L.dur0.toFixed(1)} · ×${ZOOMS[zi]}`;
+  const room = 1 - viewSpan();
+  $('#azPan').value = room > 0.0001 ? Math.round(VIEW.a / room * 1000) : 0;
+}
+function azSet(k, keep) {
+  zi = Math.min(ZOOMS.length - 1, Math.max(0, zi + k));
+  const span = 1 / ZOOMS[zi];
+  const c = keep != null ? keep / L.dur0 : (VIEW.a + VIEW.b) / 2;   // what stays in the middle
+  VIEW = { a: Math.min(Math.max(0, c - span / 2), 1 - span), b: Math.min(Math.max(span, c + span / 2), 1) };
+  if (VIEW.a < 0) VIEW = { a: 0, b: span };
+  drawWave(); syncSel(); syncCut(); azPaint();
+}
+$('#azIn').onclick = () => azSet(1, (L.start + L.end) / 2);
+$('#azOut').onclick = () => azSet(-1, (L.start + L.end) / 2);
+$('#azAll').onclick = () => { zi = 0; VIEW = { a: 0, b: 1 }; drawWave(); syncSel(); syncCut(); azPaint(); };
+$('#azPan').oninput = e => {
+  const span = viewSpan(), room = 1 - span;
+  VIEW = { a: Math.min(Math.max(0, +e.target.value / 1000 * room), room), b: Math.min(1, Math.max(span, Math.max(0, +e.target.value / 1000 * room) + span)) };
+  drawWave(); syncSel(); syncCut(); $('#azInfo').textContent = `${(VIEW.a * L.dur0).toFixed(1)}–${(VIEW.b * L.dur0).toFixed(1)} с из ${L.dur0.toFixed(1)} · ×${ZOOMS[zi]}`;
+};
+// The interface is scaled with CSS zoom, so the cursor coordinates (screen pixels) and the element's
+// own width (layout pixels) are two rulers: dividing one by the other made the markers jump aside and
+// run faster than the hand. The wave's real, on-screen width is the divisor, then VIEW turns the place
+// into a second of audio.
 const waveAt = e => {
   const r = wave.getBoundingClientRect();
-  return Math.min(L.dur0, Math.max(0, (e.clientX - r.left) / (r.width || 1) * L.dur0));
+  return Math.min(L.dur0, Math.max(0, tAtFrac((e.clientX - r.left) / (r.width || 1))));
 };
 wave.addEventListener('pointerdown', e => {
   if (!L.dur0) return;
@@ -3350,7 +3424,7 @@ function play() {
   ph.style.display = 'block';
   const tick = () => {
     const t = L.start + (actx.currentTime - playStart);
-    ph.style.left = (t / L.dur0 * wave.clientWidth) + 'px';
+    ph.style.left = (fracAt(t) * wave.clientWidth) + 'px';
     raf = requestAnimationFrame(tick);
   };
   tick();
@@ -6104,6 +6178,12 @@ $('#agLib').onclick = () => {
       m.hidden = true;
     } catch { toast(tab === 'img' ? 'Не удалось взять файл' : 'В этом видео нет звука или его не удалось прочитать'); }
   };
+};
+$('#aToAgent').onclick = () => {
+  if (!L.dur0) { toast('Сначала загрузите аудио'); return; }
+  goTo('agent');
+  setChatAudio(wavSlice(abuf, L.start, L.end), (audioName || 'фрагмент').replace(/\.[^.]+$/, ''), L.len());
+  toast(`В Агент отправлено ${L.len().toFixed(1)} с: расшифровываем слова`);
 };
 $('#agFromLip').onclick = () => {
   if (!L.dur0) return;

@@ -1881,6 +1881,22 @@ const dropSlots = (view, kind) => {
   const sel = { image: '.rm-imgs label.ref:not(.filled) input', video: '.rm-vids label:not(.filled) input', audio: '.rm-auds label:not(.filled) input' }[kind];
   return sel ? $$(sel, box) : [];
 };
+/* The program keeps a copy of the pictures a result was made from; "repeat with these settings"
+   puts them back into the places, so the texts of the prompt still point at real pictures. */
+async function repeatRefs(it) {
+  const box = dropBox(it.mode); if (!box || !(it.refs || []).length || !it.ref_group) return 0;
+  const labels = $$('label.ref', box);
+  let n = 0;
+  for (const nm of it.refs) {
+    const lb = labels.find(l => !l.classList.contains('filled') && $('input[type=file]', l)); if (!lb) break;
+    try {
+      const r = await fetch(`/api/refs/${it.ref_group}/${encodeURIComponent(nm)}`); if (!r.ok) continue;
+      await setDropFile($('input[type=file]', lb), new File([await r.blob()], nm.replace(/^\d+_/, ''), { type: r.headers.get('content-type') || 'image/png' }));
+      n++;
+    } catch { }
+  }
+  return n;
+}
 async function spreadFiles(files, view) {
   const bad = [], left = [], nofit = [];
   const byKind = { image: [], video: [], audio: [] };
@@ -4408,7 +4424,8 @@ $('#vwRepeat').onclick = async () => {
     r.upd(); goTo(it.mode);
   }
   else { Object.assign(L, { aspect: it.aspect, q: it.q, refSize: it.ref_size || L.refSize }); $('#lPrompt').value = it.prompt; lUpd(); goTo('lipsync'); }
-  toast('Настройки перенесены — можно генерировать');
+  const back = await repeatRefs(it);   // the pictures the result was made of come back too
+  toast(back ? `Перенесли настройки и вернули картинок: ${back}` : 'Настройки перенесены — можно генерировать');
 };
 
 $('#lib').addEventListener('mouseover', e => e.target.closest('.li-th')?.querySelector('video')?.play().catch(() => {}));

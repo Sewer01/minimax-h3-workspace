@@ -119,6 +119,7 @@ UI_DIR = ROOT / "ui"
 DATA_DIR = Path(os.environ.get("H3STUDIO_DATA", HOME / "data"))
 clipboard.data_dir = DATA_DIR   # the clipboard helper and its temporary PNG live with the app's own files
 LONG_DIR = DATA_DIR / "long"   # saved scene states of the long video made scene by scene
+REF_DIR = DATA_DIR / "refs"    # copies of the pictures a result was made of, one folder per calculation
 LIBRARY_FILE = DATA_DIR / "library.json"
 QUEUE_FILE = DATA_DIR / "queue.json"
 WORKFLOWS_DIR = DATA_DIR / "workflows"
@@ -661,6 +662,7 @@ class App:
             meta = f.get("metadata") or {}
             if meta.get("width") and meta.get("height") and not (item.get("mode") == "upscale" and item.get("res")):
                 item["res"] = f'{meta["width"]}×{meta["height"]}'
+            item["refs"] = await self.stash_refs(item, _graph_pics(job.get("graph")))
             self.library.add(item)
             await self.archive_item(item)
             items.append(self.public(item))
@@ -707,6 +709,68 @@ class App:
 
     def keep_copies(self):
         return self.config.get("keep_copies") is not False
+
+    async def stash_refs(self, item, names):
+        """Keep a copy of the pictures a result was made from, so "repeat with these settings" can put
+        them back. One folder per calculation: repeating a scene of one project does not multiply copies.
+        Nothing is promised when ComfyUI is silent - an empty answer simply means the old behaviour."""
+        names = [n for n in (names or []) if isinstance(n, str)]
+        if not names or not self.keep_copies() or not item.get("prompt_id"):
+            return []
+        key = re.sub(r"[^A-Za-z0-9]", "", str(item["prompt_id"]))[:40]
+        if not key:
+            return []
+        d = REF_DIR / key
+        item["ref_group"] = key          # the address the interface reads the kept pictures from
+        saved = []
+        for i, n in enumerate(names):
+            dest = d / f"{i}_{Path(n).name}"
+            if dest.is_file() and dest.stat().st_size:
+                saved.append(dest.name)
+                continue
+            try:
+                async with self.session.get(self.comfy + "/view", params={"filename": n, "subfolder": "", "type": "input"}) as r:
+                    if r.status != 200:
+                        continue
+                    data = await r.content.read(20 * 1024 * 1024)   # a picture, not a disk: bigger files are not worth keeping
+            except Exception:
+                continue
+            if not data:
+                continue
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(data)
+                saved.append(dest.name)
+            except OSError:
+                pass
+            await asyncio.sleep(0)
+        return saved
+
+    @staticmethod
+    def ref_group(item):
+        """Which folder of kept pictures this result points to."""
+        pid = re.sub(r"[^A-Za-z0-9]", "", str(item.get("prompt_id") or ""))[:40]
+        return pid or None
+
+    async def cleanup_refs(self, removed):
+        """A folder of kept pictures leaves when the last result that points to it is deleted."""
+        alive = {g for g in (self.ref_group(x) for x in self.library.items) if g}
+        for group in {g for g in (self.ref_group(x) for x in removed) if g}:
+            if group in alive:
+                continue
+            d = REF_DIR / group
+            if d.is_dir():
+                await asyncio.to_thread(shutil.rmtree, d, True)
+
+    async def h_ref_file(self, req):
+        """One kept picture of a result: the interface takes it back into its place on repeat."""
+        group = re.sub(r"[^A-Za-z0-9]", "", req.match_info["group"])[:40]
+        name = Path(req.match_info["name"]).name
+        base = (REF_DIR / group).resolve()
+        p = (base / name).resolve()
+        if not group or not str(p).startswith(str(base)) or not p.is_file():
+            raise web.HTTPNotFound()
+        return web.FileResponse(p)
 
     async def archive_item(self, item):
         """Copy the finished file of a library item into the program's own results folder."""
@@ -2931,12 +2995,13 @@ class App:
     async def h_library_delete_many(self, req):
         """Several library items at once: their files go to the Recycle Bin in one call."""
         ids = [str(i) for i in ((await req.json()).get("ids") or [])][:200]
-        gone, failed, paths, by_id = [], [], [], {}
+        gone, failed, paths, by_id, removed = [], [], [], {}, []
         for i in ids:
             item = self.library.get(i)
             if not item:
                 failed.append(i)
                 continue
+            removed.append(dict(item))   # remembered before it leaves: its kept pictures may leave with it
             cand = [p for p in {self.file_path(item), Path(item["local"]) if item.get("local") else None} if p and p.exists()]
             if not cand:                      # the file is already gone: the record goes too
                 self.library.remove(i)
@@ -2951,6 +3016,8 @@ class App:
                 gone.append(i)
             else:                             # the file stayed where it was: so does the record
                 failed.append(i)
+        if removed:
+            await self.cleanup_refs(removed)
         return web.json_response({"gone": gone, "failed": failed})
 
     async def h_library_delete(self, req):
@@ -2965,6 +3032,7 @@ class App:
                 if not ok:
                     return web.json_response({"error": "Не удалось переместить файл в корзину"}, status=500)
         self.library.remove(item["id"])
+        await self.cleanup_refs([item])
         return web.json_response({"ok": True, "recycled": recycled})
 
     async def h_results_get(self, _req):
@@ -3593,6 +3661,28 @@ def _recycle_shell(items):
     return res == 0 and not op.fAnyOperationsAborted
 
 
+def _graph_pics(graph):
+    """The names of the pictures this calculation read, in the order of their places.
+
+    Taken from the graph itself, so every section is covered at once - the ordinary ones, the studio
+    and the user's own workflows: wherever a picture enters the calculation, it goes through a loader."""
+    if not isinstance(graph, dict):
+        return []
+
+    def key(kv):
+        n = kv[0]
+        return (0, int(n)) if str(n).isdigit() else (1, str(n))
+
+    names = []
+    for _nid, node in sorted(graph.items(), key=key):
+        if not isinstance(node, dict) or node.get("class_type") not in ("LoadImage", "LoadImageMask"):
+            continue
+        img = (node.get("inputs") or {}).get("image")
+        if isinstance(img, str) and img and img not in names:
+            names.append(img)
+    return names[:12]
+
+
 def send_to_recycle_bin(paths):
     """Move files to the Recycle Bin; PowerShell is kept as a fallback. Before, every file took its own process
 
@@ -3780,6 +3870,7 @@ def build_app(comfy_override=None):
         web.delete("/api/library/{id}", state.h_library_delete),
         web.post("/api/library/delete", state.h_library_delete_many),
         web.get("/api/file/{id}", state.h_file),
+        web.get("/api/refs/{group}/{name}", state.h_ref_file),
         web.get("/api/srcfile/{id}", state.h_srcfile),
         web.get("/api/events", state.h_events),
         web.static("/ui", UI_DIR),

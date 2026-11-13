@@ -991,6 +991,12 @@ class App:
             self.hw = await asyncio.to_thread(engine.detect_hardware)
         notes = catalog.compat_notes(mode, role, name or self.model_names.get(role, ""), self.hw.get("compute_cap") or 0)
         missing = {m["role"] for m in self.missing}
+        want = catalog.MODE_ROLES.get(mode, []) + catalog.MODE_OPTIONAL.get(mode, [])
+        if any(r in missing for r in want):
+            # the scan happens once at start: a file downloaded since then is on the disk, and the
+            # chips kept offering "Скачать" for a LoRA that is already there
+            await self.resolve_models()
+            missing = {m["role"] for m in self.missing}
         picked = self.config.get("model_pick") or {}
         loras = [{"role": r, "title": catalog.ROLE_TITLES.get(r, r), "name": self.model_names.get(r, ""), "have": r not in missing,
                   "must": r in catalog.MODE_ROLES.get(mode, []), "mine": r in picked}

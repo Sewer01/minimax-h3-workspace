@@ -1537,6 +1537,13 @@ body.dropping::after{content:'Отпустите — программа разл
           </div>
           <span class="hint">применится после перезапуска программы</span>
         </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px">
+          <label class="hint" style="display:flex;gap:8px;align-items:center;cursor:pointer;margin:0">
+            <input type="checkbox" id="mdGpuUiCb">
+            <span>Рисовать окно программы без видеокарты<small style="display:block;opacity:.7">окно тратит меньше видеопамяти; на генерацию не влияет, применится после перезапуска</small></span>
+          </label>
+          <button class="btn" type="button" id="mdRestart" title="Закрыть и снова открыть программу: нужно после переключателей, которые читаются при запуске">Перезапустить программу</button>
+        </div>
       </div>
 
       <div class="steps" id="setupSteps">
@@ -2268,6 +2275,7 @@ async function loadStatus() {
     setEngine(s.online);
     paintProbe(s);
     if (window.paintWin) paintWin(s.window_mode);
+    if (window.paintSoftUi) paintSoftUi(!!s.software_ui);
     renderModels(s);            // also when the core is silent: the card has to say why it is empty
     if (!s.online) { waitCore(); return; }
     askSavedQueue();
@@ -3890,6 +3898,25 @@ $('#wzRestore').onclick = async () => {
     const b = e.target.closest('button[data-w]'); if (!b) return;
     try { await postJSON('/api/window_mode', { mode: b.dataset.w }); paintWin(b.dataset.w); toast('При следующем запуске окно откроется так'); }
     catch (err) { toast(err.message); }
+  };
+})();
+(function () {   // the window without the video card + a way to restart and actually apply it
+  const cb = $('#mdGpuUiCb'), rb = $('#mdRestart'); if (!cb) return;
+  window.paintSoftUi = on => { cb.checked = !!on; };
+  cb.onchange = async () => {
+    try {
+      const r = await postJSON('/api/window-gpu', { software: cb.checked });
+      paintSoftUi(r.software);
+      toast(r.software ? 'Включено. Перезапустите программу, чтобы окно рисовалось без видеокарты'
+                       : 'Выключено. Перезапустите программу, чтобы окно снова рисовала видеокарта');
+    } catch (err) { toast(err.message); cb.checked = !cb.checked; }
+  };
+  if (rb) rb.onclick = async () => {
+    const api = window.pywebview && window.pywebview.api;
+    if (!api || !api.restart_app) { toast('Перезапуск доступен в установленной программе: закройте её и откройте снова'); return; }
+    rb.disabled = true;
+    try { const r = await api.restart_app(); toast(r && r.ok ? 'Перезапускаем…' : 'Не получилось: ' + ((r && r.error) || 'неизвестная ошибка') + '. Закройте и откройте программу вручную.'); }
+    catch (err) { toast(err.message); rb.disabled = false; }
   };
 })();
 setTimeout(fitTopBar, 700);   // the pills are built a moment after the page opens

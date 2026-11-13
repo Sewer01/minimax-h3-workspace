@@ -65,6 +65,30 @@ class JsApi:
         self._window = None
         self._port = port
 
+    def restart_app(self):
+        """Close the program and open it again: a hidden helper waits until this process is really gone
+        (ComfyUI is stopped on the way out) and only then starts it. Needed after the switches that are
+         read once, at the start - the window drawn without the video card, for example."""
+        import subprocess
+        try:
+            frozen = getattr(sys, "frozen", False)
+            exe = sys.executable if frozen else sys.executable
+            args = [] if frozen else [os.path.abspath(sys.argv[0])]
+            quote = lambda s: "'" + s.replace("'", "''") + "'"
+            workdir = os.path.dirname(exe) if frozen else os.path.dirname(os.path.abspath(sys.argv[0]))
+            ps = (f"Wait-Process -Id {os.getpid()} -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2; "
+                  f"Start-Process -FilePath {quote(exe)}"
+                  + ("".join(f" -ArgumentList {quote(a)}" for a in args))
+                  + f" -WorkingDirectory {quote(workdir)}")
+            # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP: DETACHED_PROCESS leaves PowerShell without a
+            # console and it dies before it can wait
+            subprocess.Popen(["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", ps],
+                             creationflags=0x08000000 | 0x00000200, close_fds=True)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        threading.Timer(0.5, lambda: self._window.destroy()).start()   # let this answer first
+        return {"ok": True}
+
     def pick_folder(self, start=""):
         import webview
         res = self._window.create_file_dialog(webview.FOLDER_DIALOG, directory=start if os.path.isdir(start) else "")
@@ -230,6 +254,12 @@ def main():
                 pass
         try:
             webview.settings["ALLOW_DOWNLOADS"] = True  # a plain <a download> also works as a fallback
+        except Exception:
+            pass
+        try:   # "Рисовать окно программы без видеокарты" (Настройки): on computers where the window itself
+               # eats gigabytes of video memory that the models then have to do without
+            if json.loads((server.DATA_DIR / "config.json").read_text(encoding="utf-8")).get("software_ui"):
+                os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = "--disable-gpu --disable-gpu-compositing"
         except Exception:
             pass
         api = JsApi(port)

@@ -860,6 +860,7 @@ class App:
             # «Настройки» is not an empty hole while the core is loading
             return web.json_response({**base, "online": False, "modes": self.modes(),
                                       "window_mode": self.config.get("window_mode") or "geo",
+                "software_ui": bool(self.config.get("software_ui")),
                                       "can_restore": bool(self.config.get("setup_backup")),
                                       "probe": getattr(self, "probe", {"url": self.comfy})})
         dev = (stats.get("devices") or [{}])[0]
@@ -911,6 +912,7 @@ class App:
             "hf_mirror": bool(self.config.get("hf_mirror")),
             "can_restore": bool(self.config.get("setup_backup")),
             "window_mode": self.config.get("window_mode") or "geo",
+                "software_ui": bool(self.config.get("software_ui")),
             "probe": getattr(self, "probe", {"url": self.comfy}),
             "offer_modes": [{"mode": m, "gb": add_modes[m]} for m in catalog.OFFER_MODES
                             if m in add_modes and m not in (self.config.get("offered_modes") or [])],
@@ -1644,6 +1646,14 @@ class App:
                 return ""
         return web.json_response({"comfy": tail(DATA_DIR / "comfyui.log", 70), "app": tail(DATA_DIR / "app.log", 70),
                                   "data": str(DATA_DIR)})
+
+    async def h_window_gpu_get(self, _req):
+        return web.json_response({"software": bool(self.config.get("software_ui"))})
+
+    async def h_window_gpu_set(self, req):
+        body = await req.json()
+        self.config.update(software_ui=bool(body.get("software")))   # main.py reads it at the next start
+        return await self.h_window_gpu_get(req)
 
     async def h_window_mode(self, req):
         """How the window should open next time (the choice lives in Настройки → Интерфейс)."""
@@ -3835,6 +3845,8 @@ def build_app(comfy_override=None):
     web.post("/api/updates/pack", state.h_updates_pack),
     web.post("/api/updates/pack/rollback", state.h_updates_pack_rollback),
     web.post("/api/window_mode", state.h_window_mode),
+    web.get("/api/window-gpu", state.h_window_gpu_get),
+    web.post("/api/window-gpu", state.h_window_gpu_set),
         web.post("/api/generate/video", state.h_generate_video),
         web.post("/api/generate/krea", state.h_generate_krea),
         web.post("/api/upscale", state.h_upscale),

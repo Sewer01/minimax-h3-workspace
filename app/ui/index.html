@@ -4461,9 +4461,10 @@ async function continueLong(it) {
   if (!(it.long && it.long.run) || (L2._run !== it.long.run && !(await L2._openRun(it.long.run)))) {
     // a video that was not made here (or whose project is gone): continue from its last frames as a new project
     L2._setSrc({ id: it.id, name: (it.prompt || it.sub || 'видео из Библиотеки').slice(0, 50) });
-    await useInWorkflow(it, 'long');   // the last picture of the video becomes the hero
     goTo('long');
-    toast('Продолжаем это видео. Последний кадр встал первым референсом: добавьте другие референсы (персонаж, локацию…), опишите следующую сцену и нажмите «Сделать эту сцену».');
+    toast((await L2._ensureFrame())
+      ? 'Продолжаем это видео: оно стало основой, режим «продолжить своё видео» включён, его последний кадр стоит отдельной плиткой перед вашими фото. Добавьте референсы (персонаж, локацию…), опишите следующую сцену и нажмите «Сделать эту сцену».'
+      : 'Продолжаем это видео: оно стало основой, но последний кадр прочитать не удалось - добавьте изображения героя и места сами.');
     return;
   }
   goTo('long');
@@ -4858,6 +4859,19 @@ function makeRefMode(cfg) {
       $$('.sc', root).forEach(x => x._counter?.());
       return tile;
     };
+    root._ensureFrame = async () => {
+      /* The last frame of the base video is what a continuation really starts from, so it must be
+         visible - not only when you pick the video by hand, but after a project is reopened from the
+         library and after the Agent hands a video over. One door for all of them. */
+      const s = root._src; if (!s) return null;
+      if (root._srcFrame && root._srcFrame.isConnected) return root._srcFrame;
+      try {
+        const f = s.file instanceof File ? s.file
+          : s.id ? await libToFile((typeof LIB !== 'undefined' ? LIB : []).find(x => x.id === s.id)) : null;
+        if (!(f instanceof File)) return null;
+        return await frameTile(await lastFrameFile(f));
+      } catch { return null; }
+    };
     root._setSrc = (src, fresh = true) => {   // src: { id } of a library clip or { file } from the computer; null removes it
       root._src = src || null;
       $('.lm-src', root).hidden = !src; $('.lm-srcname', root).textContent = src ? src.name : '';
@@ -4866,7 +4880,8 @@ function makeRefMode(cfg) {
       if (src && fresh) { root._run = Math.random().toString(36).slice(2, 12); $$('.sc', root).forEach(c => { c._dn = { draft: null, final: null }; }); }
       if (src) setMode('parts');
       $('.lm-mode [data-m="all"]', root).disabled = !!src;
-      if (src && root._base !== 'cont') { root._base = 'cont'; setBase('cont'); }   // a saved project that continues a video shows that choice
+      if (src && root._base !== 'cont') { root._base = 'cont'; setBase('cont'); }
+      if (src) root._ensureFrame();   // the frame in front of the photos belongs to the base, whoever set it   // a saved project that continues a video shows that choice
       refreshStates();
     };
     // nine pictures in a scene, counted from the text; a chip for a picture the text does not call
@@ -4893,10 +4908,8 @@ function makeRefMode(cfg) {
     const useLibVideo = async it => {
       root._setSrc({ id: it.id, name: (it.label || it.prompt || it.sub || 'видео из Библиотеки').slice(0, 50) });
       if (root._base !== 'cont') setBase('cont');
-      try {
-        await frameTile(await lastFrameFile(await libToFile(it)));
-        toast('Взяли видео из Библиотеки: его последний кадр встал отдельной плиткой перед вашими фото, ваших мест 8.');
-      } catch (err) { toast('Видео принято. Последний кадр прочитать не удалось - добавьте изображения героя и места сами.'); }
+      if (await root._ensureFrame()) toast('Взяли видео из Библиотеки: его последний кадр встал отдельной плиткой перед вашими фото, ваших мест 8.');
+      else toast('Видео принято. Последний кадр прочитать не удалось - добавьте изображения героя и места сами.');
     };
     $('.lm-srclib', root).onclick = () => {
       let m = $('#lmLibM'); if (!m) { m = document.createElement('div'); m.className = 'modal'; m.id = 'lmLibM'; document.body.append(m); }
@@ -5045,8 +5058,17 @@ function makeRefMode(cfg) {
         for (let j = 0; j < 9; j++) { const f = await getRef(x.nimg ? `simg${i}_${j}` : 'simg' + i); if (f instanceof File) cards[i]._files[j] = f; }   // back to the same place
         cards[i]._paint();
       }
-      if (p.src) { const sf = p.src.id ? null : await memFile('get', `long/${run}/src`); root._setSrc(p.src.id ? { id: p.src.id, name: p.src.name } : sf instanceof File ? { file: sf, name: p.src.name } : null, false); }
+      let srcLost = false;
+      if (p.src) {
+        const sf = p.src.id ? null : await memFile('get', `long/${run}/src`);
+        const got = p.src.id ? { id: p.src.id, name: p.src.name } : sf instanceof File ? { file: sf, name: p.src.name } : null;
+        // a video from the computer lived only in the browser's memory: if it is gone, say it - the
+        // scenes would otherwise continue nothing, and the frame tile would be missing without a word
+        if (!got) srcLost = true;
+        root._setSrc(got, false);
+      }
       else root._setSrc(null, false);
+      if (srcLost) toast(`Видео-основа «${p.src.name}» не сохранилось: берите видео заново кнопкой «Своё видео», иначе сцены пойдут как новые.`);
       const okDone = d => d && byId(d.id) ? { sig: d.sig, url: d.url, id: d.id, text: d.text } : null;
       p.scenes.forEach((x, i) => { cards[i]._dn = { final: okDone(x.done), draft: okDone(x.draftDone) }; });
       // the continuation point of the last finished scene must still be on the disk (for the finished row and for the draft row)

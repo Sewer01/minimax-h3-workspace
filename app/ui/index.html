@@ -2979,6 +2979,7 @@ const vPrev = previewPanel($('#vPreview'), V, {
     form: () => {
       const fd = new FormData();
       fd.append('prompt', $('#vPrompt').value.trim());
+      fd.append('note', $('#vPrompt').value.trim());   // what you typed, apart from what the model read
       sizeForm(V, fd); fd.append('aspect', V.aspect); fd.append('quality', V.q); fd.append('duration', V.dur);
       seedForm(V, fd);
       if ($('#dFirst')._file) fd.append('first', $('#dFirst')._file);
@@ -3055,6 +3056,7 @@ const lPrev = previewPanel($('#lPreview'), L, {
     form: () => {
       const fd = new FormData();
       fd.append('prompt', $('#lPrompt').value.trim());
+      fd.append('note', $('#lPrompt').value.trim());   // what you typed, apart from what the model read
       sizeForm(L, fd); fd.append('aspect', L.aspect); fd.append('quality', L.q); fd.append('ref_size', L.refSize);
       loraForm(L, fd); seedForm(L, fd);
       fd.append('audio', new File([wavSlice(abuf, L.start, L.end)], 'clip.wav', { type: 'audio/wav' }));
@@ -4424,14 +4426,19 @@ $('#vwRepeat').onclick = async () => {
     } catch { }
     toast('Картинки проекта не нашлись - переносим настройки и тексты');
   }
+  const own = it.note != null ? it.note : it.prompt;   // your words, not the sentence the program wrote for the model
   if (IMG[it.mode]) { IMG[it.mode].fill(it); goTo(it.mode); }
-  else if (it.mode === 'video') { Object.assign(V, { aspect: it.aspect, q: it.q, dur: Math.round(it.len) }); $('#vPrompt').value = it.prompt; $('#vPrompt').oninput({ target: $('#vPrompt') }); vUpd(); goTo('video'); }
+  else if (it.mode === 'video') { Object.assign(V, { aspect: it.aspect, q: it.q, dur: Math.round(it.len) }); $('#vPrompt').value = own; $('#vPrompt').oninput({ target: $('#vPrompt') }); vUpd(); goTo('video'); }
   else if (RM[it.mode]) {
     const r = RM[it.mode]; Object.assign(r.S, { aspect: it.aspect, q: it.q, dur: Math.round(it.len) }, it.steps ? { steps: it.steps } : {});
-    const ta = r.prompt(); if (ta) ta.value = it.prompt; else toast('Нет поля для описания: откройте раздел и добавьте сцену вручную');
+    const ta = r.prompt(); if (ta) ta.value = own; else toast('Нет поля для описания: откройте раздел и добавьте сцену вручную');
+    if (it.mode === 'swap' && r.root) {   // the swap keeps its own fields: who to replace, and where the plans change
+      (it.whos || []).forEach((w, k) => { const el = $(`.rm-who[data-i="${k}"]`, r.root); if (el && w) el.value = w; });
+      const cu = $('.sw-cuts', r.root); if (cu && (it.cuts || []).length) cu.value = it.cuts.join('; ');
+    }
     r.upd(); goTo(it.mode);
   }
-  else { Object.assign(L, { aspect: it.aspect, q: it.q, refSize: it.ref_size || L.refSize }); $('#lPrompt').value = it.prompt; lUpd(); goTo('lipsync'); }
+  else { Object.assign(L, { aspect: it.aspect, q: it.q, refSize: it.ref_size || L.refSize }); $('#lPrompt').value = own; lUpd(); goTo('lipsync'); }
   const back = await repeatRefs(it);   // the pictures the result was made of come back too
   toast(back ? `Перенесли настройки и вернули картинок: ${back}` : 'Настройки перенесены — можно генерировать');
 };
@@ -5510,6 +5517,7 @@ function makeRefMode(cfg) {
       form: () => {
         const fd = new FormData();
         fd.append('prompt', cfg.swap ? ($('.rm-who[data-i="0"]', root).value.trim() || 'замена персонажа') : promptEl().value.trim());
+        fd.append('note', promptEl().value.trim());   // your own words: the repeat puts these back, not the composed text
         if (cfg.swap) {
           const own = promptEl().value.trim();   // the user's own prompt is used as it is, in one pass; empty: the program writes it (and swaps shot by shot)
           if (own) fd.append('raw_prompt', own);

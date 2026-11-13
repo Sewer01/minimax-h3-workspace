@@ -2210,7 +2210,7 @@ class App:
         if fast:
             sub += " · быстрый черновик"
         return await self.queue(graph, stages, {
-            "mode": "video", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality,
+            "mode": "video", "sub": sub, "prompt": prompt, "note": (form.get("note") or "").strip(), "aspect": aspect, "q": quality,
             "len": seconds, "res": f"{width}×{height}", "seed": seed})
 
     async def h_generate_lipsync(self, req):
@@ -2235,7 +2235,7 @@ class App:
                                          seconds, seed, files["audio"], refs, scale, ref_size, extra)
         speed = "максимум" if ref_size == "max" else "быстро"
         return await self.queue(graph, stages, {
-            "mode": "lipsync", "sub": f"{len(refs)} реф. ({speed}) · аудио {seconds:.1f} с", "prompt": prompt,
+            "mode": "lipsync", "sub": f"{len(refs)} реф. ({speed}) · аудио {seconds:.1f} с", "prompt": prompt, "note": (form.get("note") or "").strip(), 
             "aspect": aspect, "q": quality, "len": seconds, "res": f"{out_w}×{out_h}", "seed": seed,
             "ref_size": ref_size})
 
@@ -2341,7 +2341,7 @@ class App:
         sub = f"{len(images)} карт." + (f", {len(videos)} видео" if videos else "") + (f", {len(audios)} аудио" if audios else "") \
             + f" · {steps} шагов" + (" · Pika" if pika else "")
         return await self.queue(graph, stages, {
-            "mode": "refs", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
+            "mode": "refs", "sub": sub, "prompt": prompt, "note": (form.get("note") or "").strip(), "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed, "steps": steps, "ref_size": ref_size})
 
     async def long_source(self, item_id, uploaded, first_sec):
@@ -2756,7 +2756,7 @@ class App:
                                        images, audios, realism, self.custom_loras("actor"))
         sub = f"{len(images)} карт." + (f", голос ({len(audios)})" if audios else ", без голоса") + " · 10 шагов"
         return await self.queue(graph, stages, {
-            "mode": "actor", "sub": sub, "prompt": prompt, "aspect": aspect, "q": quality, "len": seconds,
+            "mode": "actor", "sub": sub, "prompt": prompt, "note": (form.get("note") or "").strip(), "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed})
 
     async def h_generate_swap(self, req):
@@ -2819,7 +2819,8 @@ class App:
                                              small_ref=form.get("small_ref") == "1")
         return await self.queue(graph, stages, {
             "mode": "swap", "sub": "Замена персонажа" + (f", планов: {len(shots)}" if shots else (f" ({len(images)})" if len(images) > 1 else "")) + (" · Pika" if pika else ""),
-            "prompt": prompt or whos[0], "aspect": aspect, "q": quality, "len": seconds,
+            "prompt": text, "note": (form.get("note") or "").strip(), "whos": whos, "cuts": cuts,
+            "aspect": aspect, "q": quality, "len": seconds,
             "res": f"{width}×{height}", "seed": seed})
 
     async def action_setup(self):

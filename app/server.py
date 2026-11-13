@@ -3324,8 +3324,16 @@ class App:
             await resp.write(f"data: {ag.dumps(obj)}\n\n".encode())
 
         try:
-            if self.jobs:
-                raise RuntimeError("Сейчас идёт генерация видео — агент запустится, когда она закончится.")
+            if self.jobs:   # the agent's model would compete with the video for video memory: wait for
+                            # the end of the generation and then start by itself - the old words promised
+                            # exactly this, while the answer was a refusal
+                waited = 0
+                while self.jobs:
+                    if req.transport is None or req.transport.is_closing():   # the person pressed «Стоп» or left
+                        return resp
+                    await send({"type": "status", "text": f"Идёт генерация видео — агент запустится сам, когда она закончится… (ждём {waited // 60}:{waited % 60:02d})"})
+                    await asyncio.sleep(3)
+                    waited += 3
             variant = await self.llm_variant()
             if not self.llm.installed(variant):
                 raise RuntimeError("Модель агента ещё не скачана.")

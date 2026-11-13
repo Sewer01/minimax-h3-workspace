@@ -161,7 +161,14 @@ def window_geo():
             return w, h
     except Exception:
         pass
-    return 1760, 1040   # the width at which every tab still shows its name
+    # nothing remembered yet: wide enough that the tab strip keeps every name. The strip needs about
+    # 1.5 thousand pixels plus the side column, so 2040 with room to spare, but never over the screen.
+    try:
+        import ctypes
+        screen = ctypes.windll.user32.GetSystemMetrics(0) or 1920
+        return int(max(1440, min(2040, screen - 60))), 1040
+    except Exception:
+        return 2040, 1040
 
 
 def show_running_window(base):

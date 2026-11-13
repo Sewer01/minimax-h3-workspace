@@ -5676,7 +5676,7 @@ function fitTopBar() {
   /* a tab that is not visible is worse than a tab without a word under it: names go away first,
      and only what still does not fit stays behind the edge that fades out */
   mb.classList.remove('tight');
-  if (mb.scrollWidth > mb.clientWidth + 4) mb.classList.add('tight');   // узкое окно - полоса сжимается в иконки
+  if (mb.scrollWidth > mb.clientWidth + 26) mb.classList.add('tight');   // a finger's width of slack: names stay until it really does not fit   // узкое окно - полоса сжимается в иконки
   mb.classList.toggle('can-right', mb.scrollWidth > mb.clientWidth + 4);
   const on = mb.querySelector('.mb.on');
   if (on && mb.scrollWidth > mb.clientWidth) {

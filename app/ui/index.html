@@ -879,7 +879,8 @@ body.dropping::after{content:'Отпустите — программа разл
 .mt-seek{flex:1;accent-color:var(--pink)}
 .mt-time{font-size:12px;color:var(--dim);min-width:84px;text-align:right;font-variant-numeric:tabular-nums}
 .mt-upbox{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-.mt-upbox select{min-width:0;flex:1 1 190px}
+.mt-upbox select{flex:1 1 100%;min-width:0;padding:10px 12px;border-radius:11px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--text);font-weight:700;font-size:13px;cursor:pointer}
+.mt-upbox select:hover{border-color:var(--accent)}
 .mt-upbox .btn{white-space:normal;flex:1 1 auto;text-align:center}.mt-upbox select{flex:1;min-width:0;padding:6px 8px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-size:12.5px}
 .mt-sets{display:grid;gap:8px;margin-top:10px}.mt-sets label{display:block;font-size:12px;color:var(--dim)}.mt-sets label[hidden]{display:none}.mt-sets b{color:var(--text)}.mt-sets i{font-style:normal}.mt-sets input{width:100%;accent-color:var(--pink)}
 .mt-pipe{margin-top:10px;padding:10px 12px;border:1px solid var(--line-2);border-radius:10px;font-size:12.5px;line-height:1.7;color:var(--dim)}.mt-pipe[hidden]{display:none}.mt-pipe .ok{color:var(--ok,#3ecf8e);font-weight:700}
@@ -5977,10 +5978,12 @@ async function agVideoFrames(file, n = 8) {
   const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.src = URL.createObjectURL(file);
   const ok = await new Promise(r => { v.onloadedmetadata = () => r(true); v.onerror = () => r(false); });
   if (!ok || !(v.duration > 0)) { URL.revokeObjectURL(v.src); throw new Error('Не получилось открыть видео «' + file.name + '». Попробуйте MP4 (H.264).'); }
-  const dur = Math.min(v.duration, 30), w = Math.min(640, v.videoWidth || 640), h = Math.round(w * (v.videoHeight || 360) / (v.videoWidth || 640));
+  const dur = v.duration;   // the whole clip: for a continuation the end matters more than the start
+  const w = Math.min(640, v.videoWidth || 640), h = Math.round(w * (v.videoHeight || 360) / (v.videoWidth || 640));
   const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'), out = [];
   for (let i = 0; i < n; i++) {
-    const t = Math.min(dur - 0.1, Math.max(0.1, dur * (i + 0.5) / n));
+    // evenly, from the very beginning to the very end: the last frame is what a continuation starts from
+    const t = Math.min(dur - 0.06, Math.max(0.05, dur * i / Math.max(1, n - 1)));
     v.currentTime = t; await new Promise(r => { v.onseeked = r; setTimeout(r, 1500); });
     g.drawImage(v, 0, 0, w, h);
     const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
@@ -6052,7 +6055,7 @@ async function agFramesFromFile(f) {   // the only way the agent can look at a v
   if (!again && seen.size >= max) { toast('Этот режим принимает ' + max + ' видео: уберите одно из лотка'); return false; }
   toast('Вырезаем кадры из видео…');
   try {
-    const { frames, dur } = await agVideoFrames(f, 8);
+    const { frames, dur } = await agVideoFrames(f, Math.min(12, AG_FRAME_MAX));   // one video may use most of the lot
     frames.forEach(fr => AG.att.push({ file: fr.file, url: fr.url, frame: true, label: fr.t.toFixed(1) + ' с', vname: f.name, vdur: dur, vfile: f }));
     const cut = agShareFrames();
     renderAtt(); agCtx();
@@ -8166,7 +8169,7 @@ applyZoom();
       <div class="mt-bar" hidden><button type="button" class="btn mt-restart" title="Смотреть с начала ленты">⏮</button><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
       <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button><button type="button" class="btn mini mt-del" hidden title="Убрать готовый ролик из Библиотеки: файл переместится в корзину Windows">Удалить ролик</button></div>
       <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
-      <div class="mt-upbox"><select class="mt-upeng" title="Чем увеличивать каждый клип"><option value="relay">Быстро (RelayVSR, в 2 раза)</option><option value="seed">Качественно (SeedVR2, в 2 раза, долго)</option></select><button type="button" class="btn mt-upgo" title="Каждый клип увеличивается отдельно (быстро, память не переполняется), потом увеличенные склеиваются. Исходные клипы остаются.">Увеличить каждый клип и склеить</button></div>
+      <div class="mt-upbox"><select class="mt-upeng" title="Чем увеличивать каждый клип перед склейкой"><option value="relay">Увеличение: быстро - RelayVSR, в 2 раза</option><option value="seed">Увеличение: качественно - SeedVR2, в 2 раза (долго)</option></select><button type="button" class="btn mt-upgo" title="Каждый клип увеличивается отдельно (быстро, память не переполняется), потом увеличенные склеиваются. Исходные клипы остаются.">Увеличить каждый клип и склеить</button></div>
       <div class="mt-sets">
         <label class="mt-s-detail"><span><b>Детали: <i class="mt-dv">70</i>%</b> меньше — мягче, без пересвета лиц; больше — чётче</span><input type="range" class="mt-detail" min="0" max="100" step="5" value="70"></label>
         <label class="mt-s-sharp" hidden><span><b>Чёткость: <i class="mt-sv">100</i>%</b> меньше — мягче; 100 — как есть</span><input type="range" class="mt-sharp" min="0" max="100" step="5" value="100"></label>

@@ -342,6 +342,7 @@ textarea{width:100%;min-height:64px;height:110px;resize:vertical;background:var(
 textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .ta-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:10px;flex-wrap:wrap}
 .tokens{display:flex;gap:6px;flex-wrap:wrap}
+.token[disabled],.token:disabled{opacity:.38;cursor:not-allowed;pointer-events:auto}
 .token{font-family:var(--mono);font-size:11.5px;padding:4px 8px;border-radius:7px;background:var(--surface-2);border:1px solid var(--line-2);color:var(--text)}
 .token:hover{border-color:var(--accent)}
 
@@ -5031,7 +5032,8 @@ function makeRefMode(cfg) {
         const mark = host => $$('.token', host).forEach(b => {
           const k = +(b.textContent.match(/\d+/) || [0])[0];
           if (!b.dataset.otitle) b.dataset.otitle = b.title;
-          const free = used.has(k) || left > 0;
+          const filled = k < 10 ? !!places[k - 1] : !!ownPlaces[k - 10];
+          const free = filled && (used.has(k) || left > 0);   // a place without a picture never wakes up
           b.disabled = !free;
           b.style.opacity = free ? '' : '.38';
           b.style.cursor = free ? '' : 'not-allowed';

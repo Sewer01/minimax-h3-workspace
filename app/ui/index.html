@@ -5344,13 +5344,15 @@ function makeRefMode(cfg) {
             toast('Сцены лежат в «Монтаже»: откройте его и склейте, когда будет нужно.');
           };
         }
-        if (joinB) joinB.textContent = 'Сделать все сцены и отправить в монтаж';
-        // one column, one measure: mass actions first, then the single scene, then the hand-off
+        // the combined "make all scenes AND send to Montage" button is gone: it only sent what was
+        // already made, so it answered "there are no finished scenes" and duplicated two honest buttons
+        if (joinB) joinB.hidden = true;
+        // one column, one measure: the scene you picked, then all scenes, then the hand-off
         const goB = $('.go', bar);
-        const trio = [chainB, joinB, watchB].filter(Boolean);
+        const plates = [chainB, watchB].filter(Boolean);
         const same = 'width:100%;margin:0;padding:12px 14px;font-size:14px;font-weight:700;border-radius:12px';
-        [chainB, joinB, goB, watchB].filter(Boolean).forEach(b => { if (!b.classList.contains('pri')) b.classList.add('btn', 'pri'); b.style.cssText = same; plate.append(b); });
-        root._plates = trio;
+        [goB, chainB, watchB].filter(Boolean).forEach(b => { if (!b.classList.contains('pri')) b.classList.add('btn', 'pri'); b.style.cssText = same; plate.append(b); });
+        root._plates = plates;
         root._memo = () => {
           const q = root._q === 'draft' ? 'Черновик' : 'Хорошее качество';
           memo.textContent = root._mode === 'parts' ? `${q} · по частям` : `${q} · весь ролик одним файлом`;

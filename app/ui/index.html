@@ -684,6 +684,9 @@ img.pr-media{object-position:center 38%}
 .pblock .pb-other{background:var(--surface-2);border:1px solid var(--line-2);border-radius:9px;padding:5px 8px;font-size:12.5px;outline:none}
 .pblock .pb-act small{margin-left:auto;align-self:center;color:var(--dim);font-family:var(--mono);font-size:11px}
 .ag-att{display:flex;gap:10px;padding:0 18px;flex-wrap:wrap}
+.msg .vidtile{position:relative;display:inline-block;width:104px;height:104px;border-radius:10px;overflow:hidden;vertical-align:top}
+.msg .vidtile img{width:100%;height:100%;object-fit:cover;display:block}
+.msg .vidtile b{position:absolute;left:6px;bottom:6px;right:6px;font-weight:700;font-size:10px;font-family:var(--mono);padding:2px 5px;border-radius:6px;background:rgba(var(--ov-rgb),.8);color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ag-att>div{position:relative;width:104px;height:104px;flex:0 0 104px;border-radius:10px;overflow:hidden;background:var(--surface-2)}
 .ag-att div{position:relative}
 .ag-att img{width:100%;height:100%;object-fit:cover;display:block}
@@ -2066,10 +2069,10 @@ let AGENT_DROP_HALF = 'frames';   // a paste, or a drop with no visible drag, wo
     if (!veil) return;
     veil.hidden = !on;
     clearTimeout(hide);
-    if (on) hide = setTimeout(() => { veil.hidden = true; }, 600);   // no events for half a second: the drag is over
+    if (on) hide = setTimeout(() => { veil.hidden = true; }, 2600);   // no events for a while: the drag is over
   };
   document.addEventListener('dragenter', e => { if (wanted(e)) { show(true); paint(e); } });
-  document.addEventListener('dragover', e => { if (!veil || veil.hidden) return; if (!wanted(e)) return; paint(e); });
+  document.addEventListener('dragover', e => { if (!wanted(e)) return; show(true); paint(e); });   // holding the mouse still must not switch the hint off
   const off = () => { show(false); document.body.classList.remove('dropping'); };
   ['dragend', 'dragexit'].forEach(ev => document.addEventListener(ev, off, true));
   document.addEventListener('drop', off, true);          // does not touch the event: the program unpacks it itself
@@ -6015,7 +6018,10 @@ function renderMsgs() {
     const d = document.createElement('div'); d.className = 'msg ' + (m.role === 'user' ? 'u' : 'a'); d.dataset.i = idx;
     if (m.role === 'user') {
       d.textContent = m.content;
-      if (m.images?.length) d.insertAdjacentHTML('beforeend', `<div class="imgs">${m.images.map(u => `<img src="${u}">`).join('')}</div>`);
+      const tiles = (m.images || []).map(u => `<img src="${u}">`);
+      // a video goes to the generation as a file, so the chat shows its first frame with a word about it
+      if (m.vimg) tiles.push(`<span class="vidtile"><img src="${m.vimg}" alt=""><b>🎬 ${esc(m.vname || 'видео')}${m.vdur ? ' · ' + m.vdur + ' с' : ''} — файлом</b></span>`);
+      if (tiles.length) d.insertAdjacentHTML('beforeend', `<div class="imgs">${tiles.join('')}</div>`);
     } else renderAssistant(d, m);
     $('#agMsgs').append(d);
   });
@@ -6142,8 +6148,9 @@ async function agSend() {
     text += `\n\n[К сообщению приложено видео «${vids[0].vname}»${vids[0].vdur ? `, ${vids[0].vdur.toFixed(1)} с` : ''} — файлом, без раскадровки. Его кадров среди Picture N нет: содержимое описать нельзя, но файл уйдёт в раздел генерации целиком.]`;
     text = text.trim();
   }
-  AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videoFile: frs[0]?.vfile || vids[0]?.file, audioFile: au?.file });
-  AG.att = []; renderAtt(); $('#agIn').value = ''; AG.audio = null; showAudioBox();
+  AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videoFile: frs[0]?.vfile || vids[0]?.file, vimg: vids[0]?.url || null, vname: vids[0]?.vname || frs[0]?.vname || '', vdur: vids[0]?.vdur ? vids[0].vdur.toFixed(1) : '', audioFile: au?.file });
+  // the tray keeps the pictures and the video on purpose: the next question often needs the same hero
+  $('#agIn').value = ''; AG.audio = null; showAudioBox();
   const reply = { role: 'assistant', content: '', status: 'Отправляем…', edit: AG.edit, to: AG.target };   // перенос в раздел потом поступит по тому же смыслу
   AG.msgs.push(reply); renderMsgs();
   const el = $('#agMsgs .msg:last-child');

@@ -1488,7 +1488,7 @@ body.dropping::after{content:'Отпустите — программа разл
           <button class="chip" data-f="refs">Референсы</button>
           <button class="chip" data-f="actor">Актёрская игра</button>
           <button class="chip" data-f="action">Экшн</button>
-          <button class="chip" data-f="long">Длинное</button>
+          <button class="chip" data-f="long">Видеостудия</button>
           <button class="chip" data-f="custom">Свои</button>
           <button class="chip" data-f="fav">★ Избранное</button>
         </div>
@@ -4877,6 +4877,16 @@ function makeRefMode(cfg) {
       toast(`В сцене занято все ${cap} мест${sc._frame ? ' (кадр вашего видео идёт отдельно)' : ''}. Уберите из текста другой тег - тогда это фото освободит себе место.`);
       return false;
     };
+    root._takeVideo = async f => {
+      /* The base video of a continuation, whole: the file, the mode that continues it, and the last
+         frame standing in front of your photos. The Agent hands videos over the same door, so the
+         frame appears there too - before, the transfer only remembered the file. */
+      let frame = null, why = '';
+      try { frame = await lastFrameFile(f); } catch (err) { why = err.message; }
+      root._setSrc({ file: f, name: f.name });   // the video itself is usable even when its last frame cannot be read
+      if (frame) await frameTile(frame);
+      return { frame, why };
+    };
     $('.lm-srcx', root).onclick = () => root._setSrc(null);
     // the same continuation can be taken from what you already made here
     const useLibVideo = async it => {
@@ -4907,10 +4917,8 @@ function makeRefMode(cfg) {
     $('.lm-srcfile', root).onchange = async e => {
       const f = e.target.files[0]; e.target.value = ''; if (!f) return;
       try {
-        let frame = null, why = '';
-        try { frame = await lastFrameFile(f); } catch (err) { why = err.message; }
-        root._setSrc({ file: f, name: f.name });   // the video itself is usable even when its last frame cannot be read
-        if (frame) { await frameTile(frame); toast('Видео загружено. Его последний кадр встал отдельной плиткой перед вашими фото (помечен «кадр видео»), выбрать его номером нельзя - ваших мест 8.'); }
+        const { frame, why } = await root._takeVideo(f);
+        if (frame) toast('Видео загружено. Его последний кадр встал отдельной плиткой перед вашими фото (помечен «кадр видео»), выбрать его номером нельзя - ваших мест 8.');
         else toast((why || 'Кадр взять не удалось') + ' Видео принято - сцена продолжит его, но кадр отдельной плиткой не встал: ваших мест тогда 9.');
       } catch (err) { toast(err.message); }
     };
@@ -6076,7 +6084,7 @@ $('#agFile').onchange = async e => {
 };
 $('#agEmpty').onclick = e => { const s = e.target.closest('span'); if (s) { $('#agIn').value = s.textContent.replace(/[«»]/g, '').replace(/ \+ фото героинь$/, ''); $('#agIn').focus(); } };
 $('#agIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#agSend').click(); } });
-const AG_NAMES = { plist: 'список кадров', long: 'сцены длинного видео', video: 'Генерацию видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрскую игру', swap: 'Замену персонажа', action: 'Экшн-сцены', krea: 'Изображение по тексту', qwen: 'Правку изображения', sheet: 'Изображение по тексту', sheet6: 'Изображение по тексту', fluxt: 'Изображение по тексту', qwent: 'Изображение по тексту', story: 'Изображение по тексту' };
+const AG_NAMES = { plist: 'список кадров', long: 'сцены Видеостудии', video: 'Генерацию видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрскую игру', swap: 'Замену персонажа', action: 'Экшн-сцены', krea: 'Изображение по тексту', qwen: 'Правку изображения', sheet: 'Изображение по тексту', sheet6: 'Изображение по тексту', fluxt: 'Изображение по тексту', qwent: 'Изображение по тексту', story: 'Изображение по тексту' };
 const AG_IMG = ['plist', 'krea', 'qwen', 'sheet', 'sheet6', 'fluxt', 'qwent', 'story'];
 AG.storyModel = 'krea'; AG.storyFrames = true;
 AG.think = (() => { try { return localStorage.getItem('h3-ag-think') === 'deep' ? 'deep' : 'fast'; } catch { return 'fast'; } })();
@@ -6093,6 +6101,19 @@ const agTargetClick = e => {
 $('#agStoryF').onclick = e => { const b = e.target.closest('button[data-f]'); if (!b) return; AG.storyFrames = b.dataset.f === '1'; agCtx(); };
 $('#agStoryM').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; AG.storyModel = b.dataset.m; agCtx(); };
 $('#agTarget').onclick = agTargetClick; $('#agTarget2').onclick = agTargetClick;
+// what will become of the videos in the tray, said before the person presses anything
+function agVidNote() {
+  const names = [...new Set(AG.att.filter(a => a.frame).map(a => a.vname))];
+  if (AG.target === 'long') {
+    return names.length
+      ? ` Видеостудия продолжит видео «${names[0]}»: режим «продолжить своё видео» включится сам, а его последний кадр встанет отдельной плиткой перед вашими фото.`
+        + (names.length > 1 ? ` Остальные ${names.length - 1} видео студия не принимает - они останутся в чате.` : '')
+      : ' Если приложите видео, Видеостудия продолжит именно его: режим включится сам, последний кадр встанет перед вашими фото.';
+  }
+  if (!names.length) return '';
+  const max = agVideoMax();
+  return max > 1 ? ` В раздел уйдёт до ${max} видео: ${names.join(', ')}.` : ` В раздел уйдёт видео «${names[0]}».`;
+}
 function agCtx() {
   agEditLabels();   // названия переключателя зависят от того, добавляет ли режим что-то к готовому
   const n = (AG.edit ? 0 : agImgCount()) + AG.att.filter(a => !a.frame).length;   // a fix counts only the pictures of this message
@@ -6100,7 +6121,7 @@ function agCtx() {
   $('#agStoryM').hidden = AG.target !== 'story';
   $$('#agStoryF button').forEach(b => b.classList.toggle('on', (b.dataset.f === '1') === AG.storyFrames));
   $$('#agStoryM button').forEach(b => b.classList.toggle('on', b.dataset.m === AG.storyModel));
-  $('#agCtx').textContent = AG_IMG.includes(AG.target)
+  $('#agCtx').textContent = (AG_IMG.includes(AG.target)
     ? ({ krea: 'Опишите изображение словами: агент напишет промпт для Krea 2. Изображения в чате — только образцы настроения.',
          qwen: `Приложите изображение, которое нужно изменить (скрепка или «Из Библиотеки»), и напишите, что поменять. Изображений в чате: ${n}.`,
          story: 'Расскажите историю по кадрам («первый кадр — …, второй кадр — …») и скажите, сколько кадров нужно. Агент напишет промпт одного изображения-раскадровки без подписей и номеров для выбранной модели.',
@@ -6118,7 +6139,7 @@ function agCtx() {
     ? `Длительность ${V.dur} с (как в «Генерации видео»). Изображения в чате: ${n} — 1-я станет первым кадром, 2-я последним.`
     : AG.target === 'lipsync'
       ? `Длина видео = длине аудио${L.dur0 ? ` (${L.len().toFixed(1)} с)` : ''}. Изображения в чате: ${n} — станут референсами Picture 1, 2…`
-      : `Длительность ${RM[AG.target].S.dur} с (как в разделе «${{ refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' }[AG.target]}»). Изображения в чате: ${n} — станут Picture 1, 2…`;
+      : `Длительность ${RM[AG.target].S.dur} с (как в разделе «${{ refs: 'Референсы', actor: 'Актёрская игра', action: 'Экшн-сцены' }[AG.target]}»). Изображения в чате: ${n} — станут Picture 1, 2…`) + agVidNote();
 }
 function mdLite(s) {
   return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').split(/\n{2,}/).map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
@@ -6478,8 +6499,11 @@ async function sendPrompt(blk, to) {
     const clean = t => t.split('\n').map(l => l.replace(/^\s*integrated_multimodal_description\s*:\s*(\[Shot \d+\]\s*)?/i, '')).join('\n').trim();
     L2.root._setScenes(list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec, fresh: x.fresh })).filter(x => x.prompt));
     if (vidFiles.length) {   // the studio continues a video: the first one becomes the base, the mode turns itself on
-      L2.root._setSrc({ file: vidFiles[0], name: vidFiles[0].name });
+      const got = await L2.root._takeVideo(vidFiles[0]);
       vUsed = 1; vAll = 1;
+      toast(got.frame
+        ? `Видеостудия продолжит «${vidFiles[0].name}»: режим «продолжить своё видео» включён, его последний кадр встал перед вашими фото`
+        : `Видеостудия продолжит «${vidFiles[0].name}», но последний кадр взять не удалось (${got.why || 'не читается'}): ваших мест тогда 9`);
     }
     if (fix && files.length) $$('label.ref.filled .x', L2.root).forEach(x => x.click());   // a fix replaces the pictures; a continuation keeps the old ones
     for (const f of files) {   // existing references (e.g. the last frame of the video being continued) stay; new pictures take the free slots

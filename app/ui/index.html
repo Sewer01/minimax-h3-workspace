@@ -694,14 +694,7 @@ img.pr-media{object-position:center 38%}
 .ag-att button{position:absolute;right:-6px;top:-6px;width:20px;height:20px;border-radius:50%;background:var(--surface-2);font-size:11px}
 .ag-att .vid{width:100%;height:100%;overflow:hidden;background:var(--bg-2)}
 .ag-att .vid img{width:100%;height:100%;object-fit:cover;display:block}
-.ag-att button[data-fr]{left:auto;right:4px;top:auto;bottom:4px;width:auto;height:auto;border-radius:6px;padding:2px 7px;font-size:10.5px}
 /* while a video is dragged into the chat, the screen splits in two: where it lands decides what it becomes */
-#agSplit{position:fixed;inset:0;z-index:780;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;padding:14px;pointer-events:none;background:rgba(5,7,11,.74);backdrop-filter:blur(3px)}
-#agSplit[hidden]{display:none}
-#agSplit .ds{border:2px dashed var(--line-2);border-radius:18px;display:grid;place-content:center;gap:10px;justify-items:center;text-align:center;padding:22px;background:rgba(var(--bg2-rgb),.55)}
-#agSplit .ds b{font-size:21px}
-#agSplit .ds small{color:var(--muted);font-size:13px;max-width:440px;line-height:1.5}
-#agSplit .ds.hot{border-color:var(--accent);background:rgba(var(--accent-rgb),.16)}
 .ag-comp{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;padding:12px 18px 14px}
 /* below the conversation there is a fixed height: the previews, the mode line and the field
    must take their own room, or the column squashes them into each other and they overlap */
@@ -1745,9 +1738,7 @@ equirements.txt</code><br>
   </main>
 </div>
 
-  <div id="agSplit" hidden>
-    <div class="ds" data-how="frames"><b>В кадры</b><small>Агент посмотрит видео как восемь кадров: кто в кадре, что происходит, куда движется камера</small></div>
-    <div class="ds" data-how="file"><b>Видео файлом</b><small>Файл останется как есть: уйдёт в раздел генерации целиком. Агент его не смотрит - для него видео существует только кадрами</small></div>
+  
   </div>
 
 <button id="sbToggle" type="button" title="Показать или скрыть главное меню">‹ Меню</button>
@@ -1913,8 +1904,8 @@ async function spreadFiles(files, view) {
   for (const kind of ['image', 'video', 'audio']) {
     const list = byKind[kind]; if (!list.length) continue;
     if (!dropAccepts(view).includes(kind)) { nofit.push({ kind, list }); continue; }
-    if (view === 'agent' && kind === 'video') {   // куда бросили: слева - кадры, справа - файл
-      for (const f of list) { if (AGENT_DROP_HALF === 'frames') await agFramesFromFile(f); else await agVideoFile(f); placed++; }
+    if (view === 'agent' && kind === 'video') {   // the agent understands a video only as frames: that is what we cut
+      for (const f of list) { if (await agFramesFromFile(f)) placed++; }
       continue;
     }
     const slots = dropSlots(view, kind);
@@ -2061,31 +2052,15 @@ document.addEventListener('drop', e => {
    it did, and the program stayed in the "a file is being dragged" state after the drop: dashed
    frames hung over the whole window and the top buttons stopped answering. Where the file lands is
    remembered from the cursor position and read later by the ordinary unpacking below. */
-let AGENT_DROP_HALF = 'frames';   // a paste, or a drop with no visible drag, works as before: frames
 (() => {
-  const veil = $('#agSplit');
-  const wanted = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files') && activeView() === 'agent';
-  const paint = e => {
-    AGENT_DROP_HALF = e.clientX <= innerWidth / 2 ? 'frames' : 'file';
-    if (veil) $$('#agSplit .ds').forEach(x => x.classList.toggle('hot', x.dataset.how === AGENT_DROP_HALF));
-  };
-  let hide = 0;
-  const show = on => {
-    if (!veil) return;
-    veil.hidden = !on;
-    clearTimeout(hide);
-    if (on) hide = setTimeout(() => { veil.hidden = true; }, 2600);   // no events for a while: the drag is over
-  };
-  document.addEventListener('dragenter', e => { if (wanted(e)) { show(true); paint(e); } });
-  document.addEventListener('dragover', e => { if (!wanted(e)) return; show(true); paint(e); });   // holding the mouse still must not switch the hint off
-  const off = () => { show(false); document.body.classList.remove('dropping'); };
+  // The screen used to split in half during a drag, offering frames on the left and the whole file on
+  // the right. The agent cannot read a video file, so the choice only misled: a video is always cut
+  // into frames now. What is kept here is the safety net that wipes the dashed outline after a drag.
+  const off = () => document.body.classList.remove('dropping');
   ['dragend', 'dragexit'].forEach(ev => document.addEventListener(ev, off, true));
   document.addEventListener('drop', off, true);          // does not touch the event: the program unpacks it itself
   addEventListener('blur', off);
   addEventListener('keyup', e => { if (e.key === 'Escape') off(); });
-  let lastView = activeView();
-  new MutationObserver(() => { const v = activeView(); if (v !== lastView) { lastView = v; show(false); } })
-    .observe(document.querySelector('.main') || document.body, { attributes: true, attributeFilter: ['class'], subtree: true });
 })();
 
 /* ---------- local server (real ComfyUI) or offline demo ---------- */
@@ -5899,8 +5874,6 @@ function renderAtt() {
   const base = agImgCount(); let k = 0;
   $('#agAtt').innerHTML = AG.att.map((a, i) => a.frame
     ? `<div title="Кадр из видео «${esc(a.vname)}»"><img src="${a.url}"><b style="background:#3a5a8c">🎞 ${esc(a.label)}</b><button data-i="${i}">✕</button></div>`
-    : a.video
-      ? `<div title="Видео «${esc(a.vname)}» файлом: в генерацию уйдёт целиком, Агент его не смотрит"><div class="vid"><img src="${a.url}"></div><b style="background:#3a5a8c">🎬 ${a.vdur ? a.vdur.toFixed(1) + ' с' : 'видео'}</b><button data-fr="${i}" type="button" title="Вырезать кадры, чтобы Агент увидел, что в видео">кадры</button><button data-i="${i}">✕</button></div>`
       : `<div><img src="${a.url}"><b>Picture ${base + (++k)}</b><button data-i="${i}">✕</button></div>`).join('');
 }
 // a video cannot be shown to the model as a file: several frames are cut out of it and sent as pictures, with the seconds written down
@@ -5920,29 +5893,26 @@ async function agVideoFrames(file, n = 8) {
   URL.revokeObjectURL(v.src);
   return { frames: out, dur: v.duration };
 }
+const AG_VIDEO_MAX = 3, AG_FRAME_MAX = 12;   // references take three videos; twelve frames is what the agent can hold
 async function agFramesFromFile(f) {   // the only way the agent can look at a video: pieces of it
-  AG.att = AG.att.filter(a => !a.frame);   // one video at a time
+  const again = AG.att.some(a => a.frame && a.vname === f.name);
+  if (again) AG.att = AG.att.filter(a => !(a.frame && a.vname === f.name));   // the same video lays its frames out anew
+  const seen = new Set(AG.att.filter(a => a.frame).map(a => a.vname));
+  if (!again && seen.size >= AG_VIDEO_MAX) { toast('Агент разбирает не больше ' + AG_VIDEO_MAX + ' видео: уберите одно из лотка'); return false; }
+  const room = AG_FRAME_MAX - AG.att.filter(a => a.frame).length;
+  if (room < 3) { toast('Для кадров в лотке почти не места: уберите лишние картинки'); return false; }
   toast('Вырезаем кадры из видео…');
   try {
-    const { frames, dur } = await agVideoFrames(f);
+    const { frames, dur } = await agVideoFrames(f, Math.min(8, room));
     frames.forEach(fr => AG.att.push({ file: fr.file, url: fr.url, frame: true, label: fr.t.toFixed(1) + ' с', vname: f.name, vdur: dur, vfile: f }));
-    renderAtt(); agCtx(); toast(`Из видео взято ${frames.length} кадров. Теперь напишите, кого на что заменить`);
-  } catch (err) { toast(err.message); return false; }
-  return true;
-}
-async function agVideoFile(f) {   // kept as a file: the mode gets the video itself, the agent is only told it exists
-  if (AG.att.some(a => a.video && a.file && a.file.name === f.name && a.file.size === f.size)) { toast('Это видео уже приложено'); return false; }
-  toast('Прикладываем видео файлом…');
-  try {
-    const { frames, dur } = await agVideoFrames(f, 1);   // the first frame is only the picture on the chip
-    AG.att.push({ file: f, url: frames[0].url, video: true, vname: f.name, vdur: dur });
     renderAtt(); agCtx();
-    toast('Видео приложено файлом. Агент его не видит — нажмите «кадры» на плашке, если нужно описать содержимое');
+    const nv = new Set(AG.att.filter(a => a.frame).map(a => a.vname)).size;
+    toast(`Из видео взято ${frames.length} кадров${nv > 1 ? ` (видео в лотке: ${nv})` : ''}. Теперь напишите, кого на что заменить`);
   } catch (err) { toast(err.message); return false; }
   return true;
 }
 $('#agVidFile').onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ''; if (f) await agVideoFile(f);
+  const f = e.target.files[0]; e.target.value = ''; if (f) await agFramesFromFile(f);   // the same as a drop: frames
 };
 $('#agAtt').addEventListener('dragover', e => { if ([...(e.dataTransfer.types || [])].includes('Files')) { e.preventDefault(); $('#agAtt').classList.add('over'); } });
 $('#agAtt').addEventListener('dragleave', () => $('#agAtt').classList.remove('over'));
@@ -5952,8 +5922,6 @@ $('#agAtt').addEventListener('drop', async e => {
   for (const f of e.dataTransfer.files) await agAttachFile(f);
 });
 $('#agAtt').onclick = async e => {
-  const fr = e.target.closest('button[data-fr]');
-  if (fr) { const a = AG.att[+fr.dataset.fr]; if (a && a.file) { AG.att.splice(+fr.dataset.fr, 1); renderAtt(); await agFramesFromFile(a.file); } return; }
   const b = e.target.closest('button[data-i]'); if (b) { AG.att.splice(+b.dataset.i, 1); renderAtt(); }
 };
 $('#agFile').onchange = async e => {
@@ -6035,7 +6003,7 @@ function renderMsgs() {
       d.textContent = m.content;
       const tiles = (m.images || []).map(u => `<img src="${u}">`);
       // a video goes to the generation as a file, so the chat shows its first frame with a word about it
-      if (m.vimg) tiles.push(`<span class="vidtile"><img src="${m.vimg}" alt=""><b>🎬 ${esc(m.vname || 'видео')}${m.vdur ? ' · ' + m.vdur + ' с' : ''} — файлом</b></span>`);
+      if (m.vimg) tiles.push(`<span class="vidtile"><img src="${m.vimg}" alt=""><b>🎬 ${esc(m.vname || 'видео')}${m.vdur ? ' · ' + m.vdur + ' с' : ''} · ${(m.videos || []).length > 1 ? (m.videos.length + ' видео') : 'кадры'}</b></span>`);
       if (tiles.length) d.insertAdjacentHTML('beforeend', `<div class="imgs">${tiles.join('')}</div>`);
     } else renderAssistant(d, m);
     $('#agMsgs').append(d);
@@ -6153,17 +6121,18 @@ async function agSend() {
       ? `Слова из аудио${au.langName ? ` (язык: ${au.langName})` : ''}: «${au.text.trim()}»]` : 'Слов в аудио нет (музыка или голос не распознан).]');
     text = text.trim();
   }
-  const vids = AG.att.filter(a => a.video);
-  const pics = AG.att.filter(a => !a.frame && !a.video), frs = AG.att.filter(a => a.frame);   // frames of the video go last, so Picture 1, 2… stay the heroes
+  const pics = AG.att.filter(a => !a.frame), frs = AG.att.filter(a => a.frame);   // frames go last, so Picture 1, 2… stay the heroes
+  const byVid = [];
+  frs.forEach(a => { const g = byVid.find(x => x.name === a.vname); if (g) g.at.push(a); else byVid.push({ name: a.vname, dur: a.vdur, at: [a], file: a.vfile }); });
   if (frs.length) {
-    text += `\n\n[Видео «${frs[0].vname}», ${frs[0].vdur.toFixed(1)} с (это <Video 1>). К сообщению приложены последние ${frs.length} изображений: кадры из этого видео в моменты ${frs.map(a => a.label).join(', ')}. Это кадры исходного видео, а не изображения героев: в Picture N они не входят.]`;
+    const desc = byVid.map((g, i) => '«' + g.name + '», ' + (g.dur ? g.dur.toFixed(1) + ' с' : 'длительность неизвестна') + ' (это <Video ' + (i + 1) + '>), кадры в моменты ' + g.at.map(a => a.label).join(', ')).join('; ');
+    text += '\n\n[К сообщению приложены последние ' + frs.length + ' изображений — это кадры '
+      + (byVid.length > 1 ? 'из ' + byVid.length + ' видео' : 'одного видео') + ': ' + desc
+      + '. Это кадры ' + (byVid.length > 1 ? 'исходных видео' : 'исходного видео') + ', а не изображения героев: в Picture N они не входят.]';
     text = text.trim();
   }
-  if (vids.length) {
-    text += `\n\n[К сообщению приложено видео «${vids[0].vname}»${vids[0].vdur ? `, ${vids[0].vdur.toFixed(1)} с` : ''} — файлом, без раскадровки. Его кадров среди Picture N нет: содержимое описать нельзя, но файл уйдёт в раздел генерации целиком.]`;
-    text = text.trim();
-  }
-  AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videoFile: frs[0]?.vfile || vids[0]?.file, vimg: vids[0]?.url || null, vname: vids[0]?.vname || frs[0]?.vname || '', vdur: vids[0]?.vdur ? vids[0].vdur.toFixed(1) : '', audioFile: au?.file });
+  // the files themselves travel with the message: a section takes the video, not its frames
+  AG.msgs.push({ role: 'user', content: text, images: [...pics, ...frs].map(a => a.url), files: pics.map(a => a.file), nframes: frs.length, videos: byVid.map(g => g.file).filter(Boolean), videoFile: byVid[0]?.file || null, vimg: frs[0]?.url || null, vname: byVid[0]?.name || '', vdur: byVid[0]?.dur ? byVid[0].dur.toFixed(1) : '', audioFile: au?.file });
   // the tray keeps the pictures and the video on purpose: the next question often needs the same hero
   $('#agIn').value = ''; AG.audio = null; showAudioBox();
   const reply = { role: 'assistant', content: '', status: 'Отправляем…', edit: AG.edit, to: AG.target };   // перенос в раздел потом поступит по тому же смыслу
@@ -6307,6 +6276,17 @@ async function sendPrompt(blk, to) {
     }
   }
   if (!files.length) files = AG.msgs.flatMap(own);
+  // the videos the agent watched travel as real files: a section takes as many as it has places for,
+  // beginning with the first one - the rest are named in the word about the transfer
+  const vidFiles = [];
+  for (const m of AG.msgs) (m.videos || [m.videoFile].filter(Boolean)).forEach(v => { if (v && !vidFiles.some(x => x.name === v.name && x.size === v.size)) vidFiles.push(v); });
+  let vUsed = 0, vAll = 0;
+  const handVids = async box => {
+    const slots = $$('.rm-vids input', box);
+    let used = 0;
+    for (const v of vidFiles.slice(0, slots.length)) { await setDropFile(slots[used], v); used++; }
+    return { used, all: slots.length };
+  };
   if (to === 'story' && (AG.storyFrames || (files.length && AG.storyModel !== 'krea'))) {
     IMG.qwen.fill({ prompt, kind: 'story', engine: AG.storyFrames && AG.storyModel === 'krea' ? 'flux' : AG.storyModel, frames: AG.storyFrames });
     for (const [i, sel] of ['#qwDrop', '#qwDrop2', '#qwDrop3'].entries()) {
@@ -6343,6 +6323,10 @@ async function sendPrompt(blk, to) {
     // написанным на ней; снимаем только префикс поля описания, чтобы программа поставила выравнивание сама
     const clean = t => t.split('\n').map(l => l.replace(/^\s*integrated_multimodal_description\s*:\s*(\[Shot \d+\]\s*)?/i, '')).join('\n').trim();
     L2.root._setScenes(list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec, fresh: x.fresh })).filter(x => x.prompt));
+    if (vidFiles.length) {   // the studio continues a video: the first one becomes the base, the mode turns itself on
+      L2.root._setSrc({ file: vidFiles[0], name: vidFiles[0].name });
+      vUsed = 1; vAll = 1;
+    }
     if (fix && files.length) $$('label.ref.filled .x', L2.root).forEach(x => x.click());   // a fix replaces the pictures; a continuation keeps the old ones
     for (const f of files) {   // existing references (e.g. the last frame of the video being continued) stay; new pictures take the free slots
       const have = $$('label.ref.filled', L2.root).some(r => r._file && r._file.name === f.name && r._file.size === f.size);
@@ -6362,11 +6346,11 @@ async function sendPrompt(blk, to) {
   // the song itself goes to Lipsync together with the prompt (the whole clip; trim it there if needed)
   const au = [...AG.msgs].reverse().find(m => m.audioFile)?.audioFile;
   if (to === 'lipsync' && au) await setDropFile($('#aFile'), au);
-  const vf = [...AG.msgs].reverse().find(m => m.videoFile)?.videoFile;   // the video shown to the agent goes to the swap form too
-  if (to === 'swap' && vf) await setDropFile($('.rm-vids input', RM.swap.root), vf);
+  if (to === 'swap' || to === 'refs') { const r = await handVids(RM[to].root); vUsed = r.used; vAll = r.all; }
   goTo(to);
   const name = { video: '«Генерацию видео»', lipsync: 'Lipsync', refs: '«Референсы»', actor: '«Актёрскую игру»', swap: '«Замену персонажа»', action: '«Экшн-сцены»', long: '«Видеостудия»', krea: '«Изображение по тексту»', qwen: '«Правку изображения»' }[to];
-  toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' && to !== 'krea' ? ' вместе с изображениями' : '') + (to === 'lipsync' ? (au ? ' и аудио — выделите нужный фрагмент' : ' — добавьте аудио') : ''));
+  toast(`Промпт перенесён в ${name}` + (files.length && to !== 'video' && to !== 'krea' ? ' вместе с изображениями' : '')
+    + (vUsed ? ` и видео: ${vUsed}` : '') + (vidFiles.length > vUsed ? ` (видео в чате ${vidFiles.length}, раздел принимает ${vAll || 1}: лишние не перенесены)` : '') + (to === 'lipsync' ? (au ? ' и аудио — выделите нужный фрагмент' : ' — добавьте аудио') : ''));
 }
 // the finished prompt can be edited in place; the edit is kept when the chat is redrawn
 $('#agMsgs').addEventListener('input', e => {

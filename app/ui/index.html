@@ -1862,6 +1862,7 @@ const dropBox = view => view === 'video' ? $('#view-video') : view === 'lipsync'
 const dropAccepts = view => view === 'upscale' ? ['video'] : view === 'lipsync' ? ['image', 'audio']
   : view === 'video' || view === 'qwen' || view === 'krea' ? ['image']
   : view === 'agent' ? ['image', 'video', 'audio'] : ['image', 'video', 'audio'];
+let DROP_IN_SCENES = false;   // a drop on the scenes card feeds the scene's own places, not the common ones
 const dropSlots = (view, kind) => {
   const box = dropBox(view); if (!box) return [];
   if (view === 'agent') return [$(kind === 'image' ? '#agFile' : kind === 'audio' ? '#agAudioFile' : '#agVidFile', box)].filter(Boolean);
@@ -1871,6 +1872,10 @@ const dropSlots = (view, kind) => {
   if (view === 'lipsync') {
     if (kind === 'image') return $$('#refs label.ref:not(.filled) input', box);
     return kind === 'audio' && !$('.audio-ed.on', box) ? [$('#aFile')].filter(Boolean) : [];
+  }
+  if (view === 'long' && kind === 'image' && DROP_IN_SCENES) {
+    const sc = $('.sc.sel', box) || $('.sc', box);
+    return sc ? $$('.ref.own:not(.filled) input', sc) : [];
   }
   const sel = { image: '.rm-imgs label.ref:not(.filled) input', video: '.rm-vids label:not(.filled) input', audio: '.rm-auds label:not(.filled) input' }[kind];
   return sel ? $$(sel, box) : [];
@@ -1908,6 +1913,8 @@ const DROP_HOME = { audio: 'lipsync', video: 'swap', image: 'video' };   // ку
 async function handleDrop(e) {
   const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
   if (!files.length) return;
+  const card = e.target && e.target.closest ? e.target.closest('.card') : null;
+  DROP_IN_SCENES = !!(card && card.querySelector('.lm-scenes'));
   await routeFiles(files);
 }
 /* how a file gets into the section that is open now: used by a drag from Explorer and by a paste alike */
@@ -1916,6 +1923,7 @@ async function routeFiles(files) {
   const view = activeView();
   if (!view || !dropBox(view)) { toast('Бросьте файлы в раздел генерации, в чат Агента или в окно увеличения'); return; }
   const r = await spreadFiles(files, view);
+  DROP_IN_SCENES = false;
   const text = dropNotes(r);
   if (r.placed) toast(text); else if (text) toast(text);
   if (!r.placed && r.nofit.length) {                 // раздел не для этого типа: предложим подходящий
@@ -4854,7 +4862,7 @@ function makeRefMode(cfg) {
         const run = root._run, slotA = $('.rm-auds .slot', root);
         const proj = { run, t: Date.now(), mode: root._mode, qm: root._q, qBy: { ...(root._qBy || {}), [root._q]: S.q }, snd: root._snd, start: $('.lm-start', root).value, vocals: $('.lm-vocals', root).checked,
           aspect: S.aspect, q: S.q, cw: S.cw || 0, ch: S.ch || 0, src: root._src ? { id: root._src.id || '', name: root._src.name } : null,
-          scenes: $$('.sc', root).map(c => ({ prompt: $('textarea', c).value, sec: +$('input[type=range]', c).value, fresh: !!$('.sc-fresh', c)?.checked, nimg: 5, var: c._var || 0,
+          scenes: $$('.sc', root).map(c => ({ prompt: $('textarea', c).value, sec: +$('input[type=range]', c).value, fresh: !!$('.sc-fresh', c)?.checked, nimg: 9, var: c._var || 0,
             done: c._dn.final ? { sig: c._dn.final.sig, url: c._dn.final.url, id: c._dn.final.id, text: c._dn.final.text } : null,
             draftDone: c._dn.draft ? { sig: c._dn.draft.sig, url: c._dn.draft.url, id: c._dn.draft.id, text: c._dn.draft.text } : null })) };
         const all = loadAll(); all[run] = proj;
@@ -4864,7 +4872,7 @@ function makeRefMode(cfg) {
         $$('.ref', imgsEl).forEach((r, i) => putFile(`long/${run}/img${i}`, r._file));
         putFile(`long/${run}/aud0`, slotA ? slotA._file : null);
         putFile(`long/${run}/src`, root._src && root._src.file ? root._src.file : null);
-        $$('.sc', root).forEach((c, i) => { for (let j = 0; j < 5; j++) putFile(`long/${run}/simg${i}_${j}`, c._files[j] || null); });
+        $$('.sc', root).forEach((c, i) => { for (let j = 0; j < 9; j++) putFile(`long/${run}/simg${i}_${j}`, c._files[j] || null); });
       } catch {}
     }
     root._save = () => { clearTimeout(saveT); saveT = setTimeout(saveNow, 700); };
@@ -4900,7 +4908,7 @@ function makeRefMode(cfg) {
       const cards = $$('.sc', root);
       for (const [i, x] of p.scenes.entries()) {
         const n = x.nimg || (x.img ? 1 : 0);   // an old project kept one picture per scene under another name
-        for (let j = 0; j < 5; j++) { const f = await getRef(x.nimg ? `simg${i}_${j}` : 'simg' + i); if (f instanceof File) cards[i]._files[j] = f; }   // back to the same place
+        for (let j = 0; j < 9; j++) { const f = await getRef(x.nimg ? `simg${i}_${j}` : 'simg' + i); if (f instanceof File) cards[i]._files[j] = f; }   // back to the same place
         cards[i]._paint();
       }
       if (p.src) { const sf = p.src.id ? null : await memFile('get', `long/${run}/src`); root._setSrc(p.src.id ? { id: p.src.id, name: p.src.name } : sf instanceof File ? { file: sf, name: p.src.name } : null, false); }
@@ -4937,42 +4945,57 @@ function makeRefMode(cfg) {
       c.style.cssText = 'margin:0 0 10px;padding:12px;border:1px solid var(--line);border-radius:12px';
       c.innerHTML = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><b></b><input type="range" min="3" max="15" step="1" value="${sec}" style="display:none"><output class="hint" style="min-width:34px"></output><button class="btn sc-m" type="button" title="Короче на секунду" style="padding:2px 9px">−</button><button class="btn sc-p" type="button" title="Длиннее на секунду" style="padding:2px 9px">+</button><span class="hint sc-win" style="flex:1"></span><button class="x btn" type="button" title="Убрать сцену" style="padding:2px 9px">✕</button></div><textarea placeholder="Что происходит в этой сцене…" style="min-height:90px"></textarea>
 <details class="sc-tdet" style="margin-top:8px"><summary class="hint" style="cursor:pointer;font-size:12px">Проба размера для этой сцены</summary><div class="sc-tst" style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="hint" style="font-size:12px">Попробовать только эту сцену в другом размере (остальные не меняются):</span><select class="sc-tq">${QUALITY.map(q => `<option value="${q.id}">${q.res}</option>`).join('')}</select><button class="btn sc-tbtn" type="button" title="Сцена считается отдельно, в выбранном размере, на 8 шагов. Результат появится ниже и в Библиотеке, остальные сцены не затрагиваются.">Сделать пробу</button></div><div class="sc-tests" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div></details>
-        <div class="sc-refs" style="margin-top:8px"><div class="hint sc-rhint" style="font-size:12px"></div><div class="sc-thumbs" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px"><label class="btn sc-img" style="padding:4px 10px;font-size:12.5px;cursor:pointer" title="Необязательно. Изображения героя, места или реквизита только для этой сцены. Если загрузить, общие референсы сверху для неё не используются. В тексте сцены они называются &lt;Picture 1&gt;, &lt;Picture 2&gt; по порядку.">+ Свои референсы этой сцены<input type="file" accept="image/*" multiple hidden></label></div></div>`;
-      const fin = $('.sc-img input', c);
+        <div class="sc-refs" style="margin-top:8px"><div class="hint sc-rhint" style="font-size:12px"></div><div class="sc-thumbs" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px"></div></div>`;
+      // nine places of their own, made like the common ones: an empty place offers itself, a filled
+      // one shows the picture with its number and a cross, and a photo can be dropped right into it
+      const box0 = $('.sc-thumbs', c);
+      c._ownTiles = [];
+      for (let j = 0; j < 9; j++) {
+        const lb = document.createElement('label'); lb.className = 'ref own'; lb.dataset.own = j;
+        lb.innerHTML = `<input type="file" accept="image/*" hidden><div class="plus">${j + 1}/9<span>Референс сцены</span></div><span class="tag" hidden></span><button class="x" type="button" title="Убрать это фото">✕</button>`;
+        lb.style.cssText = 'position:relative;width:64px;height:64px;flex:0 0 64px;border:1.5px dashed var(--line-2);border-radius:8px;cursor:pointer;background:var(--surface-2)';
+        const inp = $('input', lb);
+        inp.onchange = () => { const f = inp.files[0]; inp.value = ''; if (f) c._setOwn(j, f); };
+        lb.querySelector('.x').onclick = e => { e.preventDefault(); e.stopPropagation(); c._setOwn(j, null); };
+        lb.addEventListener('dragover', e => e.preventDefault());
+        lb.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files[0]; if (f) c._setOwn(j, f); });
+        box0.append(lb); c._ownTiles.push(lb);
+      }
+      c._setOwn = (j, f) => {
+        if (f) {
+          if (!c._files[j] && $$('.ref.filled', imgsEl).length + c._files.filter(Boolean).length >= 9) {
+            toast('В сцену входит девять фото: уберите одно или очистите место'); return;
+          }
+          c._files[j] = f;
+        } else { c._files[j] = null; }
+        c._paint(); refreshStates();
+      };
       c._tests = [];
       c._paintTests = () => { $('.sc-tests', c).innerHTML = c._tests.map((t, j) => `<button class="btn sc-tt" type="button" data-j="${j}" style="padding:3px 9px;font-size:12px">▶ ${esc(t.res || '')}</button>`).join(''); };
       $('.sc-tq', c).value = S.q; $('.sc-tq', c).onchange = e => { e.target._touched = true; };
       $('.sc-tests', c).onclick = e => { const b = e.target.closest('.sc-tt'); const t = b && c._tests[+b.dataset.j]; if (!t) return; root._sel = $$('.sc', root).indexOf(c); const v = $('.tl-vid', root); v.src = t.url; v.hidden = false; $('.tl-empty', root).hidden = true; v.play().catch(() => {}); };
       $('.sc-tbtn', c).onclick = () => { root._test = { q: $('.sc-tq', c).value }; root._chainPart = null; root._target = $$('.sc', root).indexOf(c); $('.go', $('.rm-preview', root)).click(); };
-      c._files = new Array(5).fill(null);   // five places of their own, an empty one keeps its number
+      c._files = new Array(9).fill(null);   // nine places of their own, an empty one keeps its number
       const paintRefs = c._paint = () => {
-        const bx = $('.sc-thumbs', c); bx.querySelectorAll('.sc-th').forEach(x => x.remove());
-        c._files.forEach((f, j) => { if (!f) return;
-          const sp = document.createElement('span'); sp.className = 'sc-th'; sp.style.cssText = 'position:relative;display:inline-block';
-          const tag = document.createElement('i'); tag.textContent = `Pic ${10 + j}`;
-          tag.style.cssText = 'position:absolute;left:4px;top:4px;font-style:normal;font-size:10px;padding:1px 5px;border-radius:6px;background:rgba(0,0,0,.65);color:#fff';
-          const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.title = `<Picture ${10 + j}>`; im.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line-2);display:block';
-          const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.className = 'btn'; x.style.cssText = 'position:absolute;top:-7px;right:-7px;padding:0 6px;font-size:11px;line-height:18px';
-          x.onclick = () => { c._files[j] = null; paintRefs(); refreshStates(); };   // the place stays, only the photo leaves
-          sp.append(im, tag, x); bx.insertBefore(sp, bx.querySelector('.sc-img'));
+        (c._ownTiles || []).forEach((lb, j) => {
+          const f = c._files[j], im0 = $('img', lb), plus = $('.plus', lb), tag = $('.tag', lb);
+          im0?.remove();
+          lb.classList.toggle('filled', !!f);
+          if (f) {
+            const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.title = `<Picture ${10 + j}>`;
+            im.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
+            lb.prepend(im); plus.hidden = true; tag.hidden = false; tag.textContent = `Pic ${10 + j}`;
+            tag.style.cssText = 'position:absolute;left:3px;top:3px;font-size:9.5px;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.68);color:#fff';
+            lb.style.borderStyle = 'solid'; $('.x', lb).style.display = '';
+          } else { plus.hidden = false; tag.hidden = true; lb.style.borderStyle = 'dashed'; $('.x', lb).style.display = 'none'; }
         });
         const tk = $('.sc-tokens', c);
-        if (tk) tk.innerHTML = c._files.map((f, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;"${f ? '' : ' disabled'} title="${f ? 'Вставить в текст тег <Picture ' + (10 + j) + '> - ваше фото в месте ' + (j + 1) : 'В это место ещё не загружено своё фото - номер ' + (10 + j) + ' свободен'}">&lt;Pic ${10 + j}&gt;</button>`).join('');
+        if (tk) tk.innerHTML = c._files.map((f, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="${f ? 'Вставить в текст тег <Picture ' + (10 + j) + '> - ваше фото в месте ' + (j + 1) : 'Место ' + (j + 1) + ' свободно - номер ' + (10 + j) + ' оживёт, когда туда что-нибудь положат'}">&lt;Pic ${10 + j}&gt;</button>`).join('');
         c._counter?.();
-        $('.sc-rhint', c).textContent = c._files.length ? `Своих фото в этой сцене: ${c._files.length}. В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих референсов нет: берутся общие, которые загружены сверху.';
+        const n = c._files.filter(Boolean).length;
+        $('.sc-rhint', c).textContent = n ? `Своих фото в этой сцене: ${n} из 9. В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих фото нет: сцена возьмёт общие. У своих мест номера не меняются, даже если убрать другое фото.';
       };
-      fin.onchange = () => {
-        const common = $$('.ref.filled', imgsEl).length;
-        let skipped = 0;
-        const free = () => c._files.indexOf(null);
-        for (const f of fin.files) {
-          if (free() < 0) { skipped++; continue; }
-          if (common + c._files.filter(Boolean).length >= 9) { skipped++; continue; }   // nine pictures in a scene, common and own together
-          c._files[free()] = f;   // the first free place takes it, its number never moves
-        }
-        fin.value = ''; paintRefs(); refreshStates();
-        if (skipped) toast(`Добавили не все: в сцену входит 9 фото вместе с общими (сейчас общих ${common}), и не больше пяти своих`);
-      };
+      // (the places take pictures themselves: click a tile or drop a photo into it)
       paintRefs();
       $('.sc-m', c).onclick = () => { const r = $('input[type=range]', c); r.value = Math.max(3, +r.value - 1); r.dispatchEvent(new Event('input')); };
       $('.sc-p', c).onclick = () => { const r = $('input[type=range]', c); r.value = Math.min(15, +r.value + 1); r.dispatchEvent(new Event('input')); };
@@ -5388,7 +5411,7 @@ function makeRefMode(cfg) {
     if (cfg.scenes && root._save && !root._restoring) root._save();
     $('.rm-count', root).style.color = total > 12 ? 'var(--pink)' : '';
     // all places are listed from the start; a chip wakes up when its place gets a photo
-    $('.rm-tokens', root).innerHTML = slots.map((r, i) => `<button class="token" type="button" data-slot="${i}"${r._file ? '' : ' disabled'} title="${r._file ? 'Вставить в текст сцены' : 'В это место ещё не загружено фото - номер ' + (i + 1) + ' свободен'}">&lt;Picture ${i + 1}&gt;</button>`).join('');
+    $('.rm-tokens', root).innerHTML = slots.map((r, i) => `<button class="token" type="button" data-slot="${i}" title="${r._file ? 'Вставить в текст сцены' : 'В это место ещё не загружено фото - вставите номер, он дождётся картинку'}">&lt;Picture ${i + 1}&gt;</button>`).join('');
     $$('.sc', root).forEach(x => x._counter?.());   // after the row was rebuilt, or the lock it puts on the chips is wiped
     if (cfg.swap) { const w2 = $('.rm-who[data-i="1"]', root); if (w2) w2.hidden = imgs.length < 2; }
     if (cfg.swap && S.autoLen !== false) { const v = files('.rm-vids .slot')[0]; if (v && v._dur) { S.dur = Math.min(15, Math.max(3, Math.round(v._dur))); root._upd?.(); } }

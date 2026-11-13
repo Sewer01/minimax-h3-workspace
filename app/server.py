@@ -2423,13 +2423,13 @@ class App:
                 self._long_run = None
 
     async def generate_long(self, req):
-        form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "img3", "img4", "aud0", "srcvid", "srcframe") + tuple(f"simg{i}_{j}" for i in range(12) for j in range(5)), need_prompt=False)   # the texts are in the scenes, there is no single prompt
+        form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "img3", "img4", "aud0", "srcvid", "srcframe") + tuple(f"simg{i}_{j}" for i in range(12) for j in range(9)), need_prompt=False)   # the texts are in the scenes, there is no single prompt
         self._long_run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]   # the references are kept even if the request is refused later
         try:
             scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10)), bool(x.get("fresh"))) for x in json.loads(form.get("scenes") or "[]")]
         except (ValueError, TypeError, AttributeError):
             scenes = []
-        scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), [files.get(f"simg{i}_{j}") for j in range(5)], fr)
+        scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), [files.get(f"simg{i}_{j}") for j in range(9)], fr)
                   # the places are kept: an empty place stays empty and does not shift the numbers
                   for i, (p, sec, fr) in enumerate(scenes) if p][:catalog.LONG_MAX_SCENES]
                   # every scene may bring its own references (instead of the common ones)

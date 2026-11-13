@@ -104,22 +104,34 @@ def video_graph(m, prompt, width, height, seconds, seed, first=None, last=None, 
     return g, stages
 
 
-def scene_prompt(prompt, n_common, n_own, shift=0):
-    """The interface writes a scene's own pictures as <Picture 10>, <Picture 11>... - a range of its
-    own, so nobody can mix them up with the common references numbered from 1. The node takes one
-    ordered list, so those numbers are moved onto the places the own pictures really occupy.
+def scene_prompt(prompt, images, own, frame=None):
+    """Numbers in the interface are PLACES: <Picture 1..5> are the common places, <Picture 10..14> the
+    scene's own, and a place without a picture keeps its number, so deleting one never moves the others.
+    The node takes the pictures without gaps, so every number in the text is moved onto the place its
+    picture really takes. The frame of a continued video rides in front of all of them and has no
+    number of its own."""
+    empty = object()
+    filled_common = sum(1 for x in images if x)
+    filled_own = sum(1 for x in own if x)
+    total = min(9, filled_common + filled_own + (1 if frame else 0))
 
-    `shift` is 1 when the last frame of a continued video stands in front of the list: it is always
-    there, has no number of its own and cannot be called, so the pictures the text names move back."""
-    total = min(9, shift + n_common + n_own)
+    def place(seq, idx, before):
+        """the number this picture gets in the node's list"""
+        return (1 if frame else 0) + before + sum(1 for x in seq[:idx] if x) + 1
 
     def rep(m):
         k = int(m.group(1))
         if k < 10:
-            n = k + shift                          # the frame is not anyone's number
-            return m.group(0) if n > total else f"<Picture {n}>"
-        slot = shift + n_common + (k - 10)         # the j-th own picture sits after the common ones
-        return m.group(0) if slot >= total else f"<Picture {slot + 1}>"
+            i = k - 1
+            if i >= len(images) or not images[i]:
+                return m.group(0)                     # an empty place: the text is left alone
+            n = place(images, i, 0)
+        else:
+            j = k - 10
+            if j >= len(own) or not own[j]:
+                return m.group(0)
+            n = place(own, j, filled_common)
+        return m.group(0) if n > total else f"<Picture {n}>"
 
     return re.sub(r"<\s*Picture\s*(\d+)\s*>", rep, prompt or "")
 
@@ -127,7 +139,7 @@ def scene_prompt(prompt, n_common, n_own, shift=0):
 def _refs(g, cond_node, images, videos=(), audios=(), base=100, vsize=None):
     """LoadImage / VHS_LoadVideo (24 fps) / LoadAudio nodes wired into MiniMaxH3ReferenceToVideo."""
     inputs = g[cond_node]["inputs"]
-    for i, name in enumerate(images[:9]):
+    for i, name in enumerate([x for x in images[:9] if x]):
         nid = str(base + i)
         g[nid] = {"class_type": "LoadImage", "inputs": {"image": name}}
         inputs[f"ref_images.ref_image_{i}"] = [nid, 0]
@@ -141,7 +153,8 @@ def _refs(g, cond_node, images, videos=(), audios=(), base=100, vsize=None):
         nid = str(base + 20 + i)
         g[nid] = {"class_type": "LoadAudio", "inputs": {"audio": name}}
         inputs[f"ref_audios.ref_audio_{i}"] = [nid, 0]
-    return [str(base + i) for i in range(len(images[:9]))] + [str(base + 10 + i) for i in range(len(videos[:3]))] \
+    return [str(base + i) for i in range(len([x for x in images[:9] if x]))] \
+        + [str(base + 10 + i) for i in range(len(videos[:3]))] \
         + [str(base + 20 + i) for i in range(len(audios[:3]))]
 
 
@@ -672,10 +685,10 @@ def long_graph(m, scenes, width, height, seed, images, audio=None, start=0.0, pi
     prev_lat = prev_img = prev_aud = None
     scene_of = {}
     for i, (sc, p) in enumerate(zip(scenes, plan)):
-        own = list(sc[2]) if len(sc) > 2 and sc[2] else []  # this scene's own pictures, counted from <Picture 10>
-        shift = 1 if frame else 0                   # the continued video's frame stands in front, nameless
-        refs = ([frame] if frame else []) + list(images) + own[:max(0, 9 - shift - len(images))]
-        prompt = scene_prompt(sc[0], len(images), len(own), shift)   # the named pictures move back by the frame
+        own = list(sc[2]) if len(sc) > 2 and sc[2] else []  # this scene's own places, counted from <Picture 10>
+        # the node gets a gapless list; scene_prompt moves the numbers of the text onto it
+        refs = [x for x in ([frame] if frame else []) + list(images) + own if x][:9]
+        prompt = scene_prompt(sc[0], images, own, frame)
         total, ov = p["total"], p["ov"]
         ref = add("MiniMaxH3ReferenceToVideo", clip=["5", 0], vae=["6", 0], audio_vae=["7", 0], prompt=prompt,
                   width=width, height=height, length=total, ref_image_size=ref_size)

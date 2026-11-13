@@ -4424,26 +4424,7 @@ function makeRefMode(cfg) {
       });
   };
 
-  // references are numbered without gaps, in the order they stand: when one leaves or steps in front,
-  // the tags in the scene texts follow it, so <Picture 3> keeps pointing at the same face
-  const tagShift = (from, delta, drop) => {
-    let touched = false;
-    $$('.sc', root).forEach(c => {
-      const ta = $('textarea', c); if (!ta || !ta.value) return;
-      const out = ta.value.replace(/<\s*Picture\s*(\d+)\s*>/g, (m, k) => {
-        const n = +k;
-        if (n >= 10) return m;                                  // the scene's own pictures have their own range
-        if (drop && n === from) { touched = true; return ''; }   // this picture is gone - its tag goes too
-        if (drop ? n > from : n >= from) { touched = true; return `<Picture ${Math.max(1, n + delta)}>`; }
-        return m;
-      });
-      if (out !== ta.value) ta.value = out;
-    });
-    $$('.sc', root).forEach(x => x._counter?.());
-    if (touched) toast('Номера картинок в текстах сцен подвинуты следом за фото');
-  };
-  root._refGone = at => tagShift(at, -1, true);
-  root._refAdded = at => tagShift(at, 1, false);
+  // the numbers belong to the places: an empty place keeps its number, nothing shifts
 
   // picture slots (same behaviour as Lipsync)
   for (let i = 0; i < cfg.maxImages; i++) {
@@ -4457,18 +4438,16 @@ function makeRefMode(cfg) {
       const img = document.createElement('img'); img.src = URL.createObjectURL(f); r.prepend(img);
       fitSlot(r, img);
       if (!$$('.ref.filled', imgsEl).length) fitAspect(S, img, () => upd());
-      const at = $$('.ref.filled', imgsEl).filter(x => x.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).length + 1;
       r.classList.add('filled'); $('.plus', r).hidden = true; $('.tag', r).hidden = false;
-      root._refAdded?.(at); changed();   // a picture put in front of others shifts their numbers
+      changed();   // the number of this place does not depend on the others
     };
     input.onchange = () => set(input.files[0]);
     r.addEventListener('dragover', e => e.preventDefault());
     r.addEventListener('drop', e => { e.preventDefault(); set(e.dataTransfer.files[0]); });
     $('.x', r).onclick = e => {
       e.preventDefault(); e.stopPropagation();
-      const at = $$('.ref.filled', imgsEl).indexOf(r) + 1;   // the number your texts used for this picture
       $('img', r)?.remove(); input.value = ''; r._file = null; resetSlot(r); r.classList.remove('filled'); $('.plus', r).hidden = false; $('.tag', r).hidden = true;
-      if (at > 0) root._refGone?.(at); changed();
+      changed();   // the place keeps its number; its chip only goes inactive
     };
   }
   wireSlotSwap($$('.ref', imgsEl), changed);
@@ -4875,7 +4854,7 @@ function makeRefMode(cfg) {
         const run = root._run, slotA = $('.rm-auds .slot', root);
         const proj = { run, t: Date.now(), mode: root._mode, qm: root._q, qBy: { ...(root._qBy || {}), [root._q]: S.q }, snd: root._snd, start: $('.lm-start', root).value, vocals: $('.lm-vocals', root).checked,
           aspect: S.aspect, q: S.q, cw: S.cw || 0, ch: S.ch || 0, src: root._src ? { id: root._src.id || '', name: root._src.name } : null,
-          scenes: $$('.sc', root).map(c => ({ prompt: $('textarea', c).value, sec: +$('input[type=range]', c).value, fresh: !!$('.sc-fresh', c)?.checked, nimg: c._files.length, var: c._var || 0,
+          scenes: $$('.sc', root).map(c => ({ prompt: $('textarea', c).value, sec: +$('input[type=range]', c).value, fresh: !!$('.sc-fresh', c)?.checked, nimg: 5, var: c._var || 0,
             done: c._dn.final ? { sig: c._dn.final.sig, url: c._dn.final.url, id: c._dn.final.id, text: c._dn.final.text } : null,
             draftDone: c._dn.draft ? { sig: c._dn.draft.sig, url: c._dn.draft.url, id: c._dn.draft.id, text: c._dn.draft.text } : null })) };
         const all = loadAll(); all[run] = proj;
@@ -4921,7 +4900,7 @@ function makeRefMode(cfg) {
       const cards = $$('.sc', root);
       for (const [i, x] of p.scenes.entries()) {
         const n = x.nimg || (x.img ? 1 : 0);   // an old project kept one picture per scene under another name
-        for (let j = 0; j < n; j++) { const f = await getRef(x.nimg ? `simg${i}_${j}` : 'simg' + i); if (f instanceof File) cards[i]._files.push(f); }
+        for (let j = 0; j < 5; j++) { const f = await getRef(x.nimg ? `simg${i}_${j}` : 'simg' + i); if (f instanceof File) cards[i]._files[j] = f; }   // back to the same place
         cards[i]._paint();
       }
       if (p.src) { const sf = p.src.id ? null : await memFile('get', `long/${run}/src`); root._setSrc(p.src.id ? { id: p.src.id, name: p.src.name } : sf instanceof File ? { file: sf, name: p.src.name } : null, false); }
@@ -4965,30 +4944,31 @@ function makeRefMode(cfg) {
       $('.sc-tq', c).value = S.q; $('.sc-tq', c).onchange = e => { e.target._touched = true; };
       $('.sc-tests', c).onclick = e => { const b = e.target.closest('.sc-tt'); const t = b && c._tests[+b.dataset.j]; if (!t) return; root._sel = $$('.sc', root).indexOf(c); const v = $('.tl-vid', root); v.src = t.url; v.hidden = false; $('.tl-empty', root).hidden = true; v.play().catch(() => {}); };
       $('.sc-tbtn', c).onclick = () => { root._test = { q: $('.sc-tq', c).value }; root._chainPart = null; root._target = $$('.sc', root).indexOf(c); $('.go', $('.rm-preview', root)).click(); };
-      c._files = [];
+      c._files = new Array(5).fill(null);   // five places of their own, an empty one keeps its number
       const paintRefs = c._paint = () => {
         const bx = $('.sc-thumbs', c); bx.querySelectorAll('.sc-th').forEach(x => x.remove());
-        c._files.forEach((f, j) => {
+        c._files.forEach((f, j) => { if (!f) return;
           const sp = document.createElement('span'); sp.className = 'sc-th'; sp.style.cssText = 'position:relative;display:inline-block';
           const tag = document.createElement('i'); tag.textContent = `Pic ${10 + j}`;
           tag.style.cssText = 'position:absolute;left:4px;top:4px;font-style:normal;font-size:10px;padding:1px 5px;border-radius:6px;background:rgba(0,0,0,.65);color:#fff';
           const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.title = `<Picture ${10 + j}>`; im.style.cssText = 'width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line-2);display:block';
           const x = document.createElement('button'); x.type = 'button'; x.textContent = '✕'; x.className = 'btn'; x.style.cssText = 'position:absolute;top:-7px;right:-7px;padding:0 6px;font-size:11px;line-height:18px';
-          x.onclick = () => { c._files.splice(j, 1); paintRefs(); refreshStates(); };
+          x.onclick = () => { c._files[j] = null; paintRefs(); refreshStates(); };   // the place stays, only the photo leaves
           sp.append(im, tag, x); bx.insertBefore(sp, bx.querySelector('.sc-img'));
         });
         const tk = $('.sc-tokens', c);
-        if (tk) tk.innerHTML = c._files.map((_, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="Вставить в текст сцены тег <Picture ${10 + j}> - это ваше фото номер ${j + 1}">&lt;Pic ${10 + j}&gt;</button>`).join('');
+        if (tk) tk.innerHTML = c._files.map((f, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;"${f ? '' : ' disabled'} title="${f ? 'Вставить в текст тег <Picture ' + (10 + j) + '> - ваше фото в месте ' + (j + 1) : 'В это место ещё не загружено своё фото - номер ' + (10 + j) + ' свободен'}">&lt;Pic ${10 + j}&gt;</button>`).join('');
         c._counter?.();
         $('.sc-rhint', c).textContent = c._files.length ? `Своих фото в этой сцене: ${c._files.length}. В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих референсов нет: берутся общие, которые загружены сверху.';
       };
       fin.onchange = () => {
         const common = $$('.ref.filled', imgsEl).length;
         let skipped = 0;
+        const free = () => c._files.indexOf(null);
         for (const f of fin.files) {
-          if (c._files.length >= 5) { skipped++; continue; }
-          if (common + c._files.length >= 9) { skipped++; continue; }   // nine pictures in a scene, common and own together
-          c._files.push(f);
+          if (free() < 0) { skipped++; continue; }
+          if (common + c._files.filter(Boolean).length >= 9) { skipped++; continue; }   // nine pictures in a scene, common and own together
+          c._files[free()] = f;   // the first free place takes it, its number never moves
         }
         fin.value = ''; paintRefs(); refreshStates();
         if (skipped) toast(`Добавили не все: в сцену входит 9 фото вместе с общими (сейчас общих ${common}), и не больше пяти своих`);
@@ -5002,12 +4982,13 @@ function makeRefMode(cfg) {
       $('.ru-wrap', c)?.insertAdjacentHTML('beforeend', '<span class="sc-left hint" style="font-size:12px;margin-left:10px"></span>');
       c._counter = () => {   // what counts is what the text calls; the frame of your video holds <Picture 1>
         const el = $('.sc-left', c); if (!el) return;
-        const common = $$('.ref.filled', imgsEl).length, own = c._files.length;
+        const places = $$('.ref', imgsEl).map(r => !!r._file), ownPlaces = (c._files || []).map(f => !!f);
+        const common = places.filter(Boolean).length, own = ownPlaces.filter(Boolean).length;
         const frame = !!root._srcFrame, cap = frame ? 8 : 9;   // the frame of the video rides along: yours are eight
         const used = new Set();
         ($('textarea', c).value.match(/<\s*Picture\s*(\d+)\s*>/g) || []).forEach(x => {
           const k = +x.replace(/\D+/g, '');
-          if (k < 10 ? k >= 1 && k <= common : (k - 10) < own) used.add(k);
+          if (k < 10 ? !!places[k - 1] : !!ownPlaces[k - 10]) used.add(k);   // a place with no photo does not count
         });
         c._used = used; c._cap = cap; c._frame = frame;
         const n = used.size, left = cap - n;
@@ -5395,18 +5376,19 @@ function makeRefMode(cfg) {
   }
   const files = sel => $$(sel, root).filter(x => x._file);
   function changed() {
-    const imgs = $$('.ref.filled', imgsEl);
-    imgs.forEach((r, i) => {
-      $('.tag', r).textContent = `Picture ${i + 1}`;
-      const cn = $('.cnt', r); if (cn) { cn.hidden = false; cn.textContent = `${i + 1}/${imgs.length}`; }   // one number for the tile and for the text
+    const slots = $$('.ref', imgsEl), imgs = slots.filter(r => r._file);
+    slots.forEach((r, i) => {
+      const tag = $('.tag', r), cn = $('.cnt', r);
+      if (cn) cn.textContent = `${i + 1}/${slots.length}`;
+      if (tag) tag.textContent = `Picture ${i + 1}`;   // the number of the place, the same always
     });
-    $$('.ref:not(.filled) .cnt', imgsEl).forEach(cn => { cn.hidden = true; });   // an empty place is not a number
     const nv = vidsEl ? files('.rm-vids .slot').length : 0, na = files('.rm-auds .slot').length;
     const total = imgs.length + nv + na;
     $('.rm-count', root).textContent = `${total} / 12`;
     if (cfg.scenes && root._save && !root._restoring) root._save();
     $('.rm-count', root).style.color = total > 12 ? 'var(--pink)' : '';
-    $('.rm-tokens', root).innerHTML = imgs.map((_, i) => `<button class="token" type="button">&lt;Picture ${i + 1}&gt;</button>`).join('') || '<span class="hint">добавьте изображения — появятся метки</span>';
+    // all places are listed from the start; a chip wakes up when its place gets a photo
+    $('.rm-tokens', root).innerHTML = slots.map((r, i) => `<button class="token" type="button" data-slot="${i}"${r._file ? '' : ' disabled'} title="${r._file ? 'Вставить в текст сцены' : 'В это место ещё не загружено фото - номер ' + (i + 1) + ' свободен'}">&lt;Picture ${i + 1}&gt;</button>`).join('');
     $$('.sc', root).forEach(x => x._counter?.());   // after the row was rebuilt, or the lock it puts on the chips is wiped
     if (cfg.swap) { const w2 = $('.rm-who[data-i="1"]', root); if (w2) w2.hidden = imgs.length < 2; }
     if (cfg.swap && S.autoLen !== false) { const v = files('.rm-vids .slot')[0]; if (v && v._dur) { S.dur = Math.min(15, Math.max(3, Math.round(v._dur))); root._upd?.(); } }
@@ -5481,7 +5463,7 @@ function makeRefMode(cfg) {
           }
         }
         if (cfg.scenes && root._mode !== 'parts') { fd.append('run', root._run); if (root._q === 'draft') fd.append('draft', '1'); }
-        if (cfg.scenes) { fd.append('scenes', JSON.stringify(sceneList())); $$('.sc', root).forEach((c, i) => c._files.forEach((f, j) => fd.append(`simg${i}_${j}`, f))); fd.append('start', $('.lm-start', root).value || '0'); fd.append('vocals', root._snd === 'own' && $('.lm-vocals', root).checked ? '1' : '0'); }
+        if (cfg.scenes) { fd.append('scenes', JSON.stringify(sceneList())); $$('.sc', root).forEach((c, i) => c._files.forEach((f, j) => { if (f) fd.append(`simg${i}_${j}`, f); })); fd.append('start', $('.lm-start', root).value || '0'); fd.append('vocals', root._snd === 'own' && $('.lm-vocals', root).checked ? '1' : '0'); }
         else loraForm(S, fd);
         seedForm(S, fd);
         $$('.ref', imgsEl).filter(r => r._file).forEach((r, i) => fd.append('img' + i, r._file));

@@ -2429,7 +2429,8 @@ class App:
             scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10)), bool(x.get("fresh"))) for x in json.loads(form.get("scenes") or "[]")]
         except (ValueError, TypeError, AttributeError):
             scenes = []
-        scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), [files[f"simg{i}_{j}"] for j in range(5) if f"simg{i}_{j}" in files], fr)
+        scenes = [(p, min(wf.LONG_MAX_SCENE, max(3.0, sec)), [files.get(f"simg{i}_{j}") for j in range(5)], fr)
+                  # the places are kept: an empty place stays empty and does not shift the numbers
                   for i, (p, sec, fr) in enumerate(scenes) if p][:catalog.LONG_MAX_SCENES]
                   # every scene may bring its own references (instead of the common ones)
         fresh = [fr for *_, fr in scenes]   # a scene marked as a NEW SHOT does not continue the previous one (no quality loss)
@@ -2445,7 +2446,7 @@ class App:
             pass
         if not scenes:
             raise web.HTTPBadRequest(text="Напишите хотя бы одну сцену")
-        images = [files[f"img{i}"] for i in range(5) if f"img{i}" in files]
+        images = [files.get(f"img{i}") for i in range(5)]   # by place, not by order: the numbers in the texts stay true
         audio = files.get("aud0")
         try:
             start = max(0.0, float(form.get("start") or 0))

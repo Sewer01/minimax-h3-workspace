@@ -708,16 +708,36 @@ async def wait_ready(session, server, timeout=240):
     raise RuntimeError("Модель долго загружается:\n" + server.log_tail())
 
 
-def to_openai(messages):
-    out = []
-    for m in messages:
-        if m.get("images") and m["role"] == "user":
-            content = [{"type": "text", "text": m.get("content", "")}]
-            content += [{"type": "image_url", "image_url": {"url": u}} for u in m["images"]]
-            out.append({"role": "user", "content": content})
-        else:
-            out.append({"role": m["role"], "content": m.get("content", "")})
-    return out
+def to_openai(messages, max_frames=10):
+    """Frames of a video are the agent's eyes, not a picture the model has to remember: the words about
+    them stay in the text. Every turn used to resend them all, and two videos of twelve frames filled the
+    whole 32768-token context, so llama.cpp answered 400. Now the frames ride along only in the newest
+    message, and there at most max_frames of them - the last ones, because for a continuation the end of
+    the clip matters more than its beginning. Photographs the person attached always stay.
+    The second value tells what was taken away, so the answer can say it out loud."""
+    last = None
+    for i, m in enumerate(messages):
+        if m.get("role") == "user" and m.get("images"):
+            last = i
+    out, dropped = [], []
+    for i, m in enumerate(messages):
+        if m.get("role") != "user" or not m.get("images"):
+            out.append({"role": m.get("role"), "content": m.get("content", "")})
+            continue
+        imgs = list(m["images"])
+        nf = min(int(m.get("frames") or 0), len(imgs))
+        pics, frs = imgs[:len(imgs) - nf], imgs[len(imgs) - nf:]
+        if i != last and nf:
+            dropped.append(f"кадры ({nf}) из более раннего сообщения убраны")
+            frs = []
+        elif nf > max_frames:
+            cut = nf - max_frames
+            frs = frs[cut:]
+            dropped.append(f"из последних кадров убрано {cut} ранних")
+        content = [{"type": "text", "text": m.get("content", "")}]
+        content += [{"type": "image_url", "image_url": {"url": u}} for u in pics + frs]
+        out.append({"role": "user", "content": content})
+    return out, dropped
 
 
 def chat_text(messages):

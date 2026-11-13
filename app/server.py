@@ -3350,28 +3350,38 @@ class App:
             await send({"type": "status", "text": "Читаю скиллы и думаю…"})
 
             thinking = False
-            payload = {"messages": [{"role": "system", "content": system}] + ag.to_openai(messages),
-                       "stream": True, "temperature": 0.6, "cache_prompt": True}
-            if body.get("think") != "deep":
-                # "fast" (default): no hidden reasoning before the answer. On the user's machine a light request took 17 s with it
-                # (about 2000 characters of thoughts) and 1.5 s without; the long-video rules took minutes with it
-                payload["chat_template_kwargs"] = {"enable_thinking": False}
-                payload["thinking_budget_tokens"] = 0
-            async with self.session.post(self.llm.url + "/v1/chat/completions", json=payload,
-                                         timeout=aiohttp.ClientTimeout(total=None, sock_read=600)) as r:
-                if r.status != 200:
-                    raise RuntimeError(f"Модель ответила ошибкой {r.status}: {(await r.text())[:300]}")
-                async for raw in r.content:
-                    line = raw.decode("utf-8", errors="replace").strip()
-                    if not line.startswith("data:") or line == "data: [DONE]":
-                        continue
-                    delta = (json.loads(line[5:]).get("choices") or [{}])[0].get("delta", {})
-                    if delta.get("content"):
-                        await send({"type": "delta", "text": delta["content"]})
-                    elif delta.get("reasoning_content") and not thinking:
-                        thinking = True
-                        await send({"type": "status", "text": "Думаю над сценой…"})
-            await send({"type": "done"})
+            for attempt in (0, 1):   # the first try keeps frames; if the context still overflows, a second goes without them
+                conv, notes = ag.to_openai(messages, max_frames=(10 if attempt == 0 else 0))
+                if attempt:
+                    await send({"type": "status", "text": "В контексте не уместилось: убираю все кадры и пробую ещё раз"})
+                elif notes:
+                    await send({"type": "status", "text": "Места в контексте мало: " + ", ".join(notes)})
+                payload = {"messages": [{"role": "system", "content": system}] + conv,
+                           "stream": True, "temperature": 0.6, "cache_prompt": True}
+                if body.get("think") != "deep":
+                    # "fast" (default): no hidden reasoning before the answer. On the user's machine a light request took 17 s with it
+                    # (about 2000 characters of thoughts) and 1.5 s without; the long-video rules took minutes with it
+                    payload["chat_template_kwargs"] = {"enable_thinking": False}
+                    payload["thinking_budget_tokens"] = 0
+                async with self.session.post(self.llm.url + "/v1/chat/completions", json=payload,
+                                             timeout=aiohttp.ClientTimeout(total=None, sock_read=600)) as r:
+                    if r.status != 200:
+                        why = (await r.text())[:300]
+                        if "exceed_context" in why and attempt == 0:
+                            continue   # lighter payload on the next pass
+                        raise RuntimeError(f"Модель ответила ошибкой {r.status}: {why}")
+                    async for raw in r.content:
+                        line = raw.decode("utf-8", errors="replace").strip()
+                        if not line.startswith("data:") or line == "data: [DONE]":
+                            continue
+                        delta = (json.loads(line[5:]).get("choices") or [{}])[0].get("delta", {})
+                        if delta.get("content"):
+                            await send({"type": "delta", "text": delta["content"]})
+                        elif delta.get("reasoning_content") and not thinking:
+                            thinking = True
+                            await send({"type": "status", "text": "Думаю над сценой…"})
+                await send({"type": "done"})
+                break
         except (ConnectionResetError, asyncio.CancelledError):
             raise
         except Exception as e:

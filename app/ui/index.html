@@ -5979,7 +5979,7 @@ async function agVideoFrames(file, n = 8) {
   const ok = await new Promise(r => { v.onloadedmetadata = () => r(true); v.onerror = () => r(false); });
   if (!ok || !(v.duration > 0)) { URL.revokeObjectURL(v.src); throw new Error('Не получилось открыть видео «' + file.name + '». Попробуйте MP4 (H.264).'); }
   const dur = v.duration;   // the whole clip: for a continuation the end matters more than the start
-  const w = Math.min(640, v.videoWidth || 640), h = Math.round(w * (v.videoHeight || 360) / (v.videoWidth || 640));
+  const w = Math.min(512, v.videoWidth || 512),   // every frame costs the model context: 512 px is enough to see the scene h = Math.round(w * (v.videoHeight || 360) / (v.videoWidth || 640));
   const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'), out = [];
   for (let i = 0; i < n; i++) {
     // evenly, from the very beginning to the very end: the last frame is what a continuation starts from
@@ -6513,6 +6513,9 @@ async function sendPrompt(blk, to) {
     // написанным на ней; снимаем только префикс поля описания, чтобы программа поставила выравнивание сама
     const clean = t => t.split('\n').map(l => l.replace(/^\s*integrated_multimodal_description\s*:\s*(\[Shot \d+\]\s*)?/i, '')).join('\n').trim();
     L2.root._setScenes(list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec, fresh: x.fresh })).filter(x => x.prompt));
+    // the studio never receives the frames from the chat: a <Video N> in the text would point at nothing,
+    // and the numbers would land on the person's photos. What the studio really has is the base frame.
+    prompt = prompt.replace(/<\s*Video\s*\d+\s*>/g, '<Frame>');
     if (vidFiles.length) {   // the studio continues a video: the first one becomes the base, the mode turns itself on
       const got = await L2.root._takeVideo(vidFiles[0]);
       vUsed = 1; vAll = 1;

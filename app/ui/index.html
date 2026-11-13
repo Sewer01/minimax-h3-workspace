@@ -3208,7 +3208,10 @@ function syncCutBtn() {
   if (!L.dur0) { btn.disabled = true; btn.textContent = '✂ Оставить выделенное'; return; }
   const whole = L.start <= 0.001 && L.end >= L.dur0 - 0.001;
   btn.disabled = whole || L.len() < 0.05;
-  btn.textContent = whole ? '✂ Оставить выделенное' : `✂ Оставить выделенное (${(L.dur0 - L.len()).toFixed(1)} с лишнего)`;
+  const away = (L.dur0 - L.len()).toFixed(1).replace('.', ',');
+  btn.textContent = whole ? '✂ Оставить выделенное' : `✂ Оставить выделенное - убрать ${away} с`;
+  btn.title = whole ? 'Выделите кусок, который нужно оставить'
+    : `Оставит выделенные ${L.len().toFixed(1).replace('.', ',')} с, а остальное аудио в ${away} с уберёт`;
 }
 function syncCut() {
   const el = $('#cutSel'), btn = $('#aCutDel');
@@ -3219,7 +3222,10 @@ function syncCut() {
   }
   const w = wave.clientWidth; el.hidden = false;
   el.style.left = (fracAt(cut.a) * w) + 'px'; el.style.width = ((fracAt(cut.b) - fracAt(cut.a)) * w) + 'px';
-  btn.disabled = cut.b - cut.a < 0.05; btn.textContent = `✂ Удалить выделенное (${(cut.b - cut.a).toFixed(1)} с)`;
+  btn.disabled = cut.b - cut.a < 0.05;
+  const sec = (cut.b - cut.a).toFixed(1).replace('.', ',');
+  btn.textContent = `✂ Удалить выделенное - ${sec} с`;
+  btn.title = `Уберёт ${sec} с внутри рамки, остальное аудио останется`;
 }
 // the pieces [a,b] (seconds) of buf that stay, joined with tiny fades so the joins do not click
 function keepRanges(buf, ranges) {

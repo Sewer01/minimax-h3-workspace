@@ -2995,13 +2995,13 @@ class App:
     async def h_library_delete_many(self, req):
         """Several library items at once: their files go to the Recycle Bin in one call."""
         ids = [str(i) for i in ((await req.json()).get("ids") or [])][:200]
-        gone, failed, paths, by_id, removed = [], [], [], {}, []
+        gone, failed, paths, by_id, cards = [], [], [], {}, []
         for i in ids:
             item = self.library.get(i)
             if not item:
                 failed.append(i)
                 continue
-            removed.append(dict(item))   # remembered before it leaves: its kept pictures may leave with it
+            cards.append(dict(item))     # remembered before it leaves: its kept pictures may leave with it
             cand = [p for p in {self.file_path(item), Path(item["local"]) if item.get("local") else None} if p and p.exists()]
             if not cand:                      # the file is already gone: the record goes too
                 self.library.remove(i)
@@ -3016,8 +3016,8 @@ class App:
                 gone.append(i)
             else:                             # the file stayed where it was: so does the record
                 failed.append(i)
-        if removed:
-            await self.cleanup_refs(removed)
+        if cards:
+            await self.cleanup_refs(cards)
         return web.json_response({"gone": gone, "failed": failed})
 
     async def h_library_delete(self, req):
@@ -3684,7 +3684,7 @@ def _graph_pics(graph):
 
 
 def send_to_recycle_bin(paths):
-    """Move files to the Recycle Bin; PowerShell is kept as a fallback. Before, every file took its own process
+    """Move files to the Recycle Bin; PowerShell is kept only as a fallback.
 
     Before, every file took its own process and a visible blue console window: deleting a dozen
     library clips blinked a dozen windows and took a dozen seconds. Paths arrive through an

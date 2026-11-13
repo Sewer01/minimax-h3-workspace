@@ -662,7 +662,7 @@ class App:
             meta = f.get("metadata") or {}
             if meta.get("width") and meta.get("height") and not (item.get("mode") == "upscale" and item.get("res")):
                 item["res"] = f'{meta["width"]}×{meta["height"]}'
-            item["refs"] = await self.stash_refs(item, _graph_pics(job.get("graph")))
+            item["refs"] = await self.stash_refs(item, _graph_refs(job.get("graph")))
             self.library.add(item)
             await self.archive_item(item)
             items.append(self.public(item))
@@ -710,12 +710,12 @@ class App:
     def keep_copies(self):
         return self.config.get("keep_copies") is not False
 
-    async def stash_refs(self, item, names):
-        """Keep a copy of the pictures a result was made from, so "repeat with these settings" can put
+    async def stash_refs(self, item, refs):
+        """Keep a copy of the files a result was made from, so "repeat with these settings" can put
         them back. One folder per calculation: repeating a scene of one project does not multiply copies.
         Nothing is promised when ComfyUI is silent - an empty answer simply means the old behaviour."""
-        names = [n for n in (names or []) if isinstance(n, str)]
-        if not names or not self.keep_copies() or not item.get("prompt_id"):
+        refs = [r for r in (refs or []) if isinstance(r, dict) and isinstance(r.get("name"), str)]
+        if not refs or not self.keep_copies() or not item.get("prompt_id"):
             return []
         key = re.sub(r"[^A-Za-z0-9]", "", str(item["prompt_id"]))[:40]
         if not key:
@@ -723,18 +723,30 @@ class App:
         d = REF_DIR / key
         item["ref_group"] = key          # the address the interface reads the kept pictures from
         saved = []
-        for i, n in enumerate(names):
-            dest = d / f"{i}_{Path(n).name}"
+        for i, ref in enumerate(refs):
+            name, kind = ref["name"], ref.get("kind") or "image"
+            # the name is often "h3studio/h3s_ab12cd34.png": ComfyUI wants the folder separately,
+            # and answering with an empty file list when it is not split was exactly the old mistake
+            folder, _, base = name.rpartition("/")
+            dest = d / f"{i}_{kind}_{base}"
             if dest.is_file() and dest.stat().st_size:
                 saved.append(dest.name)
                 continue
-            try:
-                async with self.session.get(self.comfy + "/view", params={"filename": n, "subfolder": "", "type": "input"}) as r:
-                    if r.status != 200:
-                        continue
-                    data = await r.content.read(20 * 1024 * 1024)   # a picture, not a disk: bigger files are not worth keeping
-            except Exception:
-                continue
+            data = None
+            try:   # the file usually lies next to us: reading it from the disk works even when ComfyUI is asleep
+                src = self.comfy_root() / "ComfyUI" / "input" / folder / (base or name)
+                if src.is_file() and src.stat().st_size <= 60 * 1024 * 1024:
+                    data = src.read_bytes()
+            except (OSError, TypeError, ValueError):
+                data = None
+            if data is None:
+                try:
+                    async with self.session.get(self.comfy + "/view", params={"filename": base or name, "subfolder": folder, "type": "input"}) as r:
+                        if r.status != 200:
+                            continue
+                        data = await r.content.read(60 * 1024 * 1024)   # a picture or a short clip, not a disk
+                except Exception:
+                    continue
             if not data:
                 continue
             try:
@@ -3661,11 +3673,16 @@ def _recycle_shell(items):
     return res == 0 and not op.fAnyOperationsAborted
 
 
-def _graph_pics(graph):
-    """The names of the pictures this calculation read, in the order of their places.
+REF_LOADERS = (("image", ("LoadImage", "LoadImageMask", "LoadImage3D"), "image"),
+               ("video", ("VHS_LoadVideo", "LoadVideo", "LoadVideoPath"), "video"),
+               ("audio", ("LoadAudio", "VHS_AudioToSIPE", "LoadAudioPath"), "audio"))
 
-    Taken from the graph itself, so every section is covered at once - the ordinary ones, the studio
-    and the user's own workflows: wherever a picture enters the calculation, it goes through a loader."""
+
+def _graph_refs(graph):
+    """What this calculation read: its pictures, the video it works on and audio, in the order of the
+    places. Taken from the graph itself, so every section is covered at once - the ordinary ones, the
+    studio and the user's own workflows: every file enters the calculation through a loader node.
+    A name comes as ComfyUI keeps it, often "h3studio/h3s_ab12cd34.png": the folder belongs to it."""
     if not isinstance(graph, dict):
         return []
 
@@ -3673,14 +3690,18 @@ def _graph_pics(graph):
         n = kv[0]
         return (0, int(n)) if str(n).isdigit() else (1, str(n))
 
-    names = []
+    out, seen = [], set()
     for _nid, node in sorted(graph.items(), key=key):
-        if not isinstance(node, dict) or node.get("class_type") not in ("LoadImage", "LoadImageMask"):
+        if not isinstance(node, dict):
             continue
-        img = (node.get("inputs") or {}).get("image")
-        if isinstance(img, str) and img and img not in names:
-            names.append(img)
-    return names[:12]
+        for kind, classes, field in REF_LOADERS:
+            if node.get("class_type") not in classes:
+                continue
+            val = (node.get("inputs") or {}).get(field)
+            if isinstance(val, str) and val and val not in seen:
+                seen.add(val)
+                out.append({"kind": kind, "name": val})
+    return out[:14]
 
 
 def send_to_recycle_bin(paths):

@@ -1886,15 +1886,20 @@ const dropSlots = (view, kind) => {
 };
 /* The program keeps a copy of the pictures a result was made from; "repeat with these settings"
    puts them back into the places, so the texts of the prompt still point at real pictures. */
+const REF_KINDS = { image: ['label.ref', 'image/png'], video: ['.rm-vids label', 'video/mp4'], audio: ['.rm-auds label', 'audio/mpeg'] };
 async function repeatRefs(it) {
   const box = dropBox(it.mode); if (!box || !(it.refs || []).length || !it.ref_group) return 0;
-  const labels = $$('label.ref', box);
+  const used = {};
   let n = 0;
   for (const nm of it.refs) {
-    const lb = labels.find(l => !l.classList.contains('filled') && $('input[type=file]', l)); if (!lb) break;
+    const m = /^\d+_(image|video|audio)_/.exec(nm);
+    const kind = m ? m[1] : 'image';
+    const [sel, mime] = REF_KINDS[kind] || REF_KINDS.image;
+    const labels = used[kind] || (used[kind] = $$(sel, box).filter(l => $('input[type=file]', l)));
+    const lb = labels.find(l => !l.classList.contains('filled')); if (!lb) continue;
     try {
       const r = await fetch(`/api/refs/${it.ref_group}/${encodeURIComponent(nm)}`); if (!r.ok) continue;
-      await setDropFile($('input[type=file]', lb), new File([await r.blob()], nm.replace(/^\d+_/, ''), { type: r.headers.get('content-type') || 'image/png' }));
+      await setDropFile($('input[type=file]', lb), new File([await r.blob()], nm.replace(/^\d+_(image|video|audio)_/, ''), { type: r.headers.get('content-type') || mime }));
       n++;
     } catch { }
   }

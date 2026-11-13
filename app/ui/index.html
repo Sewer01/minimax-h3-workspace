@@ -4180,7 +4180,13 @@ function renderLib() {
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const byId = id => LIB.find(x => x.id === id);
 
-async function saveItems(items) {
+let SAVE_BUSY = false;
+async function saveItems(items) {   // one save at a time: a second click would ask the same files twice
+  if (SAVE_BUSY) { toast('Прежнее сохранение ещё идёт - подождите немного'); return; }
+  SAVE_BUSY = true;
+  try { await saveItemsNow(items); } finally { SAVE_BUSY = false; }
+}
+async function saveItemsNow(items) {
   const have = items.filter(it => !it.missing);
   if (have.length < items.length) toast(`Пропущено видео, которых нет на диске: ${items.length - have.length}`);
   items = have; if (!items.length) return;
@@ -4216,6 +4222,10 @@ function askDelete(ids) {
   $('#cfText').textContent = 'Файлы переместятся в корзину Windows — их можно будет восстановить.';
   $('#confirm').hidden = false;
   $('#cfOk').onclick = async () => {
+    if ($('#cfOk')._busy) return;   // one click is enough: while it works, the second does nothing
+    $('#cfOk')._busy = true;
+    const was = $('#cfOk').textContent; $('#cfOk').textContent = 'Убираем…';
+    try {
     if (API) {
       try {   // one request for the whole choice: the files go to the Recycle Bin in one hidden call
         const r = await fetch('/api/library/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [...ids] }) });
@@ -4229,6 +4239,7 @@ function askDelete(ids) {
     $('#confirm').hidden = true;
     if (ids.includes(openId)) closeViewer();
     renderLib(); toast(ids.length === 1 ? 'Видео удалено' : `Удалено: ${ids.length}`);
+    } finally { $('#cfOk')._busy = false; $('#cfOk').textContent = was; }
   };
 }
 function setFav(it, fav) {
@@ -4347,7 +4358,6 @@ $('#vwCopy').onclick = () => {
 };
 $('#vwZoom').onclick = () => { const it = (byId(openId) || openItem); if (it && it.url) zoomOpen(it.url); };
 $('#vwImg').onclick = () => { const it = (byId(openId) || openItem); if (it && it.kind === 'image' && it.url) zoomOpen(it.url); };
-$('#vwDel').onclick = () => askDelete([openId]);
 async function continueLong(it) {
   const L2 = RM.long.root;
   if (!(it.long && it.long.run) || (L2._run !== it.long.run && !(await L2._openRun(it.long.run)))) {

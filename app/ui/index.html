@@ -108,6 +108,7 @@
 .tl-player .hint{padding:22px 14px;text-align:center}
 .lm-scenes .sc:not(.sel){display:none}
 #view-long .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}.srf{position:relative;flex:0 0 104px;width:104px;height:104px;border-radius:10px;overflow:hidden;border:1.5px dashed rgba(232,38,79,.7)}.srf img{width:100%;height:100%;object-fit:cover;display:block}.srfl{position:absolute;left:4px;bottom:4px;font-style:normal;font-size:10px;padding:2px 6px;border-radius:6px;background:rgba(232,38,79,.92);color:#fff}#view-long .rm-imgs .ref{width:104px!important;height:104px!important;aspect-ratio:auto;flex:0 0 104px}
+#view-long .slots{--refh:104px;--refw:104px}   // the studio keeps its small squares: its audio place must not tower over them
 #view-long .rm-params .row>.hint,#view-long .rm-params .row>.cw-hint{display:none}
 #view-long .st-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px 34px;align-items:start;margin-top:8px}
 #view-long .st-l,#view-long .st-r{min-width:0}
@@ -751,17 +752,17 @@ body.dropping::after{content:'Отпустите — программа разл
 /* refs & action */
 /* reference videos / audios: small squares, video and audio side by side */
 .rm-media{display:flex;flex-wrap:wrap;gap:6px 28px;align-items:flex-start}
-.slots{display:grid;grid-template-columns:repeat(3,92px);gap:8px}
-.slot{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;aspect-ratio:1/1;padding:8px 6px;border-radius:12px;background:var(--bg-2);border:1.5px dashed var(--line-2);cursor:pointer;font-size:11.5px;text-align:center;overflow:hidden}
+.slots{--refh:148px;--refw:112px;display:grid;grid-template-columns:repeat(3,var(--refw));gap:10px}
+.slot{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:var(--refw,112px);height:var(--refh,148px);padding:8px 6px;border-radius:12px;background:var(--bg-2);border:1.5px dashed var(--line-2);cursor:pointer;font-size:11.5px;text-align:center;overflow:hidden}
 .slot:hover{border-color:var(--accent)}
 .slot.filled{border-style:solid;border-color:var(--line)}
 .slot.filled.bad{border-color:var(--pink)}
 .refs .slot{height:var(--refh,148px);width:var(--refw,112px)}   /* the video slot in the row of pictures has the same empty size as a picture slot */
 .refs .slot.wide{width:calc(var(--refw,112px) * 1.6)}
-.slot.vthumb{background-size:cover;background-position:center;border-color:#3fd18b}
+.slot.vthumb{background-size:cover;background-position:center top;border-color:#3fd18b;justify-content:flex-end;gap:2px;padding-bottom:8px}
 .slot.vthumb svg{display:none}
-.slot.vthumb span{color:#3fd18b;font-weight:800;font-size:13px;text-shadow:0 1px 4px #000}
-.slot.vthumb small{color:#fff;font-size:12px;text-shadow:0 1px 4px #000}
+.slot.vthumb span{color:#3fd18b;font-weight:700;font-size:10.5px;font-family:var(--mono);text-shadow:0 1px 4px #000;background:rgba(var(--ov-rgb),.8);padding:2px 6px;border-radius:6px}
+.slot.vthumb small{color:#fff;font-size:10.5px;font-family:var(--mono);text-shadow:0 1px 4px #000;background:rgba(var(--ov-rgb),.8);padding:2px 6px;border-radius:6px}
 .slot.vthumb.bad span{color:#ff6b6b}
 .ru-wrap{margin:6px 0 2px}
 .ru-out{margin-top:6px;padding:10px 12px;border:1px dashed var(--line-2);border-radius:10px;background:var(--bg-2);font-size:12.5px;line-height:1.55}
@@ -770,7 +771,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .slot span{flex:none;width:100%;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.2;word-break:break-word;color:var(--muted)}
 .slot.filled span{color:var(--text)}
 .slot small{color:var(--dim);font-family:var(--mono);font-size:10.5px}
-.slot .x{position:absolute;right:4px;top:4px;width:18px;height:18px;border-radius:6px;background:rgba(var(--ov-rgb),.8);display:none;place-items:center;font-size:9px}
+.slot .x{position:absolute;right:5px;top:5px;width:20px;height:20px;border-radius:6px;background:rgba(var(--ov-rgb),.8);display:none;place-items:center;font-size:9px}
 .slot.filled .x{display:grid}
 .sub-l{font-size:12px;font-weight:700;color:var(--muted);margin:14px 0 8px;display:flex;justify-content:space-between}
 .media-hint{display:block;margin-top:6px;font-size:11px;color:var(--dim)}

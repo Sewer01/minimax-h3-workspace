@@ -4246,6 +4246,16 @@ function setFav(it, fav) {
   it.fav = fav;
   if (API) fetch(`/api/library/${it.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fav }) });
 }
+function closeViewer() {
+  // the window was closed by a function that had been dropped in an earlier clean-up: the cross,
+  // Escape and every button that leaves for another section threw an error instead of closing it
+  const m = $('#viewer'); if (!m) return;
+  m.hidden = true;
+  const v = $('video', m); if (v) { v.pause(); v.removeAttribute('src'); v.load(); }   // taking the address away is not enough: it keeps playing
+  const im = $('img', m); if (im) im.removeAttribute('src');
+  const cmp = $('#vwCmp'); if (cmp) { clearInterval(CMP_TIMER); cmp.innerHTML = ''; }
+  openId = null;
+}
 function openViewer(id, fallback) {
   const it = byId(id) || fallback; if (!it) return; openId = it.id || id; openItem = it;
   const vid = $('#viewer video'), img = $('#viewer img');
@@ -5086,7 +5096,6 @@ function makeRefMode(cfg) {
       $('textarea', c).addEventListener('input', () => { refreshStates(); c._counter?.(); });   // first the rebuild, then the count and the lock
       $('textarea', c).addEventListener('focus', e => { root._ta = e.target; c._counter?.(); });   // the row of common chips follows the scene you picked up
       $('input[type=range]', c).oninput = recount; $('.x', c).onclick = () => { root._pushUndo?.(); c.remove(); recount(); };
-      fin.addEventListener('change', () => refreshStates());
       recount();
     };
 

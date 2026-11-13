@@ -3,6 +3,7 @@
 Falls back to the default browser if the WebView2 window cannot be created.
 """
 
+import json
 import asyncio
 import os
 import socket

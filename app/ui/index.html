@@ -5956,6 +5956,7 @@ function renderAtt() {
   $('#agAtt').innerHTML = AG.att.map((a, i) => a.frame
     ? `<div title="Кадр из видео «${esc(a.vname)}»"><img src="${a.url}"><b style="background:#3a5a8c">🎞 ${esc(a.label)}</b><button data-i="${i}">✕</button></div>`
       : `<div><img src="${a.url}"><b>Picture ${base + (++k)}</b><button data-i="${i}">✕</button></div>`).join('');
+  agVidBtn();   // the video button lives or sleeps with the tray
 }
 // a video cannot be shown to the model as a file: several frames are cut out of it and sent as pictures, with the seconds written down
 async function agVideoFrames(file, n = 8) {
@@ -5974,7 +5975,41 @@ async function agVideoFrames(file, n = 8) {
   URL.revokeObjectURL(v.src);
   return { frames: out, dur: v.duration };
 }
-const AG_VIDEO_MAX = 3, AG_FRAME_MAX = 15;   // three videos, as many as the reference places; their frames share this lot
+const AG_FRAME_MAX = 15;                     // frames all videos in the tray share
+function agVideoMax() {
+  /* The number of videos the Agent may hold is not its own rule: it is how many video places the mode
+     this prompt is being written for really has. References take three, the swap and the studio take one
+     - and there the new video replaces the old one - while the modes without a video place do not take
+     a video at all, and the tray's button says so. */
+  const t = AG.target;
+  if (t === 'long') return 1;                       // the studio's one video is the one it continues
+  const box = dropBox(t);
+  return box ? $$('.rm-vids input', box).length : 0;
+}
+function agVidBtn() {
+  const lb = $('#agVidFile') && $('#agVidFile').closest('label'), n = agVideoMax();
+  if (!lb) return;
+  if (!AG || !AG.target || !$('#agVidFile')) return;
+  lb.style.opacity = n ? '1' : '.4';
+  lb.style.pointerEvents = n ? '' : 'none';
+  lb.title = n
+    ? `Агент посмотрит на видео как на кадры - вырежем их сами (этот режим принимает видео: ${n}). При переносе промпта в раздел уйдёт сам файл`
+    : 'Это видео не примет режим, для которого пишется промпт: выберите «Референсы», «Замену персонажа» или «Видеостудию»';
+}
+function agFitVideos() {
+  // the mode changed under the tray: the extra videos leave, the first ones stay
+  const max = agVideoMax(), names = [];
+  AG.att.forEach(a => { if (a.frame && !names.includes(a.vname)) names.push(a.vname); });
+  if (names.length <= max) { agVidBtn(); return 0; }
+  const gone = names.slice(max);
+  AG.att = AG.att.filter(a => !(a.frame && gone.includes(a.vname)));
+  renderAtt(); agCtx();
+  toast(max
+    ? `Этот режим принимает видео: ${max} · лишние ${gone.length} убраны, осталось первое`
+    : 'Этот режим видео не принимает · раскадровка убрана из лотка');
+  agVidBtn();
+  return gone.length;
+}
 function agShareFrames() {
   /* A second and a third video must not force the person to clear the tray by hand: the program leaves
      an even spread over the whole length of each video - the beginning, the middle, the end - and takes
@@ -5994,10 +6029,13 @@ function agShareFrames() {
   return before - AG.att.length;
 }
 async function agFramesFromFile(f) {   // the only way the agent can look at a video: pieces of it
+  const max = agVideoMax();
+  if (!max) { toast('Видео не нужен режиму, для которого пишется промпт: выберите «Референсы», «Замену персонажа» или «Видеостудию»'); return false; }
   const again = AG.att.some(a => a.frame && a.vname === f.name);
   if (again) AG.att = AG.att.filter(a => !(a.frame && a.vname === f.name));   // the same video lays its frames out anew
+  if (max === 1) AG.att = AG.att.filter(a => !a.frame);                       // one place: the new video takes it from the old
   const seen = new Set(AG.att.filter(a => a.frame).map(a => a.vname));
-  if (!again && seen.size >= AG_VIDEO_MAX) { toast('Агент разбирает не больше ' + AG_VIDEO_MAX + ' видео: уберите одно из лотка'); return false; }
+  if (!again && seen.size >= max) { toast('Этот режим принимает ' + max + ' видео: уберите одно из лотка'); return false; }
   toast('Вырезаем кадры из видео…');
   try {
     const { frames, dur } = await agVideoFrames(f, 8);
@@ -6044,7 +6082,7 @@ $('#agThink').onclick = e => { const b = e.target.closest('button'); if (!b) ret
 agThinkPaint();
 const agTargetClick = e => {
   const b = e.target.closest('button[data-t]'); if (!b) return;
-  AG.target = b.dataset.t; $$('#agTarget button, #agTarget2 button').forEach(x => x.classList.toggle('on', x === b)); agCtx();
+  AG.target = b.dataset.t; $$('#agTarget button, #agTarget2 button').forEach(x => x.classList.toggle('on', x === b)); agCtx(); agFitVideos();
 };
 $('#agStoryF').onclick = e => { const b = e.target.closest('button[data-f]'); if (!b) return; AG.storyFrames = b.dataset.f === '1'; agCtx(); };
 $('#agStoryM').onclick = e => { const b = e.target.closest('button[data-m]'); if (!b) return; AG.storyModel = b.dataset.m; agCtx(); };

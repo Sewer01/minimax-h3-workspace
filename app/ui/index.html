@@ -4388,9 +4388,18 @@ $('#vwSeed').onclick = () => {
   closeViewer(); useSeed(st, it.seed, it.mode);
 };
 $('#vwFav').onclick = () => { const it = (byId(openId) || openItem); setFav(it, !it.fav); $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное'; renderLib(); };
-$('#vwRepeat').onclick = () => {
+$('#vwRepeat').onclick = async () => {
   const it = (byId(openId) || openItem); closeViewer();
   if (it.mode === 'custom') { toast('Для своих workflow настройки переносятся вручную: откройте раздел «Свои workflow»'); goTo('custom'); return; }
+  // a video studio project keeps its pictures next to the program: repeat means the whole project,
+  // scenes, settings AND the pictures - otherwise the texts would point at empty places
+  if (it.mode === 'long' && it.long && it.long.run) {
+    goTo('long');
+    try {
+      if (await RM.long.root._openRun(it.long.run)) { toast('Перенесли проект целиком: сцены, настройки и все картинки'); return; }
+    } catch { }
+    toast('Картинки проекта не нашлись - переносим настройки и тексты');
+  }
   if (IMG[it.mode]) { IMG[it.mode].fill(it); goTo(it.mode); }
   else if (it.mode === 'video') { Object.assign(V, { aspect: it.aspect, q: it.q, dur: Math.round(it.len) }); $('#vPrompt').value = it.prompt; $('#vPrompt').oninput({ target: $('#vPrompt') }); vUpd(); goTo('video'); }
   else if (RM[it.mode]) {

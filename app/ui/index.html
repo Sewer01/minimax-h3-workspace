@@ -402,7 +402,7 @@ details[open] summary::before{content:'－ '}
 .field input,.field select{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;outline:none;font-family:var(--mono);font-size:12.5px}
 
 /* preview */
-.preview{position:sticky;top:28px;display:grid;gap:14px}
+.preview{position:sticky;top:64px;display:grid;gap:14px}
 .screen{background:var(--screen);border:1px solid var(--line);border-radius:var(--radius);display:grid;place-items:center;padding:18px;min-height:330px}
 .frame{position:relative;width:100%;max-height:min(calc(var(--vh,1vh)*62),640px);border-radius:12px;background:
   repeating-linear-gradient(45deg,rgba(255,255,255,.015) 0 10px,transparent 10px 20px),var(--bg-2);
@@ -5238,7 +5238,7 @@ function makeRefMode(cfg) {
       if (bar) {
         const memo = document.createElement('div');
         memo.className = 'hint lm-memo';
-        memo.style.cssText = 'margin:0 0 8px;font-size:13px;text-align:center;font-weight:700';
+        memo.style.cssText = 'margin:14px 0 8px;font-size:13px;text-align:center;font-weight:700';
         const plate = document.createElement('div');
         plate.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:12px';
         const chainB = $('.lm-chain', root), joinB = $('.tl-join', root), watchB = $('.tl-all', root);
@@ -5264,7 +5264,7 @@ function makeRefMode(cfg) {
           memo.textContent = root._mode === 'parts' ? `${q} · по частям` : `${q} · весь ролик одним файлом`;
           (root._plates || []).forEach(b => { b.hidden = root._mode !== 'parts'; });   // the whole-film mode keeps only the run button
         };
-        bar.prepend(memo); bar.append(plate);
+        bar.append(memo); bar.append(plate);   // the reminder stands right above the run buttons
         root._memo();
       }
       /* undo: what was cleared or deleted can be brought back (button «Отменить действие» or Ctrl+Z) */

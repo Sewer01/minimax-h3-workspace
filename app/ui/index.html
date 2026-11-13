@@ -5979,11 +5979,12 @@ async function agVideoFrames(file, n = 8) {
   const ok = await new Promise(r => { v.onloadedmetadata = () => r(true); v.onerror = () => r(false); });
   if (!ok || !(v.duration > 0)) { URL.revokeObjectURL(v.src); throw new Error('Не получилось открыть видео «' + file.name + '». Попробуйте MP4 (H.264).'); }
   const dur = v.duration;   // the whole clip: for a continuation the end matters more than the start
-  const w = Math.min(512, v.videoWidth || 512),   // every frame costs the model context: 512 px is enough to see the scene h = Math.round(w * (v.videoHeight || 360) / (v.videoWidth || 640));
+  // every frame costs the model context: 512 px is enough to read a scene
+  const w = Math.min(512, v.videoWidth || 512), h = Math.round(w * (v.videoHeight || 360) / (v.videoWidth || 640));
   const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'), out = [];
   for (let i = 0; i < n; i++) {
     // evenly, from the very beginning to the very end: the last frame is what a continuation starts from
-    const t = Math.min(dur - 0.06, Math.max(0.05, dur * i / Math.max(1, n - 1)));
+    const t = n === 1 ? Math.max(0.05, dur - 0.06) : Math.min(dur - 0.06, Math.max(0.05, dur * i / Math.max(1, n - 1)));
     v.currentTime = t; await new Promise(r => { v.onseeked = r; setTimeout(r, 1500); });
     g.drawImage(v, 0, 0, w, h);
     const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
@@ -6055,14 +6056,20 @@ async function agFramesFromFile(f) {   // the only way the agent can look at a v
   if (!again && seen.size >= max) { toast('Этот режим принимает ' + max + ' видео: уберите одно из лотка'); return false; }
   toast('Вырезаем кадры из видео…');
   try {
-    const { frames, dur } = await agVideoFrames(f, Math.min(12, AG_FRAME_MAX));   // one video may use most of the lot
+    // The studio continues a video from its last frame and receives nothing else from the chat, so the
+    // agent is shown exactly that one frame - what it sees is what the model will get. The other modes
+    // have to recognise heroes and action, they look through the whole clip.
+    const want = AG.target === 'long' ? 1 : Math.min(12, AG_FRAME_MAX);
+    const { frames, dur } = await agVideoFrames(f, want);
     frames.forEach(fr => AG.att.push({ file: fr.file, url: fr.url, frame: true, label: fr.t.toFixed(1) + ' с', vname: f.name, vdur: dur, vfile: f }));
     const cut = agShareFrames();
     renderAtt(); agCtx();
     const fr = AG.att.filter(a => a.frame);
     const nv = new Set(fr.map(a => a.vname)).size;
-    toast(`Из видео взято ${frames.length} кадров` + (cut ? `, повторы убраны: ${cut}` : '')
-      + (nv > 1 ? ` · всего ${fr.length} кадров с ${nv} видео` : '') + '. Теперь напишите, кого на что заменить');
+    toast(frames.length === 1
+      ? `Взят последний кадр видео (${frames[0].t.toFixed(1)} с) - ровно тот, с которого Видеостудия продолжит ролик. Опишите, что происходит дальше`
+      : `Из видео взято ${frames.length} кадров` + (cut ? `, повторы убраны: ${cut}` : '')
+        + (nv > 1 ? ` · всего ${fr.length} кадров с ${nv} видео` : '') + '. Теперь напишите, кого на что заменить');
   } catch (err) { toast(err.message); return false; }
   return true;
 }
@@ -6109,7 +6116,7 @@ function agVidNote() {
   const names = [...new Set(AG.att.filter(a => a.frame).map(a => a.vname))];
   if (AG.target === 'long') {
     return names.length
-      ? ` Видеостудия продолжит видео «${names[0]}»: режим «продолжить своё видео» включится сам, а его последний кадр встанет отдельной плиткой перед вашими фото.`
+      ? ` Видеостудия продолжит видео «${names[0]}»: режим «продолжить своё видео» включится сам, а его последний кадр встанет отдельной плиткой перед вашими фото. Из видео Агенту нужен только этот последний кадр - его и берём, другие не пересылаем.`
         + (names.length > 1 ? ` Остальные ${names.length - 1} видео студия не принимает - они останутся в чате.` : '')
       : ' Если приложите видео, Видеостудия продолжит именно его: режим включится сам, последний кадр встанет перед вашими фото.';
   }
@@ -6315,10 +6322,12 @@ async function agSend() {
   const byVid = [];
   frs.forEach(a => { const g = byVid.find(x => x.name === a.vname); if (g) g.at.push(a); else byVid.push({ name: a.vname, dur: a.vdur, at: [a], file: a.vfile }); });
   if (frs.length) {
-    const desc = byVid.map((g, i) => '«' + g.name + '», ' + (g.dur ? g.dur.toFixed(1) + ' с' : 'длительность неизвестна') + ' (это <Video ' + (i + 1) + '>), кадры в моменты ' + g.at.map(a => a.label).join(', ')).join('; ');
-    text += '\n\n[К сообщению приложены последние ' + frs.length + ' изображений — это кадры '
-      + (byVid.length > 1 ? 'из ' + byVid.length + ' видео' : 'одного видео') + ': ' + desc
-      + '. Это кадры ' + (byVid.length > 1 ? 'исходных видео' : 'исходного видео') + ', а не изображения героев: в Picture N они не входят.]';
+    const desc = byVid.map((g, i) => '«' + g.name + '», ' + (g.dur ? g.dur.toFixed(1) + ' с' : 'длительность неизвестна') + ' (это <Video ' + (i + 1) + '>), ' + (g.at.length === 1 ? 'кадр в момент ' : 'кадры в моменты ') + g.at.map(a => a.label).join(', ')).join('; ');
+    text += '\n\n[К сообщению ' + (frs.length === 1 ? 'приложен ' + desc : 'приложены последние ' + frs.length + ' изображений — это кадры '
+      + (byVid.length > 1 ? 'из ' + byVid.length + ' видео' : 'одного видео') + ': ' + desc)
+      + '. Это ' + (frs.length === 1 ? 'кадр' : 'кадры') + ' ' + (byVid.length > 1 ? 'исходных видео' : 'исходного видео')
+        + ', а не ' + (frs.length === 1 ? 'изображение героя' : 'изображения героев') + ': в Picture N '
+        + (frs.length === 1 ? 'он не входит' : 'они не входят') + '.]';
     text = text.trim();
   }
   // the files themselves travel with the message: a section takes the video, not its frames

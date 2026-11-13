@@ -229,7 +229,7 @@ body.cloud-on #mdCloudBox{display:block!important}
 #modeBar{position:fixed;top:0;left:calc(var(--sbw,248px) + 8px);right:0;z-index:34;height:54px;display:flex;align-items:center;gap:4px;overflow-x:auto;white-space:nowrap;scrollbar-width:none;padding:0 16px 0 118px;box-sizing:border-box;background:var(--bg);border-bottom:1px solid var(--line);}
 #modeBar::-webkit-scrollbar{display:none}
 body.nosb-on #modeBar{left:112px}
-#modeBar .mb{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;opacity:.85}
+#modeBar .mb{flex:none;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--text);font-size:12.5px;font-weight:600;cursor:pointer;opacity:.85}
 #modeBar .mb svg{width:15px;height:15px}
 #modeBar .mb:hover{opacity:1;border-color:var(--accent)}
 #modeBar .mb.on{opacity:1;border-color:var(--accent);background:var(--accent-soft,var(--surface-2));color:var(--accent)}
@@ -5674,8 +5674,8 @@ function fitTopBar() {
   mb.style.right = (w ? w + 18 : 24) + 'px';
   /* a tab that is not visible is worse than a tab without a word under it: names go away first,
      and only what still does not fit stays behind the edge that fades out */
-  mb.classList.remove('tight');
-  if (mb.scrollWidth > mb.clientWidth + 4) mb.classList.add('tight');
+      mb.classList.remove('tight');   // old saved state; nothing adds it anymore
+      // the names stay on the buttons: a strip that does not fit is scrolled, not stripped to icons
   mb.classList.toggle('can-right', mb.scrollWidth > mb.clientWidth + 4);
   const on = mb.querySelector('.mb.on');
   if (on && mb.scrollWidth > mb.clientWidth) {

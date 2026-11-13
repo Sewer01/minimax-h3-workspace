@@ -150,6 +150,19 @@ def window_mode():
         return "max"
 
 
+def window_geo():
+    """The size the window was closed at. The tab strip needs width to keep the names on its buttons,
+    and starting at 1440 every time threw away the width you had chosen."""
+    try:
+        g = json.loads((server.DATA_DIR / "window.json").read_text(encoding="utf-8"))
+        w, h = int(g.get("width") or 0), int(g.get("height") or 0)
+        if 1000 <= w <= 7680 and 620 <= h <= 4320:
+            return w, h
+    except Exception:
+        pass
+    return 1440, 920
+
+
 def show_running_window(base):
     """Ask the copy that already works with these files to bring its own window forward.
 
@@ -214,10 +227,24 @@ def main():
         api = JsApi(port)
         mode = window_mode()
         # pywebview blocks dragging of every picture by default; the app drags pictures into slots
+        w0, h0 = window_geo()
         api._window = webview.create_window(
-            "Minimax H3 Workspace", url, width=1440, height=920, min_size=(1000, 680),
+            "Minimax H3 Workspace", url, width=w0, height=h0, min_size=(1000, 680),
             maximized=(mode == "max"), fullscreen=(mode == "fullscreen"),
             background_color="#12070a", js_api=api, draggable=True)
+
+        def remember_geo(_=None):   # the next start opens the window the way you left it
+            try:
+                s = api._window.snapshot
+                if s and s[2] and s[3]:
+                    (server.DATA_DIR / "window.json").write_text(
+                        json.dumps({"width": int(s[2]), "height": int(s[3])}), encoding="utf-8")
+            except Exception:
+                pass
+        try:
+            api._window.events.closed += remember_geo
+        except Exception:
+            pass
         webview.start(gui="edgechromium", private_mode=False,
                       storage_path=str(server.DATA_DIR / "webview"))
     except Exception:

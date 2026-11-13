@@ -492,7 +492,7 @@ details[open] summary::before{content:'－ '}
 .lora{display:grid;gap:6px;margin-bottom:14px}
 .lora-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .lora-v{font-family:var(--mono);font-size:12px;color:var(--muted)}
-.ref .tag{position:absolute;left:6px;top:6px;font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:6px;background:rgba(var(--ov-rgb),.8)}
+.ref .tag{position:absolute;left:6px;bottom:6px;font-family:var(--mono);font-size:10.5px;padding:2px 6px;border-radius:6px;background:rgba(var(--ov-rgb),.8)}
 .ref select{position:absolute;left:6px;right:6px;bottom:6px;font-size:11.5px;padding:5px 6px;border-radius:8px;background:rgba(var(--ov-rgb),.85);border:1px solid var(--line-2);outline:none}
 .ref .x{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:7px;background:rgba(var(--ov-rgb),.8);display:none;place-items:center}
 .ref.filled .x{display:grid}
@@ -4985,14 +4985,14 @@ function makeRefMode(cfg) {
             const im = document.createElement('img'); im.src = URL.createObjectURL(f); im.title = `<Picture ${10 + j}>`;
             im.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:7px;display:block';
             lb.prepend(im); plus.hidden = true; tag.hidden = false; tag.textContent = `Pic ${10 + j}`;
-            tag.style.cssText = 'position:absolute;left:3px;top:3px;font-size:9.5px;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.68);color:#fff';
+            tag.style.cssText = 'position:absolute;left:4px;bottom:4px;font-size:9.5px;padding:1px 4px;border-radius:6px;background:rgba(0,0,0,.68);color:#fff';
             lb.style.borderStyle = 'solid'; $('.x', lb).style.display = '';
           } else { plus.hidden = false; tag.hidden = true; lb.style.borderStyle = 'dashed'; $('.x', lb).style.display = 'none'; }
         });
         const last = c._files.reduce((a, f, j) => (f ? j : a), -1), shown = Math.min(9, last + 2);
         (c._ownTiles || []).forEach((lb, j) => { lb.hidden = j >= shown; });   // лишние пустые места не светятся
         const tk = $('.sc-tokens', c);
-        if (tk) tk.innerHTML = c._files.slice(0, shown).map((f, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="${f ? 'Вставить в текст тег <Picture ' + (10 + j) + '> - ваше фото в месте ' + (j + 1) : 'Место ' + (j + 1) + ' свободно - номер ' + (10 + j) + ' оживёт, когда туда что-нибудь положат'}">&lt;Pic ${10 + j}&gt;</button>`).join('');
+        if (tk) tk.innerHTML = c._files.slice(0, shown).map((f, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;"${f ? '' : ' disabled'} title="${f ? 'Вставить в текст тег <Picture ' + (10 + j) + '> - ваше фото в месте ' + (j + 1) : 'Место ' + (j + 1) + ' свободно - номер ' + (10 + j) + ' оживёт, когда туда что-нибудь положат'}">&lt;Pic ${10 + j}&gt;</button>`).join('');
         c._counter?.();
         const n = c._files.filter(Boolean).length;
         $('.sc-rhint', c).textContent = n ? `Своих фото в этой сцене: ${n} (мест до девяти). В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих фото нет: сцена возьмёт общие. У своих мест номера не меняются, даже если убрать другое фото.';
@@ -5042,6 +5042,7 @@ function makeRefMode(cfg) {
       };
       $('.sc-tokens', c).onclick = e => {   // a chip puts its tag where the cursor stands
         const b = e.target.closest('[data-ins]'); if (!b) return;
+        if (b.disabled) { toast('В это место ещё не загружено своё фото'); return; }
         if (root._free && !root._free(+b.dataset.ins.replace(/\D+/g, ''), c)) return;
         const ta = $('textarea', c), at = ta.selectionStart == null ? ta.value.length : ta.selectionStart, add = b.dataset.ins + ' ';
         ta.value = ta.value.slice(0, at) + add + ta.value.slice(at);
@@ -5413,7 +5414,7 @@ function makeRefMode(cfg) {
     if (cfg.scenes && root._save && !root._restoring) root._save();
     $('.rm-count', root).style.color = total > 12 ? 'var(--pink)' : '';
     // all places are listed from the start; a chip wakes up when its place gets a photo
-    $('.rm-tokens', root).innerHTML = slots.map((r, i) => `<button class="token" type="button" data-slot="${i}" title="${r._file ? 'Вставить в текст сцены' : 'В это место ещё не загружено фото - вставите номер, он дождётся картинку'}">&lt;Picture ${i + 1}&gt;</button>`).join('');
+    $('.rm-tokens', root).innerHTML = slots.map((r, i) => `<button class="token" type="button" data-slot="${i}"${r._file ? '' : ' disabled'} title="${r._file ? 'Вставить в текст сцены' : 'В это место ещё не загружено фото - плашка оживёт, когда оно появится'}">&lt;Picture ${i + 1}&gt;</button>`).join('');
     $$('.sc', root).forEach(x => x._counter?.());   // after the row was rebuilt, or the lock it puts on the chips is wiped
     if (cfg.swap) { const w2 = $('.rm-who[data-i="1"]', root); if (w2) w2.hidden = imgs.length < 2; }
     if (cfg.swap && S.autoLen !== false) { const v = files('.rm-vids .slot')[0]; if (v && v._dur) { S.dur = Math.min(15, Math.max(3, Math.round(v._dur))); root._upd?.(); } }
@@ -5422,6 +5423,7 @@ function makeRefMode(cfg) {
   }
     $('.rm-tokens', root).onclick = e => {
     const t = e.target.closest('.token'); if (!t) return;
+    if (t.disabled) { toast('В это место ещё не загружено фото'); return; }
     const sc = (root._ta && root._ta.closest && root._ta.closest('.sc')) || $$('.sc', root)[root._sel] || $$('.sc', root).find(x => x.offsetParent !== null);
     if (root._free && !root._free(+t.textContent.replace(/\D+/g, ''), sc)) return;
     const ta = cfg.scenes && root._ta && root._ta.isConnected ? root._ta : promptEl(), p = ta.selectionStart, txt = t.textContent + ' ';

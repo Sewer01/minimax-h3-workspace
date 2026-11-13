@@ -4989,11 +4989,13 @@ function makeRefMode(cfg) {
             lb.style.borderStyle = 'solid'; $('.x', lb).style.display = '';
           } else { plus.hidden = false; tag.hidden = true; lb.style.borderStyle = 'dashed'; $('.x', lb).style.display = 'none'; }
         });
+        const last = c._files.reduce((a, f, j) => (f ? j : a), -1), shown = Math.min(9, last + 2);
+        (c._ownTiles || []).forEach((lb, j) => { lb.hidden = j >= shown; });   // лишние пустые места не светятся
         const tk = $('.sc-tokens', c);
-        if (tk) tk.innerHTML = c._files.map((f, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="${f ? 'Вставить в текст тег <Picture ' + (10 + j) + '> - ваше фото в месте ' + (j + 1) : 'Место ' + (j + 1) + ' свободно - номер ' + (10 + j) + ' оживёт, когда туда что-нибудь положат'}">&lt;Pic ${10 + j}&gt;</button>`).join('');
+        if (tk) tk.innerHTML = c._files.slice(0, shown).map((f, j) => `<button class="token" type="button" data-ins="&lt;Picture ${10 + j}&gt;" title="${f ? 'Вставить в текст тег <Picture ' + (10 + j) + '> - ваше фото в месте ' + (j + 1) : 'Место ' + (j + 1) + ' свободно - номер ' + (10 + j) + ' оживёт, когда туда что-нибудь положат'}">&lt;Pic ${10 + j}&gt;</button>`).join('');
         c._counter?.();
         const n = c._files.filter(Boolean).length;
-        $('.sc-rhint', c).textContent = n ? `Своих фото в этой сцене: ${n} из 9. В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих фото нет: сцена возьмёт общие. У своих мест номера не меняются, даже если убрать другое фото.';
+        $('.sc-rhint', c).textContent = n ? `Своих фото в этой сцене: ${n} (мест до девяти). В тексте они зовутся <Picture 10>, <Picture 11>... - отдельный ряд чисел, чтобы не путать с общими изображениями (<Picture 1>…). Программа подставит их в расчёт после общих.` : 'Своих фото нет: сцена возьмёт общие. У своих мест номера не меняются, даже если убрать другое фото.';
       };
       // (the places take pictures themselves: click a tile or drop a photo into it)
       paintRefs();

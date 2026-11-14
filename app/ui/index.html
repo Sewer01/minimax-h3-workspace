@@ -110,6 +110,7 @@
 /* the action studio has no song of its own (the model makes the sound) and no base video yet:
    those rows would only promise what the graph does not do */
 #view-actionsc .rm-media,#view-actionsc .lm-snd,#view-actionsc .lm-snd-hint,#view-actionsc .lm-own,#view-actionsc .lm-base,#view-actionsc .lm-base-hint,#view-actionsc .lm-srcpick,#view-actionsc .lm-src{display:none!important}
+#view-actionsc .no-base,#view-actionsc .no-base+details,#view-actionsc .agvar{display:none!important}
 #view-actionsc .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}
 #view-actionsc .rm-imgs .ref{width:104px;height:104px;aspect-ratio:auto;flex:0 0 104px}
 #view-actionsc .slots{--refh:104px;--refw:104px}
@@ -5443,6 +5444,7 @@ function makeRefMode(cfg) {
       const baseSeg = $('.lm-base', root), baseHint = $('.lm-base-hint', root), ownBox = $('.lm-srcpick', root);
       if (baseSeg) {
         const baseRow = mk('row', '<div class="row-l">Основа</div>');
+        if (cfg.mode === 'actionsc') baseRow.classList.add('no-base');   // this studio has no base video yet: the row and its guide would only stand empty
         baseSeg.style.marginBottom = '0';
         baseRow.append(baseSeg);
         if (ownBox) { ownBox.style.marginTop = '8px'; baseRow.append(ownBox); }

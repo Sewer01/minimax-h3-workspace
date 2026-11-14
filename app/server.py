@@ -923,7 +923,7 @@ class App:
             if m in self.modes():
                 continue
             need = 0
-            for role in catalog.roles_for([m]) - mine:
+            for role in set(catalog.roles_for([m])) - mine:   # roles_for answers a list, mine is a set
                 v = (catalog.VARIANTS.get(role) or {}).get(choice.get(role))
                 if not v:
                     continue

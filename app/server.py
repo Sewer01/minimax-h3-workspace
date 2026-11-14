@@ -386,6 +386,9 @@ class App:
 
     def start_managed(self):
         root = self.comfy_root()
+        if self.process and self.process.alive():   # replacing the handle would forget a live core: it
+            self.process.stop()                     # keeps the port and the weights in video memory
+            applog("перезапуск ядра: предыдущий процесс остановлен")
         self.process = engine.ComfyProcess(root, DATA_DIR / "comfyui.log")
         self.process.start()
         self.output_dir = root / "ComfyUI" / "output"
@@ -1288,6 +1291,10 @@ class App:
                                       f"будет отправлять туда ваши промпты, картинки и аудио и выполнять то, что он "
                                       f"ответит. Подключить?"})
         self.config.data["comfy_key"] = key
+        if self.process:   # switching to someone else's ComfyUI: the core WE started must not stay
+                           # in the background holding all the video memory with nobody owning it
+            await asyncio.to_thread(self.process.stop)
+            applog("переключение на внешний ComfyUI: своё ядро остановлено")
         self.process = None
         stats, last_err, used = None, None, url
         # a rented server may publish the API only under «/api» (as the Immers.Cloud image does): try both
@@ -1451,6 +1458,22 @@ class App:
                                       "log": out[-3000:].replace("\r", "")})
         finally:
             self.comfy_updating = False
+
+    # NOTE: the exact action scheme (SelfLift) cannot take the mask of a continued scene: from the
+    # second scene on the latent arrives as ComfyUI's NestedTensor, and SelfLiftH3Sampler answers
+    # "isfinite(): argument 'input' must be Tensor, not NestedTensor" - a limitation of that node pack
+    # (comfyui-SelfLift reads mask.shape straight away). Continuation scenes therefore run on the plain
+    # sampler, which the core does support with nested masks; the first scene keeps the exact scheme.
+
+    async def has_node(self, cls):
+        """Does this ComfyUI know the node class? Used to keep the exact action scheme working on a core
+           without the LTXVideo pack: without that node the scene is still made, just with one mask for
+           the whole clip instead of one per frame."""
+        try:
+            status, _ = await self.comfy_json("GET", f"/object_info/{cls}", timeout=aiohttp.ClientTimeout(total=10))
+            return status == 200
+        except Exception:
+            return False
 
     async def h_ui_log(self, req):
         """One line from the page: what the studio decided, what broke in a script. Without this the
@@ -2772,7 +2795,8 @@ class App:
                 faithful = bool(s.get("faithful")) and form.get("faithful") != "0"
                 graph, stages = wf.action_part_graph(self.model_names, scenes, k, width, height, seed, images, aloras,
                                                      preview=await self.preview_opts(), state=state, fresh=fresh,
-                                                     faithful=faithful)
+                                                     faithful=faithful and k == 0,
+                ltxv=await self.has_node("LTXVSetVideoLatentNoiseMasks") if faithful else True)
                 if faithful and s.get("refiner_def"):
                     # the refiner's input names come from the installed node; values as in the original workflow
                     for nid, node in graph.items():

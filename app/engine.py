@@ -23,6 +23,74 @@ import aiohttp
 
 import catalog
 
+_KILL_JOB = None          # one Windows job object for the whole app, created on the first child
+
+
+def _kill_job_handle():
+    """The only reliable way to make sure ComfyUI cannot outlive this program. Closing the job handle -
+       which the system does by itself when our process ends, however it ends: a window closed, os._exit,
+       a crash, «End task» in Task Manager - kills every process inside the job with it. Otherwise an
+       orphaned python.exe sits on all the video memory, and the next start of the program finds the card
+       full and answers that nothing works."""
+    global _KILL_JOB
+    if _KILL_JOB is not None:
+        return _KILL_JOB or None
+    if sys.platform != "win32":
+        _KILL_JOB = False
+        return None
+    import ctypes
+    from ctypes import wintypes as wt
+    try:
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class BASIC(ctypes.Structure):        # layout as in winnt.h: sizes and order matter
+            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                        ("LimitFlags", wt.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                        ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wt.DWORD),
+                        ("Affinity", ctypes.c_size_t), ("PriorityClass", wt.DWORD), ("SchedulingClass", wt.DWORD)]
+
+        class IO(ctypes.Structure):
+            _fields_ = [("Read", ctypes.c_uint64), ("Write", ctypes.c_uint64), ("Other", ctypes.c_uint64),
+                        ("ReadCount", ctypes.c_uint64), ("WriteCount", ctypes.c_uint64), ("OtherCount", ctypes.c_uint64)]
+
+        class EXT(ctypes.Structure):
+            _fields_ = [("BasicLimitInformation", BASIC), ("IoInfo", IO), ("ProcessMemoryLimit", ctypes.c_size_t),
+                        ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                        ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+        k32.CreateJobObjectW.restype = wt.HANDLE
+        k32.SetInformationJobObject.argtypes = [wt.HANDLE, ctypes.c_int, ctypes.c_void_p, wt.DWORD]
+        k32.AssignProcessToJobObject.argtypes = [wt.HANDLE, wt.HANDLE]
+        h = k32.CreateJobObjectW(None, None)
+        if not h:
+            _KILL_JOB = False
+            return None
+        info = EXT()
+        info.BasicLimitInformation.LimitFlags = 0x2000     # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not k32.SetInformationJobObject(h, 9, ctypes.addressof(info), ctypes.sizeof(info)):
+            k32.CloseHandle(h)
+            _KILL_JOB = False
+            return None
+        _KILL_JOB = h
+    except Exception:
+        _KILL_JOB = False
+    return _KILL_JOB or None
+
+
+def attach_kill_job(proc):
+    """Put a process we started into that job. Returns False if the system refused: the app then still
+       stops the core the ordinary way, only a crash would leave it behind."""
+    h = _kill_job_handle()
+    if not h or proc is None:
+        return False
+    import ctypes
+    from ctypes import wintypes as wt
+    try:
+        return bool(ctypes.windll.kernel32.AssignProcessToJobObject(h, wt.HANDLE(int(proc._handle))))
+    except Exception:
+        return False
+
+
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
 
@@ -454,6 +522,7 @@ class ComfyProcess:
         self.proc = None
         self.port = None
         self.attached = False   # the core was started elsewhere (another copy of the program): we may not kill it
+        self.in_job = False     # whether the system will kill this core together with the program
         self._log = None        # handle of the ComfyUI log, closed in stop()
 
     @property
@@ -486,6 +555,7 @@ class ComfyProcess:
         self._log.flush()
         self.proc = subprocess.Popen(args, cwd=self.root, stdout=self._log, stderr=subprocess.STDOUT,
                                      creationflags=CREATE_NO_WINDOW, env=local_env(self.root))
+        self.in_job = attach_kill_job(self.proc)   # so the core dies with the program in every case
 
     @staticmethod
     def kill_orphans(py):

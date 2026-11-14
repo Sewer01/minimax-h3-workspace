@@ -954,6 +954,7 @@ def action_sizes(width, height):
 
 
 def action_part_graph(m, scenes, k, width, height, seed, images, loras, preview=None, state=None, fresh=(), faithful=False,
+                      ltxv=True,
                       refiner_args=None, single=False, sing=False, steps=12):
     """ACTION scene number `k` (0-based) of a scene-by-scene video, the same idea as long_part_graph (scene k continues the saved
     latent tail of scene k-1, the clip is cut off at the overlap) but with the action model: hybrid, DMAD + Speed Slider,
@@ -1034,7 +1035,7 @@ def action_part_graph(m, scenes, k, width, height, seed, images, loras, preview=
         white = add("EmptyImage", width=round(lw / 16), height=round(lh / 16), batch_size=max(1, t_tot - t_ov), color=16777215)
         both = add("ImageBatch", image1=[black, 0], image2=[white, 0])
         vmask = add("ImageToMask", image=[both, 0], channel="red")
-        if faithful:   # SelfLift wants a mask of shape [1, 1, T, H, W]; this node (ComfyUI-LTXVideo) builds it from one mask per latent frame
+        if faithful and ltxv:   # SelfLift wants a mask of shape [1, 1, T, H, W]; this node (ComfyUI-LTXVideo) builds it from one mask per latent frame
             v_lat = [add("LTXVSetVideoLatentNoiseMasks", samples=[cut2, 0], masks=[vmask, 0]), 0]
         else:
             v_lat = [add("SetLatentNoiseMask", samples=[cut2, 0], mask=[vmask, 0]), 0]

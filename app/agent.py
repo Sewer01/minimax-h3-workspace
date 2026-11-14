@@ -706,6 +706,7 @@ class LlamaServer:
         log = open(self.log_path, "w", encoding="utf-8", errors="replace")
         self.proc = subprocess.Popen(args, cwd=self.exe().parent, stdout=log, stderr=subprocess.STDOUT,
                                      creationflags=engine.CREATE_NO_WINDOW)
+        engine.attach_kill_job(self.proc)   # llama-server must not stay on the video memory either
 
     def stop(self):
         if self.alive():

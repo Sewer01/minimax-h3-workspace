@@ -40,6 +40,9 @@ NODE_PACKS = [
     # Both repos were read before adding: no network, no shell, no exec, no extra pip packages; commits pinned.
     {"name": "comfyui-SelfLift", "repo": "facok/comfyui-SelfLift",
      "commit": "835c3cf7919410f71f414688f049c6ca497789d0"},          # no LICENSE file in the repository
+    # the exact action scheme masks every latent frame on its own; this node comes from the LTXVideo pack
+    {"name": "ComfyUI-LTXVideo", "repo": "Lightricks/ComfyUI-LTXVideo",
+     "commit": "ced6bad92b82f90028e1e1fd5a37527302550fc5"},
     {"name": "ComfyUI-YCNodes-MiniMax-H3", "repo": "yichengup/ComfyUI-YCNodes-MiniMax-H3",
      "commit": "efbe83f69ffa97a251a575ce42edc7bf8005da0c"},          # MIT; the version the workflow was made with
 ]
@@ -58,6 +61,8 @@ NODE_CHECKS = [
     {"pack": "ComfyUI-KJNodes", "classes": ["MiniMaxChunkFeedForward", "MiniMaxLowVRAMAttention", "ImageNoiseAugmentation"], "modes": ["long"],
      "optional": False, "why": "экономия видеопамяти в длинном видео и зерно плёнки в монтаже"},
     # without these two the exact action mode simply is not offered: the picture stays the same, just less clean
+    {"pack": "ComfyUI-LTXVideo", "classes": ["LTXVSetVideoLatentNoiseMasks"], "modes": ["action", "actionsc"],
+     "optional": True, "why": "точная копия экшн-workflow: маска движения на каждый кадр (со 2-й сцены)"},
     {"pack": "comfyui-SelfLift", "classes": ["SelfLiftH3Sampler"], "modes": ["action", "actionsc"],
      "optional": True, "why": "точный режим экшн-сцен (чище картинка)"},
     {"pack": "ComfyUI-YCNodes-MiniMax-H3", "classes": ["H3SigmaRefiner"], "modes": ["action", "actionsc"],

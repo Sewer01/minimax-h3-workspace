@@ -5899,7 +5899,7 @@ function makeRefMode(cfg) {
         // only the LoRAs this ComfyUI actually has can be switched and tuned
         mountLoras($('.rm-loras', root), S, [...(a.dmad ? ['dmad'] : []), ...(a.speed ? ['speed'] : [])]);
         const row = (ok, t) => `<div class="${ok ? 'ok-t' : 'warn-t'}">${ok ? '✓' : '—'} ${t}</div>`;
-        box.innerHTML = (a.faithful ? '<b class="ok-t">Точная копия вашего workflow</b>' : '<b class="warn-t">Упрощённая схема (то же 8 + 4 шага)</b>')
+        box.innerHTML = (a.faithful ? '<b class="ok-t">Точная копия вашего workflow</b> <span class="hint">· со второй сцены продолжение идёт обычной схемой: нода точного режима не умеет принимать маску продолжения</span>' : '<b class="warn-t">Упрощённая схема (то же 8 + 4 шага)</b>')
           + row(a.selflift, 'SelfLift сэмплер (8 шагов в низком разрешении + 4 в высоком)')
           + row(a.refiner, 'H3 Sigma Refiner (+1 финальный шаг)')
           + row(a.upscaler, 'апскейлер h3_upscaler_lms')

@@ -4241,7 +4241,10 @@ function qHandle(m) {
     (m.items || [m.item]).forEach(it => { if (!LIB.some(x => x.id === it.id)) addToLib(normItem(it), new Date(it.date)); if (it.long && typeof RM !== 'undefined' && RM.long && RM.long.root._partDone) RM.long.root._partDone(normItem(it)); });
     if (j.mode === 'upscale' && j.itemId && $('#view-queue').classList.contains('active') && $('#viewer').hidden) setTimeout(() => openViewer(j.itemId), 400);  // show before/after at once
     if (j.detached) toast(`Готово: ${MODE_NAME[j.mode] || 'видео'} — оно в Библиотеке`);
-  } else if (m.type === 'error') { j.state = 'error'; j.msg = m.message; if (j.detached) toast('Задание не получилось: ' + m.message); }
+  } else if (m.type === 'error') { j.state = 'error'; j.msg = m.message; if (j.detached) toast('Задание не получилось: ' + m.message);
+    // сцена из цепочки упала: молча останавливать «сделать все сцены» нельзя - человек видит только
+    // что первая сцена вышла, а дальше тишина (именно так и было, когда причина пряталась в ComfyUI)
+    ['long', 'actionsc'].forEach(k => { const st = (typeof RM !== 'undefined' && RM[k]) ? RM[k].root : null; if (st && st._chainFail && st._chainPart != null) st._chainFail(m.message); }); }
   else if (m.type === 'interrupted') j.state = 'stopped';
   qRender();
 }
@@ -4927,6 +4930,14 @@ function makeRefMode(cfg) {
       if (k >= all.length) { root._chainPart = null; toast('Все сцены готовы. Клипы лежат в Библиотеке: склейте их в «Монтаже».'); return; }
       if (!all[k].querySelector('textarea').value.trim()) { root._chainPart = null; toast(`Сцена ${k + 1} пустая: опишите её, и нажмите «Сделать все сцены подряд» снова.`); return; }
       root._chainPart = k; root._target = k; $('.go', $('.rm-preview', root)).click();
+    };
+    root._chainFail = msg => {   // стоп цепочки с внятной причиной вместо тишины
+      if (root._chainPart == null) return;
+      const num = root._chainPart + 1;
+      root._chainPart = null; root._chainEnd = null;
+      const txt = `Сцена ${num} из ${$$('.sc', root).length} не получилась: ${msg}`;
+      toast(txt);
+      try { noteMsg(txt + ' · цепочка остановлена: почините и нажмите «Сделать все сцены» - продолжится с этой сцены'); } catch (e) { }
     };
     root._chainNext = chainNext;
     $('.lm-chain', root).onclick = () => {

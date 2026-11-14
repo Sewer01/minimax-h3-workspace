@@ -2064,15 +2064,16 @@ class App:
         """Multipart form of the picture sections: text fields plus one optional file `image`."""
         if self.rh():
             raise web.HTTPBadRequest(text="Изображения работают только на своём ComfyUI (не в облаке RunningHub).")
-        form, image, extra = {}, None, []
+        form, image, extra = {}, None, {}
         async for field in await req.multipart():
             if field.name == "image" and field.filename:
                 image = await self.upload_input(field)
-            elif field.name in ("image2", "image3") and field.filename:
-                extra.append(await self.upload_input(field))
+            elif field.name in ("image2", "image3", "image4", "image5", "image6") and field.filename:
+                # MiniMax H3 Image takes up to five pictures; they are handed over in the order of the slots
+                extra[int(field.name[-1]) - 1] = await self.upload_input(field)
             else:
                 form[field.name] = await field.text()
-        form["_extra"] = extra
+        form["_extra"] = [extra[i] for i in sorted(extra)]
         seed = int(form["seed"]) if form.get("seed", "").isdigit() else random.randrange(2 ** 50)
         return form, image, seed
 
@@ -2285,7 +2286,7 @@ class App:
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Раскадровка по изображениям", "prompt": prompt, "aspect": "",
                 "q": "", "len": 0.0, "res": "%d×%d" % wf.STORY_SIZE, "seed": seed})
-        if h3:
+        if h3 and form.get("kind") != "sheet":   # лист персонажа идёт своей веткой: текст правки ему не нужен
             prompt = form.get("prompt", "").strip()
             if not prompt:
                 raise web.HTTPBadRequest(text="Напишите, что изменить на изображении")

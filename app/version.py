@@ -4,6 +4,6 @@ Our own builds number above the version they are taken from: the updater offers 
 number is higher, and the releases we install come from the fork named below.
 """
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 UPDATE_REPO = "Sewer01/minimax-h3-workspace"   # whose releases this program follows
 

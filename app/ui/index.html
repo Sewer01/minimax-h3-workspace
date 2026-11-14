@@ -4246,7 +4246,9 @@ function qHandle(m) {
     j.state = 'running'; j.stage = m.stage; j.step = m.step; j.max = m.max; j.t0 = j.t0 || performance.now();
   } else if (m.type === 'done') {
     j.state = 'done'; j.took = j.t0 ? (performance.now() - j.t0) / 1000 : 0; j.itemId = (m.item || (m.items || [])[0] || {}).id;
-    (m.items || [m.item]).forEach(it => { if (!LIB.some(x => x.id === it.id)) addToLib(normItem(it), new Date(it.date)); if (it.long && typeof RM !== 'undefined' && RM.long && RM.long.root._partDone) RM.long.root._partDone(normItem(it)); });
+    (m.items || [m.item]).forEach(it => { if (!LIB.some(x => x.id === it.id)) addToLib(normItem(it), new Date(it.date)); /* ready clip belongs to the section that made it: Экшн-видеостудия тоже ходит в эту рассылку,
+     раньше здесь была прописана только Видеостудия, и клип Экшн-студии не доходил до ленты сцен */
+    if (it.long && typeof RM !== 'undefined') { const rm = RM[it.mode] || RM.long; if (rm && rm.root && rm.root._partDone) rm.root._partDone(normItem(it) || it); } });
     if (j.mode === 'upscale' && j.itemId && $('#view-queue').classList.contains('active') && $('#viewer').hidden) setTimeout(() => openViewer(j.itemId), 400);  // show before/after at once
     if (j.detached) toast(`Готово: ${MODE_NAME[j.mode] || 'видео'} — оно в Библиотеке`);
   } else if (m.type === 'error') { j.state = 'error'; j.msg = m.message; if (j.detached) toast('Задание не получилось: ' + m.message);
@@ -5108,9 +5110,15 @@ function makeRefMode(cfg) {
       } catch (e) { return 0; }
     };
     root._partDone = item => {
-      const lg = item && item.long;
+      let lg = item && item.long;
+      if (!lg && item && item.id) {           // the same clip seen through another door: take the real one
+        const real = (typeof LIB !== 'undefined' ? LIB : []).find(x => x.id === item.id);
+        if (real && real.long) { lg = real.long; item = real; }
+      }
       if (!lg || lg.run !== root._run) {
-        if (lg && cfg.scenes) noteMsg(`студия ${cfg.mode}: пришёл клип сцены ${lg.part + 1} из проекта ${lg.run}, а сейчас открыт проект ${root._run} - заберём из Библиотеки`);
+        if (cfg.scenes) noteMsg(lg
+          ? `студия ${cfg.mode}: пришёл клип сцены ${lg.part + 1} из проекта ${lg.run}, а сейчас открыт проект ${root._run} - заберём из Библиотеки`
+          : `студия ${cfg.mode}: пришло готовое задание без метки сцены (${item && item.id || 'без id'}) - лента не обновится`);
         return;
       }
       if (root._doneIds && root._doneIds.has(item.id)) return;   // the same result can arrive twice (panel and queue)
@@ -5796,7 +5804,9 @@ function makeRefMode(cfg) {
     get twoPass() { return (cfg.mode === 'action' || cfg.mode === 'actionsc') && !S.faithful; },
     target: () => $('.ref img', imgsEl),
     meta: () => ({ mode: cfg.mode, prompt: promptEl().value.trim(), sub: '' }),
-    onDone: item => { addToLib(item); if (cfg.scenes && root._partDone) root._partDone(item); },
+    onDone: item => { addToLib(item); if (cfg.scenes && item.long && root._partDone) root._partDone(item); },
+    /* панель предпросмотра собирает предмет сама (режим, промпт, размер) и не знает ни id файла,
+     ни метки сцены - по ней ленту заполнять нельзя, это делает рассылка о готовом задании */
     validate: () => cfg.swap ? (!files('.rm-vids .slot').length ? 'Добавьте видео, в котором нужно заменить человека' : !$$('.ref.filled', imgsEl).length ? 'Добавьте изображение нового персонажа' : '')
       : !cfg.scenes && !$$('.ref.filled', imgsEl).length && !(vidsEl && files('.rm-vids .slot').length) ? 'Добавьте хотя бы одно референс-изображение'
       : $$('.ref.filled', imgsEl).length + (vidsEl ? files('.rm-vids .slot').length : 0) + files('.rm-auds .slot').length > 12 ? 'Всего не больше 12 референсов'

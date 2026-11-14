@@ -8396,10 +8396,10 @@ applyZoom();
    // cuts[i]: seconds the clip is trimmed to (null: whole clip)
   const get = id => id.startsWith('up:') ? MT.up[id.slice(3)] : byId(id);   // a clip of the Library or a file from the computer
   root.innerHTML = `
-    <div class="head"><div><h1>Монтаж</h1><p>Склейте клипы из Библиотеки в один ролик: добавьте их по порядку, при необходимости поменяйте местами и нажмите «Склеить»</p></div></div>
+    <div class="head"><div><h1>Монтаж</h1><p>Обрежьте клип и сохраните его, либо склейте несколько в один ролик: добавьте по порядку, поменяйте местами, метками отрежьте нужное и нажмите «Сохранить»</p></div></div>
     <div class="grid"><div class="col">
       <div class="card"><div class="card-h"><h3><span class="n">1</span>Клипы из Библиотеки</h3><span class="hint">нажмите на клип, чтобы добавить</span><button type="button" class="btn mini mt-pc" title="Добавить видео со своего компьютера">+ С компьютера</button><input type="file" class="mt-file" accept="video/*" multiple hidden></div><div class="mt-lib"></div><div class="hint mt-hid" style="margin-top:8px"></div></div>
-      <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок склейки</h3><span class="counter mt-total"></span><span class="mt-zoom"><button type="button" class="btn mini" data-z="-1" title="Мельче">−</button><button type="button" class="btn mini" data-z="0" title="Уместить всю ленту по ширине">По ширине</button><button type="button" class="btn mini" data-z="1" title="Крупнее">+</button></span>
+      <div class="card"><div class="card-h"><h3><span class="n">2</span>Порядок клипов</h3><span class="counter mt-total"></span><span class="mt-zoom"><button type="button" class="btn mini" data-z="-1" title="Мельче">−</button><button type="button" class="btn mini" data-z="0" title="Уместить всю ленту по ширине">По ширине</button><button type="button" class="btn mini" data-z="1" title="Крупнее">+</button></span>
         </div>
         <div class="mt-strip"></div>
         <div class="mt-vh" title="Потяните вверх или вниз: все блоки станут выше или ниже. Двойной щелчок: как было"><i></i></div>
@@ -8408,15 +8408,15 @@ applyZoom();
         <div class="mt-trim" hidden></div>
         <div class="hint mt-hint" style="margin-top:8px">Нажмите на клип в ленте - он сразу заиграет справа с этого места. Ширина блока равна длине клипа. Порядок меняется перетаскиванием или стрелками ◀ ▶ (они именно переставляют, а не играют), крестик убирает клип из монтажа. Край блока тянется внутрь: левый отрезает начало, правый - конец; на клипе появится отметка вида 2.5–8 с. Двойной щелчок по клипу возвращает его целиком. Метка реза (треугольник сверху) стоит там, куда её поставили, и не убегает во время показа; голубая линия - это бегунок воспроизведения. Клик по клипу слева от метки играет от начала оставленного куска до метки, клик справа - от метки до конца куска. Ножницы: левая убирает всё до метки, правая - всё после неё. Потяните правый край блока, чтобы сделать клип короче (или вернуть длину). Клипы разного размера приводятся к размеру первого.</div></div>
     </div><div class="preview">
-      <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж пуст</b>добавьте клипы из Библиотеки - они появятся в ленте, и здесь сразу покажется кадр, на который указывает метка реза. Кнопка «▶» играет всю ленту по порядку, после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
+      <div class="screen"><div class="frame" style="aspect-ratio:16/9;width:100%"><div class="res mt-empty"><b>Монтаж пуст</b>добавьте клип из Библиотеки (или несколько, если хотите склеить) - они появятся в ленте, и здесь сразу покажется кадр, на который указывает метка реза. Кнопка «▶» играет всю ленту по порядку, после склейки тут же встанет готовый ролик.</div><video class="result mt-pv" playsinline hidden></video><video class="result mt-res" controls loop playsinline hidden></video></div></div>
       <div class="mt-bar" hidden><button type="button" class="btn mt-restart" title="Смотреть с начала ленты">⏮</button><button type="button" class="btn mt-play" title="Играть / пауза (пробел)">▶</button><input type="range" class="mt-seek" min="0" max="0" value="0" title="Перемотка"><span class="mt-time">0:00 / 0:00</span></div>
       <div class="mt-tabs" hidden><button type="button" class="btn mini on" data-pv="seq">Предпросмотр</button><button type="button" class="btn mini" data-pv="res">Готовый ролик</button><button type="button" class="btn mini mt-del" hidden title="Убрать готовый ролик из Библиотеки: файл переместится в корзину Windows">Удалить ролик</button></div>
-      <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Склеить</button>
-      <div class="mt-upbox"><select class="mt-upeng" title="Чем увеличивать каждый клип перед склейкой"><option value="relay">Увеличение: быстро - RelayVSR, в 2 раза</option><option value="seed">Увеличение: качественно - SeedVR2, в 2 раза (долго)</option></select><button type="button" class="btn mt-upgo" title="Каждый клип увеличивается отдельно (быстро, память не переполняется), потом увеличенные склеиваются. Исходные клипы остаются.">Увеличить каждый клип и склеить</button></div>
+      <button class="go mt-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Сохранить</button>
+      <div class="mt-upbox"><select class="mt-upeng" title="Чем увеличивать каждый клип перед сохранением"><option value="relay">Увеличение: быстро - RelayVSR, в 2 раза</option><option value="seed">Увеличение: качественно - SeedVR2, в 2 раза (долго)</option></select><button type="button" class="btn mt-upgo" title="Каждый клип увеличивается отдельно (быстро, память не переполняется), потом увеличенные склеиваются. Исходные клипы остаются.">Увеличить каждый клип и сохранить</button></div>
       <div class="mt-sets">
         <label class="mt-s-detail"><span><b>Детали: <i class="mt-dv">70</i>%</b> меньше — мягче, без пересвета лиц; больше — чётче</span><input type="range" class="mt-detail" min="0" max="100" step="5" value="70"></label>
         <label class="mt-s-sharp" hidden><span><b>Чёткость: <i class="mt-sv">100</i>%</b> меньше — мягче; 100 — как есть</span><input type="range" class="mt-sharp" min="0" max="100" step="5" value="100"></label>
-        <label><span><b>Зерно плёнки: <i class="mt-gv">0</i>%</b> 0 — выключено. Накладывается на каждый клип отдельно, потом клипы склеиваются</span><input type="range" class="mt-grain" min="0" max="100" step="5" value="0"></label>
+        <label><span><b>Зерно плёнки: <i class="mt-gv">0</i>%</b> 0 — выключено. Накладывается на каждый клип отдельно, потом всё сохраняется одним роликом</span><input type="range" class="mt-grain" min="0" max="100" step="5" value="0"></label>
       </div>
       <div class="mt-pipe" hidden></div>
       <div class="status mt-status"></div>
@@ -8779,7 +8779,7 @@ applyZoom();
     if (e.target.closest('.mt-clear')) {
       if (!MT.ids.length) { toast('Лента уже пуста'); return; }
       const wipe = () => { MT.ids = []; MT.cuts = []; MT.ins = []; P.picked = false; P.lim = null; render(); toast('Лента очищена: клипы остались в Библиотеке'); };
-      if (MT.ids.length < 2) { wipe(); return; }
+      if (MT.ids.length < 1) { wipe(); return; }
       confirmBox('Очистить монтаж?', 'Из ленты уберутся все клипы. Сами видео останутся в Библиотеке, готовый ролик - тоже.', 'Очистить', wipe);
       return;
     }
@@ -8821,10 +8821,10 @@ applyZoom();
     if (PIPE.doUp && n) { const c = MT.ids.filter(id => have(id).up).length; h += line(`Увеличение: ${c} из ${n} клипов${c === n ? ' — завершено' : ''}`, c === n); }
     if (PIPE.grain > 0 && n) { const c = MT.ids.filter(id => have(id).gr).length; h += line(`Зерно: ${c} из ${n} клипов${c === n ? ' — завершено' : ''}`, c === n); }
     const j = PIPE.joined && byId(PIPE.joined.id) ? PIPE.joined : null;
-    if (MT.joining) h += line('Склейка: идёт…', false);
-    else if (j && j.key === orderKey()) h += line('Склейка завершена, ролик можно сохранять', true);
-    else if (j) h += line('Склейка устарела: порядок или обрезка изменились, склейте заново', false);
-    else if (h) h += line('Склейка: ещё не сделана', false);
+    if (MT.joining) h += line('Сохраняю…', false);
+    else if (j && j.key === orderKey()) h += line('Сохранено: ролик готов, его можно смотреть и увеличивать', true);
+    else if (j) h += line('Устарело: порядок или обрезка изменились — сохраните заново', false);
+    else if (h) h += line('Результат: ещё не сохранён', false);
     box.innerHTML = h; box.hidden = !h;
   }
   window.mtPipePaint = pipePaint;
@@ -8834,9 +8834,9 @@ applyZoom();
     const tabs = $('.mt-tabs', root), rtab = tabs && $('[data-pv="res"]', tabs);
     if (!rtab || !MT.res) return;
     const when = MT.resAt ? fmtDate(MT.resAt) : 'прежде';
-    rtab.textContent = MT.joining ? 'Прошлый ролик · идёт склейка' : (MT.resFresh ? 'Готовый ролик' : `Ролик от ${when}`);
-    rtab.title = MT.joining ? `сейчас показан ролик, склеенный раньше (${when}); как только новая склейка закончится, он заменится`
-      : (MT.resFresh ? 'склеен в этом запуске' : `склеен раньше, ${when}; новая склейка заменит его`);
+    rtab.textContent = MT.joining ? 'Прошлый ролик · идёт сохранение' : (MT.resFresh ? 'Готовый ролик' : `Ролик от ${when}`);
+    rtab.title = MT.joining ? `сейчас показан ролик, сохранённый раньше (${when}); как только новое сохранение закончится, он заменится`
+      : (MT.resFresh ? 'сохранён в этом запуске' : `сохранён раньше, ${when}; новое сохранение заменит его`);
   };
   function showDone(item, quiet) {   // quiet: remember the result, but do not steal the window from the ribbon
     const st = $('.mt-status', root), v = $('.mt-res', root);
@@ -8844,7 +8844,7 @@ applyZoom();
     MT.resAt = new Date(item.date); MT.resFresh = !quiet;
     resTabPaint();
     if (!quiet) showMode('res');
-    st.innerHTML = (quiet ? `Показан ролик, склеенный раньше (${fmtDate(MT.resAt)}) - в этом запуске ещё не склеивали. Его можно посмотреть, сохранить или увеличить; новая склейка заменит его.` : 'Склейка завершена: ролик лежит в Библиотеке.') + `<button class="btn pri" id="mtSave" type="button" style="padding:4px 12px;font-size:12px" title="Сохранить готовый ролик целиком на компьютер">Сохранить на компьютер</button> <button class="btn" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>`
+    st.innerHTML = (quiet ? `Показан ролик, сохранённый раньше (${fmtDate(MT.resAt)}) - в этом запуске ещё не сохраняли. Его можно посмотреть, сохранить или увеличить; новая склейка заменит его.` : 'Склейка завершена: ролик лежит в Библиотеке.') + `<button class="btn pri" id="mtSave" type="button" style="padding:4px 12px;font-size:12px" title="Сохранить готовый ролик целиком на компьютер">Сохранить на компьютер</button> <button class="btn" id="mtUp" type="button" style="padding:4px 12px;font-size:12px" title="Увеличить разрешение (долго)">Увеличить</button>`
       + ` <button class="btn" id="mtDel" type="button" style="padding:4px 12px;font-size:12px" title="Убрать ролик из Библиотеки: файл переместится в корзину Windows">Удалить</button>`;
     $('#mtSave', root).onclick = () => saveItems([byId(item.id) || normItem(item)]);
     $('#mtUp', root).onclick = () => openUpscale(byId(item.id) || normItem(item));
@@ -8877,7 +8877,7 @@ applyZoom();
   async function joinNow(ids, durs, ins) {
     const st = $('.mt-status', root);
     if (MT.busy && !MT.chaining) return;
-    if (ids.length < 2) { st.textContent = 'Добавьте хотя бы два клипа'; return; }
+    if (ids.length < 2) { st.textContent = 'Добавьте клип из Библиотеки'; return; }
     const key = orderKey();
     MT.busy = true; MT.joining = true; $('.mt-go', root).disabled = true; st.textContent = 'Отправляем клипы в ComfyUI…'; pipePaint();
     const fail = msg => { MT.busy = false; MT.joining = false; MT.chaining = false; $('.mt-go', root).disabled = false; st.textContent = msg; pipePaint(); };
@@ -8888,20 +8888,20 @@ applyZoom();
       const txt = await r.text(); let res; try { res = JSON.parse(txt); } catch { res = { error: txt }; }
       if (!r.ok) throw new Error(res.error || r.statusText);
       qAdd(res.prompt_id, 'montage', `${ids.length} клипов`);
-      st.textContent = 'Склеиваем…';
+      st.textContent = 'Сохраняем…';
       onPrompt(res.prompt_id, ev => {
         if (ev.prompt_id !== res.prompt_id) return;
         if (ev.type === 'done') {
           offPrompt(res.prompt_id); MT.busy = false; MT.joining = false; MT.chaining = false; $('.mt-go', root).disabled = false;
           PIPE.joined = { id: ev.item.id, key }; pipeSave();
           showDone(byId(ev.item.id) || normItem(ev.item));
-        } else if (ev.type === 'error') fail('Склейка не удалась: ' + ev.message);
-        else if (ev.type === 'interrupted') fail('Склейка остановлена');
+        } else if (ev.type === 'error') fail('Сохранить не удалось: ' + ev.message);
+        else if (ev.type === 'interrupted') fail('Сохранение остановлено');
       });
-    } catch (err) { fail('Склейка не удалась: ' + err.message); }
+    } catch (err) { fail('Сохранить не удалось: ' + err.message); }
   }
 
-  /* «Увеличить каждый клип и склеить» / зерно: the clips are done one by one (each is short, so memory is enough), then the finished ones are joined.
+  /* «Увеличить каждый клип и сохранить» / зерно: the clips are done one by one (each is short, so memory is enough), then the finished ones are joined.
      What is finished is remembered, so after an error or a restart the work goes on from the first clip that is not done. */
   const upBtn = $('.mt-upgo', root), upTxt = upBtn.textContent;
   const setsPaint = () => { const relay = $('.mt-upeng', root).value === 'relay'; $('.mt-s-detail', root).hidden = !relay; $('.mt-s-sharp', root).hidden = relay; };   // the detail slider belongs to RelayVSR, the sharpness one to SeedVR2
@@ -8918,7 +8918,7 @@ applyZoom();
     const st = $('.mt-status', root);
     if (MT.upBusy) { MT.cancel = true; st.textContent = 'Останавливаем…'; if (MT.curPrompt) fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: MT.curPrompt }) }); return; }
     if (MT.busy) return;
-    if (MT.ids.length < 2) { st.textContent = 'Добавьте хотя бы два клипа'; return; }
+    if (MT.ids.length < 2) { st.textContent = 'Добавьте клип из Библиотеки'; return; }
     const doUp = eng !== 'none', grain = +$('.mt-grain', root).value;
     if (doUp) {
       let stt = {}; try { stt = await (await fetch('/api/status')).json(); } catch {}
@@ -8967,7 +8967,7 @@ applyZoom();
       return;
     }
     MT.upBusy = false; MT.curPrompt = null; upBtn.textContent = upTxt;
-    st.textContent = `${doUp ? 'Увеличение' : 'Зерно'} завершено для всех ${ids.length} клипов. Склеиваем…`;
+    st.textContent = `${doUp ? 'Увеличение' : 'Зерно'} завершено для всех ${ids.length} клипов. Сохраняем…`;
     await joinNow(out, durs, ins);
   }
   IMG_PANELS.push(() => { applyPend(); pipePaint(); window.mtRestoreResult(); });

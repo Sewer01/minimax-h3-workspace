@@ -2890,8 +2890,10 @@ class App:
                               "ext": (Path(files[k][0]).suffix.lstrip(".").lower() or "mp4")[:5]})
             else:
                 items.append(self.library.get(i))
-        if len(items) < 2 or any(not it or it.get("kind") == "image" for it in items):
-            raise web.HTTPBadRequest(text="Добавьте хотя бы два видео")
+        # монтаж - это и видеоредактор: один клип с обрезкой это тоже готовый ролик, so two
+        # clips are not required any more; what is required is at least one real video
+        if not items or any(not it or it.get("kind") == "image" for it in items):
+            raise web.HTTPBadRequest(text="Добавьте в монтаж хотя бы один видеоклип")
         if self.rh():
             raise web.HTTPBadRequest(text="Монтаж работает только с локальным ComfyUI, не с облаком.")
         cuts, starts = [], []
@@ -2921,7 +2923,8 @@ class App:
         graph, stages = wf.montage_graph(names, sizes, cuts, timing, starts)
         total = sum((cuts[n_] if cuts[n_] is not None else max(0.3, float(it.get("len") or 0) - starts[n_])) for n_, it in enumerate(items))
         return await self.queue(graph, stages, {
-            "mode": "montage", "sub": f"{len(items)} клипов", "prompt": "", "aspect": items[0].get("aspect", ""), "q": "",
+            "mode": "montage", "sub": (["", "один клип", "два клипа", "три клипа", "четыре клипа"][len(items)]
+                                     if len(items) < 5 else f"{len(items)} клипов"), "prompt": "", "aspect": items[0].get("aspect", ""), "q": "",
             "len": round(total, 1), "res": items[0].get("res", ""), "seed": 0}, last_output=True)
 
     async def h_grain(self, req):

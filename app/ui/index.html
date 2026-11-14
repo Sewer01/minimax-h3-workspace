@@ -8874,7 +8874,7 @@ applyZoom();
 })();
 // An own main model in the mode itself: pick a file ComfyUI sees; the app says whether it fits the rest of the mode (speed-up LoRAs, format, video card)
 (() => {
-  const MAIN = { video: 'fast_unet', lipsync: 'lipsync_unet', refs: 'lipsync_unet', actor: 'lipsync_unet', swap: 'lipsync_unet', long: 'lipsync_unet', action: 'action_unet', krea: 'krea_unet', qwen: 'qwen_unet' };
+  const MAIN = { video: 'fast_unet', lipsync: 'lipsync_unet', refs: 'lipsync_unet', actor: 'lipsync_unet', swap: 'lipsync_unet', long: 'lipsync_unet', actionsc: 'action_unet', action: 'action_unet', krea: 'krea_unet', qwen: 'qwen_unet' };
   const refresh = async box => {
     const { mode, role } = box.dataset;
     try {

@@ -2483,9 +2483,18 @@ class App:
             (d / "project.json").write_text(json.dumps(body["project"], ensure_ascii=False), encoding="utf-8")
             return web.json_response({"ok": True})
         run = re.sub(r"[^A-Za-z0-9]", "", req.query.get("run", ""))[:32]
-        if not run and req.query.get("last"):   # the most recently saved project
+        if not run and req.query.get("last"):   # the most recently saved project OF THIS SECTION
+            want = re.sub(r"[^a-z]", "", str(req.query.get("sec") or "long")) or "long"
             files = sorted(LONG_DIR.glob("*/project.json"), key=lambda f: f.stat().st_mtime, reverse=True) if LONG_DIR.is_dir() else []
-            run = files[0].parent.name if files else ""
+            for f in files:
+                try:
+                    # projects saved before sections existed belong to the video studio
+                    got = re.sub(r"[^a-z]", "", str(json.loads(f.read_text(encoding="utf-8")).get("sec") or "long")) or "long"
+                except (OSError, ValueError):
+                    got = "long"
+                if got == want:
+                    run = f.parent.name
+                    break
         f = LONG_DIR / run / "project.json" if run else None
         if not f or not f.exists():
             return web.json_response({})

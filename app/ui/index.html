@@ -5061,21 +5061,24 @@ function makeRefMode(cfg) {
     queueMicrotask(() => setBase('own'));
 
     /* --- the project survives a restart: scenes, pictures of scenes, sound choice, which scenes are done --- */
-    const PKEY = 'h3-long-projects', fsig = {};
+    /* every studio keeps its own projects: the action one used to open the video studio's last
+       scene list, which looked like a copy of the section (the old key stays for the video studio,
+       so projects saved before this are not lost) */
+    const PKEY = 'h3-long-projects' + (cfg.mode === 'long' ? '' : '-' + cfg.mode), LASTKEY = 'h3-long-last' + (cfg.mode === 'long' ? '' : '-' + cfg.mode), fsig = {};
     const loadAll = () => { try { return JSON.parse(localStorage.getItem(PKEY) || '{}'); } catch { return {}; } };
     const putFile = (key, f) => { const sg = f ? `${f.name}|${f.size}|${f.lastModified}` : ''; if (fsig[key] === sg) return; fsig[key] = sg; if (f) memFile('put', key, f); else memFile('delete', key); };
     let saveT = null;
     function saveNow() {
       try {
         const run = root._run, slotA = $('.rm-auds .slot', root);
-        const proj = { run, t: Date.now(), mode: root._mode, qm: root._q, qBy: { ...(root._qBy || {}), [root._q]: S.q }, snd: root._snd, start: $('.lm-start', root).value, vocals: $('.lm-vocals', root).checked,
+        const proj = { run, t: Date.now(), sec: cfg.mode, mode: root._mode, qm: root._q, qBy: { ...(root._qBy || {}), [root._q]: S.q }, snd: root._snd, start: $('.lm-start', root).value, vocals: $('.lm-vocals', root).checked,
           aspect: S.aspect, q: S.q, cw: S.cw || 0, ch: S.ch || 0, src: root._src ? { id: root._src.id || '', name: root._src.name } : null,
           scenes: $$('.sc', root).map(c => ({ prompt: $('textarea', c).value, sec: +$('input[type=range]', c).value, fresh: !!$('.sc-fresh', c)?.checked, nimg: 9, var: c._var || 0,
             done: c._dn.final ? { sig: c._dn.final.sig, url: c._dn.final.url, id: c._dn.final.id, text: c._dn.final.text } : null,
             draftDone: c._dn.draft ? { sig: c._dn.draft.sig, url: c._dn.draft.url, id: c._dn.draft.id, text: c._dn.draft.text } : null })) };
         const all = loadAll(); all[run] = proj;
         Object.keys(all).sort((a, b) => all[b].t - all[a].t).slice(8).forEach(k => delete all[k]);   // the 8 latest projects
-        localStorage.setItem(PKEY, JSON.stringify(all)); localStorage.setItem('h3-long-last', run);
+        localStorage.setItem(PKEY, JSON.stringify(all)); localStorage.setItem(LASTKEY, run);
         fetch('/api/long/project', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ run, project: proj }) }).catch(() => {});
         $$('.ref', imgsEl).forEach((r, i) => putFile(`long/${run}/img${i}`, r._file));
         putFile(`long/${run}/aud0`, slotA ? slotA._file : null);
@@ -5096,6 +5099,10 @@ function makeRefMode(cfg) {
       try { onDisk = await (await fetch('/api/long/project?run=' + run)).json(); } catch {}
       if (!p && onDisk && onDisk.project) p = onDisk.project;
       if (!p) return false;
+      // A project belongs to the studio that made it. Projects saved before the sections existed were
+      // the video studio's (both studios read the same "last" one, which is how a scene list appeared
+      // in two places), so an untagged project is only taken by the video studio.
+      if (p.sec ? p.sec !== cfg.mode : cfg.mode !== "long") return false;
       const getRef = async key => {   // a picture of the project: the browser's memory, else the copy kept by the program (after a stage is opened: the copy first)
         if (!root._diskRefs) { const f = await memFile('get', `long/${run}/${key}`); if (f instanceof File) return f; }
         const nm = ((onDisk && onDisk.refs) || []).find(x => x.startsWith(key + '.')); if (!nm) return null;
@@ -5139,14 +5146,25 @@ function makeRefMode(cfg) {
         if (ready && !parts.includes(ready - 1)) { cards.forEach(c => { c._dn[mk] = null; }); toast('Точка продолжения не найдена на диске: сцены нужно сделать заново.'); }
       }
       { const tgt = p.qm === 'draft' && root._dmad !== false ? 'draft' : 'final'; root._qBy = { draft: S.q, final: S.q, ...(p.qBy || {}) }; root._qBy.draft = okQ(root._qBy.draft); root._qBy.final = okQ(root._qBy.final); S.q = root._qBy[tgt]; setQ(tgt, true); }
-      setMode(p.mode || 'parts'); root._restoring = false; recount(); refreshStates(); RM[(p.mode === 'actionsc') ? 'actionsc' : 'long']?.upd?.();
+      setMode(p.mode || 'parts'); root._restoring = false; recount(); refreshStates(); RM[cfg.mode]?.upd?.();   // the section that owns this project refreshes its own summary
       return true;
     };
     root._restoring = true;   // nothing is saved until the last project has been put back
     setTimeout(async () => {
       try {
-        let last = localStorage.getItem('h3-long-last');
-        if (!last) { const r = await (await fetch('/api/long/project?last=1')).json(); last = r.run || ''; }
+        let last = localStorage.getItem(LASTKEY);
+        if (last) {   // the disk says which studio a project belongs to: if it disagrees, the local
+                      // pointer came from the time when both studios shared one list - forget it
+          try {
+            const od = await (await fetch('/api/long/project?run=' + last)).json();
+            const sec = od && od.project && od.project.sec;
+            if (sec && sec !== cfg.mode) {
+              const all = loadAll(); delete all[last];
+              localStorage.setItem(PKEY, JSON.stringify(all)); localStorage.removeItem(LASTKEY); last = '';
+            }
+          } catch {}
+        }
+        if (!last) { const r = await (await fetch('/api/long/project?last=1&sec=' + cfg.mode)).json(); last = r.run || ''; }
         if (last) await root._openRun(last);
       } catch {}
       root._restoring = false; root._save();
@@ -5711,7 +5729,7 @@ function makeRefMode(cfg) {
           }
         }
         if (cfg.scenes && root._mode !== 'parts') { fd.append('run', root._run); if (root._q === 'draft') fd.append('draft', '1'); }
-        if (cfg.scenes) { fd.append('scenes', JSON.stringify(sceneList())); $$('.sc', root).forEach((c, i) => c._files.forEach((f, j) => { if (f) fd.append(`simg${i}_${j}`, f); })); fd.append('start', $('.lm-start', root).value || '0'); fd.append('vocals', root._snd === 'own' && $('.lm-vocals', root).checked ? '1' : '0'); }
+        if (cfg.scenes) { fd.append('scenes', JSON.stringify(sceneList())); $$('.sc', root).forEach((c, i) => c._files.forEach((f, j) => { if (f) fd.append(`simg${i}_${j}`, f); })); fd.append('start', $('.lm-start', root).value || '0'); fd.append('vocals', root._snd === 'own' && $('.lm-vocals', root).checked ? '1' : '0'); if (cfg.mode === 'actionsc') loraForm(S, fd); }
         else loraForm(S, fd);
         seedForm(S, fd);
         $$('.ref', imgsEl).filter(r => r._file).forEach((r, i) => fd.append('img' + i, r._file));
@@ -5753,6 +5771,8 @@ function makeRefMode(cfg) {
     <div class="row"><div class="row-l">Точность переноса с изображений</div>
       <div class="seg rm-rs" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><button data-r="match">Быстро<small>изображения уменьшаются</small></button><button data-r="max">Максимум<small>лучшее сходство</small></button></div>
       <div class="hint rm-rs-hint"></div></div>
+    <div class="rm-loras"></div>`
+    : cfg.mode === 'actionsc' ? `<div class="row"><div class="row-l">Как запускается</div><div class="status-box rm-act"><span class="hint">Проверяем ComfyUI…</span></div></div>
     <div class="rm-loras"></div>`
     : cfg.scenes ? `<details class="agvar" open><summary>Как работает</summary><div class="hint" style="font-size:12.5px;line-height:1.55">
       <b>1.</b> Загрузите изображения героя и места (необязательно: можно только текстом). <b>2.</b> Выберите формат и размер. <b>3.</b> Добавьте сцены: нажмите «+» на ленте, напишите, что происходит. Длину сцены меняйте, потянув правый край блока на ленте. У каждой сцены можно загрузить свои изображения, иначе берутся общие.<br>
@@ -5806,7 +5826,7 @@ function makeRefMode(cfg) {
   }).catch(() => {});
   if (cfg.mode === 'actor') { S.loras = { realism: { on: true, v: .7 } }; mountLoras($('.rm-loras', root), S, ['realism']); }
 
-  if (cfg.mode === 'action' && API) {
+  if ((cfg.mode === 'action' || cfg.mode === 'actionsc') && API) {
     const box = $('.rm-act', root);
     const check = async () => {
       try {
@@ -5823,7 +5843,7 @@ function makeRefMode(cfg) {
           + (a.faithful ? '' : '<span class="hint">Чего нет — заменяется ближайшим: обычный двухпроходный сэмплинг с тем же графиком 8 + 4. Установите недостающее в ComfyUI, и приложение само переключится на точную копию.</span>');
       } catch { box.innerHTML = '<span class="hint">ComfyUI не отвечает</span>'; }
     };
-    $(`.nav[data-view="action"]`).addEventListener('click', check);
+    $(`.nav[data-view="${cfg.mode}"]`).addEventListener('click', check);
     check();
   }
   return { root, S, upd, voice: () => files('.rm-auds .slot').length, prompt: () => promptEl(), imgSlots: () => $$('.ref input', imgsEl) };

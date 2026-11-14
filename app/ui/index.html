@@ -985,6 +985,8 @@ body.dropping::after{content:'Отпустите — программа разл
 .v-media .li-play{opacity:1;background:none}
 .v-info{padding:22px;display:grid;gap:14px;align-content:start}
 .v-info h3{font-size:16px;padding-right:30px}
+.vw-file{cursor:pointer;text-decoration:underline dotted rgba(255,255,255,.45);word-break:break-all}
+.vw-file:hover{text-decoration:underline solid #ff5fa2;color:#fff}
 .kv{display:grid;grid-template-columns:minmax(0,max-content) minmax(0,1fr);gap:6px 14px;font-size:12.5px}
 #mdEngine{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
 #mdEngine span{color:var(--dim);font-size:11.5px;margin-top:10px}
@@ -4215,7 +4217,13 @@ function fmtDate(d) {
   const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / 864e5);
   return days === 0 ? `сегодня, ${hm}` : days === 1 ? `вчера, ${hm}` : d.toLocaleDateString('ru', { day: 'numeric', month: 'short' }) + `, ${hm}`;
 }
-const fileName = it => `h3_${it.mode}_${it.date.toISOString().slice(0, 16).replace(/[-:T]/g, '')}.${it.ext || 'mp4'}`;
+/* настоящее имя файла, а не составленное из режима и даты: человек копирует его, чтобы найти
+     ролик на диске или показать другому - выдуманное имя уводило в никуда */
+const fileName = it => {
+  const p = String(it.local || '').replace(/[\\/]+$/, '');
+  if (p) return p.split(/[\\/]/).pop();
+  return it.file || (it.id ? `${it.id}.${it.ext || 'mp4'}` : '');
+};
 
 /* ---------- общая очередь заданий ---------- */
 const QUEUE = [];
@@ -4459,7 +4467,13 @@ function openViewer(id, fallback) {
   if (pic) { vid.removeAttribute('src'); img.src = it.url; } else if (it.url) { vid.src = it.url; vid.play().catch(() => {}); } else img.src = it.thumb;
   $('#vwTitle').textContent = `${MODE_NAME[it.mode]} · ${it.sub}`;
   $('#vwKv').innerHTML = [...(it.res ? [['Разрешение', /^\d+×\d+$/.test(it.res) ? dimTxt(...it.res.split('×')) : it.res]] : []), ...(it.aspect ? [['Формат', it.aspect]] : []), ...(it.q ? [['Качество', it.q]] : []), ...(it.len ? [['Длина', `${it.len.toFixed(1)} с · ${frames(it.len)} кадров`]] : []), ['Создано', fmtDate(it.date)], ...(it.seed != null ? [['Seed', String(it.seed)]] : []), ['Файл', fileName(it)]]
-    .map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join('');
+    .map(([k, v]) => k === 'Файл' && v
+      ? `<span>${k}</span><b class="vw-file" data-file="${esc(v)}" title="${it.missing ? 'Файл не найден на диске - имя осталось из списка' : 'Нажмите, чтобы скопировать имя файла целиком'}">${esc(v)}</b>`
+      : `<span>${k}</span><b>${v}</b>`).join('');
+  $('#vwKv').onclick = e => {
+    const b = e.target.closest('.vw-file'); if (!b) return;
+    navigator.clipboard?.writeText(b.dataset.file).then(() => toast('Имя файла скопировано'), () => toast(b.dataset.file));
+  };
   $('#vwPrompt').textContent = it.prompt || 'без промпта';
   $('#vwFav').textContent = it.fav ? '★ В избранном' : 'В избранное';
   $('#vwSeed').hidden = it.seed == null;
@@ -5978,7 +5992,7 @@ const PRESETS = [
     text: 'Бой, погоня, бег: динамичные сцены с вашими персонажами.' },
   { id: 'long', kind: 'video', badge: ['Быстрый черновик', 'f'], title: 'Видеостудия', need: 'изображения героев + сцены',
     text: 'Ролик из нескольких сцен, каждая продолжает прошлую: клипы, истории, музыка.' },
-  { id: 'actionsc', kind: 'video', isNew: true, role: 'action_unet', poster: 'actionsc', badge: ['8 + 4 шага', 'f'], title: 'Экшн-видеостудия',
+  { id: 'actionsc', kind: 'video', isNew: true, role: 'action_unet', badge: ['8 + 4 шага', 'f'], title: 'Экшн-видеостудия',
     need: 'изображения героев + сцены',
     text: 'Длинный экшн по сценам: погоня или бой нарастает от сцены к сцене, клипы склеиваются в один ролик. Быстрый гибрид-расчёт, звук модель делает сама.' },
   { id: 'krea', kind: 'image', title: 'Изображение по тексту', need: 'только текст',

@@ -111,6 +111,7 @@
    those rows would only promise what the graph does not do */
 #view-actionsc .rm-media,#view-actionsc .lm-snd,#view-actionsc .lm-snd-hint,#view-actionsc .lm-own,#view-actionsc .lm-base,#view-actionsc .lm-base-hint,#view-actionsc .lm-srcpick,#view-actionsc .lm-src{display:none!important}
 #view-actionsc .no-base,#view-actionsc .no-base+details,#view-actionsc .agvar{display:none!important}
+#view-actionsc .lm-mode,#view-actionsc .lm-mode-hint,#view-actionsc .lm-q,#view-actionsc .lm-qnote{display:none!important}
 #view-actionsc .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}
 #view-actionsc .rm-imgs .ref{width:104px;height:104px;aspect-ratio:auto;flex:0 0 104px}
 #view-actionsc .slots{--refh:104px;--refw:104px}
@@ -5055,7 +5056,8 @@ function makeRefMode(cfg) {
       refreshStates();
     };
     baseSeg.onclick = e => { const b = e.target.closest('button'); if (b) setBase(b.dataset.b); };
-    const setMode = v => { root._mode = v; $$('.lm-mode button', root).forEach(b => b.classList.toggle('on', b.dataset.m === v)); $('.lm-mode-hint', root).textContent = MODE_HINT[v]; refreshStates(); };
+    const setMode = v => { if (cfg.mode === 'actionsc') v = 'parts';   // this studio has one way to run: scene after scene
+      root._mode = v; $$('.lm-mode button', root).forEach(b => b.classList.toggle('on', b.dataset.m === v)); $('.lm-mode-hint', root).textContent = MODE_HINT[v]; refreshStates(); };
     $('.lm-mode', root).onclick = e => { const b = e.target.closest('button'); if (b) setMode(b.dataset.m); };
     queueMicrotask(() => setMode('parts'));
     queueMicrotask(() => setBase('own'));
@@ -5385,7 +5387,7 @@ function makeRefMode(cfg) {
     const szOf = v => sz(v === root._q ? S.q : (root._qBy || {})[v] || S.q);
     const Q_HINT = v => v === 'draft'
       ? `Черновик: ${szOf('draft')}, 4 шага, быстро. Понравился, его можно просто увеличить или пересчитать кнопкой «Сделать всё в хорошем качестве».`
-      : `Хорошее качество: ${szOf('final')}, 8 шагов. Размер выбирается ниже, в «Формат» и «Качество».`;
+      : `Хорошее качество: ${szOf('final')}, ${cfg.mode === 'actionsc' ? '8 + 4 шага на гибридной модели' : '8 шагов'}. Размер выбирается ниже, в «Формат» и «Качество».`;
     root._paintQ = () => {
       $('.lm-q button[data-mq="draft"] small', root).textContent = `${szOf('draft')} · 4 шага, быстро`;
       $('.lm-q button[data-mq="final"] small', root).textContent = `${szOf('final')} · 8 шагов, итог`;
@@ -5399,7 +5401,8 @@ function makeRefMode(cfg) {
     root._qBy = { draft: S.q, final: S.q };
     function setQ(v, force) {
       if (!force && v !== root._q) { root._qBy[root._q] = S.q; S.q = QUALITY_ALL.some(x => x.id === root._qBy[v]) ? root._qBy[v] : '720p'; S._upd?.(); }   // the size chosen in «Параметры» belongs to the row that is open
-      root._q = v; $$('.lm-q button', root).forEach(b => b.classList.toggle('on', b.dataset.mq === v));
+      root._q = cfg.mode === 'actionsc' ? 'final' : v;   // the action graph has no draft pass
+    $$('.lm-q button', root).forEach(b => b.classList.toggle('on', b.dataset.mq === v));
       root._paintQ();
       vid.onended = null; vid.loop = true; refreshStates(); renderTL(); showClip(); onScenes();
     }
@@ -5675,7 +5678,7 @@ function makeRefMode(cfg) {
     goLabel: () => !cfg.scenes ? 'Сгенерировать' : root._mode === 'parts'
       ? `Сделать сцену ${root._sel + 1}` : 'Сгенерировать видеоролик',   // the number follows the scene you picked
     extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' || cfg.swap || cfg.scenes ? 'Шаги' : 'Схема',
-    extra: () => cfg.scenes ? (root._paintQ?.(), root._mode === 'parts' ? (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika') : (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika')) : cfg.mode === 'actor' || cfg.swap ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
+    extra: () => cfg.scenes ? (root._paintQ?.(), root._mode === 'parts' ? (root._q === 'draft' ? '4 шага · черновик' : (cfg.mode === 'actionsc' ? '8 + 4 шага · гибрид' : '8 шагов · Pika')) : (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika')) : cfg.mode === 'actor' || cfg.swap ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
     passes: () => cfg.scenes ? $$('.sc', root).map(() => root._q === 'draft' ? 4 : 8) : cfg.mode === 'actor' || cfg.swap ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],
     get twoPass() { return (cfg.mode === 'action' || cfg.mode === 'actionsc') && !S.faithful; },
     target: () => $('.ref img', imgsEl),

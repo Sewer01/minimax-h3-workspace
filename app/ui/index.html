@@ -1543,10 +1543,10 @@ body.dropping::after{content:'Отпустите — программа разл
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:14px">
           <b style="font-size:13.5px">Окно при запуске</b>
           <div class="seg" id="winMode" style="grid-template-columns:repeat(4,minmax(0,1fr));max-width:680px">
-            <button type="button" data-w="geo">Как при закрытии<small>помнит размер</small></button>
+            <button type="button" data-w="geo">Как при закрытии<small>помнит размер и состояние</small></button>
             <button type="button" data-w="max">Развёрнутое<small>панель задач видна</small></button>
             <button type="button" data-w="window">В окне<small>1760×1040</small></button>
-            <button type="button" data-w="fullscreen">Во весь экран<small>без панелей</small></button>
+            <button type="button" data-w="fullscreen">Во весь экран<small>без панелей · Esc выйти</small></button>
           </div>
           <span class="hint">применится после перезапуска программы</span>
         </div>
@@ -4487,6 +4487,24 @@ $('#bulkSave').onclick = () => saveItems([...selected].map(byId));
 $('#bulkDel').onclick = () => askDelete([...selected]);
 $$('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.id === 'viewer' ? closeViewer() : (m.hidden = true); }));
 addEventListener('keydown', e => { if (e.key === 'Escape') { $('#confirm').hidden = true; closeViewer(); } });
+/* full screen has no panels at all, so the page itself must give a way out (Esc, F11) */
+let FS = false;
+const fsSay = on => toast(on ? 'Полный экран: Esc или F11 - вернуть окно с панелями' : 'Окно с панелями');
+async function fsCheck() { try { FS = !!(await window.pywebview.api.window_state()).fullscreen; } catch { FS = false; } return FS; }
+async function fsToggle(on) {
+  const to = (on === undefined) ? !FS : !!on;
+  try { const r = await window.pywebview.api.set_fullscreen(to); FS = !!r.fullscreen; fsSay(FS); }
+  catch { toast('Не удалось переключить экран'); }
+}
+addEventListener('keydown', e => {
+  if (e.key === 'F11') { e.preventDefault(); fsToggle(); return; }
+  // Esc leaves full screen only when nothing on the page is waiting for it
+  if (e.key === 'Escape' && FS && !$('#cmpFull') && ![...document.querySelectorAll('.modal')].some(m => !m.hidden)) {
+    e.preventDefault(); fsToggle(false);
+  }
+}, true);
+setTimeout(fsCheck, 800);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) fsCheck(); });
 $('#vwSave').onclick = () => saveItems([(byId(openId) || openItem)]);
 $('#vwDel').onclick = () => { if (openId) askDelete([openId]); };   // the window that shows the result is where you decide to drop it
 $('#vwCopy').onclick = () => {

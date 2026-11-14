@@ -89,6 +89,28 @@ class JsApi:
         threading.Timer(0.5, lambda: self._window.destroy()).start()   # let this answer first
         return {"ok": True}
 
+    def window_state(self):
+        """Is the window now drawn without panels: the page needs this to offer Esc as a way out."""
+        try:
+            win = getattr(self, "_window", None)
+            return {"fullscreen": bool(getattr(getattr(win, "native", None), "is_fullscreen", False))}
+        except Exception:
+            return {"fullscreen": False}
+
+    def set_fullscreen(self, on):
+        """Into full screen and out of it. Without a way out the mode is a trap: no panels, no buttons."""
+        try:
+            win = getattr(self, "_window", None)
+            if not win:
+                return {"ok": False, "fullscreen": False}
+            was = bool(getattr(getattr(win, "native", None), "is_fullscreen", False))
+            if was != bool(on):
+                win.toggle_fullscreen()
+            now = bool(getattr(getattr(win, "native", None), "is_fullscreen", False))
+            return {"ok": True, "fullscreen": now}
+        except Exception:
+            return {"ok": False, "fullscreen": False}
+
     def pick_folder(self, start=""):
         import webview
         res = self._window.create_file_dialog(webview.FOLDER_DIALOG, directory=start if os.path.isdir(start) else "")
@@ -176,13 +198,18 @@ def window_mode():
 
 
 def window_geo():
-    """The size the window was closed at. The tab strip needs width to keep the names on its buttons,
-    and starting at 1440 every time threw away the width you had chosen."""
+    """(width, height, x, y, state) the window was last left in. The tab strip needs width to keep the
+    names on its buttons, and starting at 1440 every time threw away the width you had chosen.
+    `state` is "window", "max" or "fullscreen": «как при закрытии» means the state too, not only size."""
     try:
         g = json.loads((server.DATA_DIR / "window.json").read_text(encoding="utf-8"))
         w, h = int(g.get("width") or 0), int(g.get("height") or 0)
+        state = g.get("state") if g.get("state") in ("max", "fullscreen") else "window"
         if 1000 <= w <= 7680 and 620 <= h <= 4320:
-            return w, h
+            x, y = g.get("x"), g.get("y")
+            x = int(x) if isinstance(x, (int, float)) and -20000 < x < 20000 else None
+            y = int(y) if isinstance(y, (int, float)) and -20000 < y < 20000 else None
+            return w, h, x, y, state
     except Exception:
         pass
     # nothing remembered yet: wide enough that the tab strip keeps every name. The strip needs about
@@ -190,9 +217,9 @@ def window_geo():
     try:
         import ctypes
         screen = ctypes.windll.user32.GetSystemMetrics(0) or 1920
-        return int(max(1440, min(2040, screen - 60))), 1040
+        return int(max(1440, min(2040, screen - 60))), 1040, None, None, "window"
     except Exception:
-        return 2040, 1040
+        return 2040, 1040, None, None, "window"
 
 
 def show_running_window(base):
@@ -264,25 +291,83 @@ def main():
             pass
         api = JsApi(port)
         mode = window_mode()
+        # "as at closing" opens the way you left it: the same state, not only the same size
         # pywebview blocks dragging of every picture by default; the app drags pictures into slots
-        w0, h0 = window_geo()
+        w0, h0, x0, y0, st0 = window_geo()
+        open_state = st0 if mode == "geo" else ("max" if mode == "max" else "fullscreen" if mode == "fullscreen" else "window")
         api._window = webview.create_window(
             "Minimax H3 Workspace", url, width=w0, height=h0, min_size=(1000, 680),
-            maximized=(mode == "max"), fullscreen=(mode == "fullscreen"),
+            maximized=(open_state == "max"), fullscreen=(open_state == "fullscreen"),
             background_color="#12070a", js_api=api, draggable=True)
-
-        def remember_geo(_=None):   # the next start opens the window the way you left it
+        if open_state == "window" and x0 is not None and y0 is not None:
+            def back_to_place(_=None):   # when it exists: moving a window that is not shown yet does nothing
+                try:
+                    api._window.move(x0, y0)
+                except Exception:
+                    pass
             try:
-                s = api._window.snapshot
-                if s and s[2] and s[3]:
-                    (server.DATA_DIR / "window.json").write_text(
-                        json.dumps({"width": int(s[2]), "height": int(s[3])}), encoding="utf-8")
+                shown = api._window.events.shown
+                shown += back_to_place
+            except Exception:
+                back_to_place()
+
+        def window_state(win):
+            """'window' / 'max' / 'fullscreen' - read from the live window."""
+            try:
+                if getattr(getattr(win, "native", None), "is_fullscreen", False):
+                    return "fullscreen"
             except Exception:
                 pass
-        try:
-            api._window.events.closed += remember_geo
-        except Exception:
-            pass
+            try:
+                if "maximiz" in str(getattr(win, "state", "") or "").lower():
+                    return "max"
+            except Exception:
+                pass
+            return "window"
+
+        def remember_geo(_=None):   # the next start opens the window the way you left it
+            # window.snapshot does not exist in this pywebview, which is why the size was never
+            # remembered: the old line raised and the except swallowed it. Properties x/y/width/height
+            # and state do exist, so the state is stored too, and while maximized or in full screen the
+            # last good normal size is kept (a maximized size would come back as a huge plain window).
+            try:
+                win = api._window
+                path = server.DATA_DIR / "window.json"
+                try:
+                    g = json.loads(path.read_text(encoding="utf-8"))
+                    if not isinstance(g, dict):
+                        g = {}
+                except Exception:
+                    g = {}
+                state = window_state(win)
+                if state == "window":
+                    try:
+                        w, h = int(win.width or 0), int(win.height or 0)
+                    except Exception:
+                        w = h = 0
+                    if 1000 <= w <= 7680 and 620 <= h <= 4320:
+                        g["width"], g["height"] = w, h
+                        try:
+                            g["x"], g["y"] = int(win.x or 0), int(win.y or 0)
+                        except Exception:
+                            pass
+                g["state"] = state
+                txt = json.dumps(g)
+                try:
+                    if path.exists() and path.read_text(encoding="utf-8") == txt:
+                        return
+                except Exception:
+                    pass
+                path.write_text(txt, encoding="utf-8")
+            except Exception:
+                pass
+        for ev in ("closing", "closed", "resized", "moved", "maximized", "restored", "minimized"):
+            try:
+                sink = getattr(api._window.events, ev)   # an event object supports += ; a call result does not
+                sink += remember_geo
+            except Exception:
+                pass
+        threading.Timer(4.0, remember_geo).start()   # a plain size on the very first start
         webview.start(gui="edgechromium", private_mode=False,
                       storage_path=str(server.DATA_DIR / "webview"))
     except Exception:

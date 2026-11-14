@@ -5109,7 +5109,69 @@ function makeRefMode(cfg) {
         return took;
       } catch (e) { return 0; }
     };
-    root._partDone = item => {
+    /* Экшн-студия понимает только живое описание того, что происходит в кадре. Тексты, которые
+     раньше писал помощник для другого раздела, тащат за собой поля вида overall_soundscape:,
+     non_diegetic_music:, integrated_multimodal_description:, служебные фразы «For the target video,
+     at 0.00 seconds ...» и метки [Shot 1]; модель читает их как содержимое кадра и начинает
+     дорисовывать лишние фигуры. Кнопка «почистить» убирает служебное и оставляем описание. */
+  const cleanScene = (txt, pics) => {
+    let s = String(txt || '');
+    // sound and music fields belong to another section: drop the field and its value to the line end
+    s = s.replace(/[ \t]*(?:overall_soundscape|non_diegetic_music|diegetic_sounds|background_music|sound_design)\s*:[^\n]*/gi, ' ');
+    // a heading label of its own: keep the description standing after it
+    s = s.replace(/[ \t]*(?:integrated_multimodal_description|shot_description|subject_action|camera_movement)\s*:\s*/gi, ' ');
+    // the legacy sentence «<Picture 3> (from [Shot 1]) is fully referenced.» - the model has no such pictures
+    s = s.replace(/<\s*Picture\s*\d+\s*>\s*\(?\s*(?:from\s*)?\[\s*Shot\s*\d+\s*\]\s*\)?\s*is\s+fully\s+referenced\s*\.?/gi, ' ');
+    s = s.replace(/For the target video\s*,?\s*(?:at\s+\d+(?:\.\d+)?\s+seconds\s+into\s+the\s+target\s+video\s*)?,?\s*/gi, ' ');
+    s = s.replace(/at\s+\d+(?:\.\d+)?\s+seconds\s+into\s+the\s+target\s+video\s*,?\s*/gi, ' ');
+    s = s.replace(/\(?\s*(?:from\s*)?\[\s*Shot\s*\d+\s*\]\s*\)?\s*(?:is\s+fully\s+referenced\s*)?\.?/gi, ' ');
+    s = s.replace(/\(\s*\)/g, ' ').replace(/\bis\s+fully\s+referenced\s*\.?/gi, ' ');
+    if (pics > 0) s = s.replace(/<\s*Picture\s*(\d+)\s*>/gi, (m, d) => (+d <= pics ? `<Picture ${d}>` : ''));
+    return s.replace(/[ \t]{2,}/g, ' ').replace(/\s*\n\s*/g, '\n').replace(/^\s+|\s+$/g, '').replace(/\.\s*\./g, '.');
+  };
+  const sceneJunk = txt => {
+    const s = String(txt || '');
+    const bad = [];
+    if (/(?:overall_soundscape|non_diegetic_music|integrated_multimodal_description|diegetic_sounds)\s*:/i.test(s)) bad.push('поля звука и описания из другого раздела');
+    if (/\[[A-Za-z]+\s*\d+\]/.test(s)) bad.push('метки [Shot N]');
+    if (/for the target video|fully referenced|seconds into the target video/i.test(s)) bad.push('служебные фразы про «целевой ролик»');
+    return bad;
+  };
+  root._cleanScene = cleanScene;
+  root._sceneJunk = sceneJunk;
+  // плашка с предупреждением: ставим её под списком сцен и обновляем, когда тексты меняются
+  const junkBar = document.createElement('div');
+  junkBar.className = 'hint lm-junk';
+  junkBar.style.cssText = 'margin:8px 0 0;line-height:1.5';
+  junkBar.hidden = true;
+  try { ($('.lm-scenes', root) || root).appendChild(junkBar); } catch (e) { }
+  const junkPaint = () => {
+    try {
+      const pics = $$('.ref.filled', root).length;
+      const who = $$('.sc', root).map((c, i) => ({ i, why: sceneJunk((c.querySelector('textarea') || {}).value) })).filter(x => x.why.length);
+      if (!who.length) { junkBar.hidden = true; junkBar.innerHTML = ''; return; }
+      junkBar.hidden = false;
+      junkBar.innerHTML = '<b>В тексте ' + who.map(x => 'сцены ' + (x.i + 1)).join(', ') + ' есть лишнее для этого раздела</b> · ' +
+        who.map(x => x.why.join(', ')).filter((v, k, arr) => arr.indexOf(v) === k).join(' · ') +
+        ' — модель читает это как содержимое кадра и может дорисовать лишние фигуры.' +
+        ' <button class="btn mini lm-junkgo" type="button">Почистить тексты</button>';
+      const b = $('.lm-junkgo', junkBar);
+      if (b) b.onclick = () => {
+        $$('.sc', root).forEach(c => {
+          const ta = c.querySelector('textarea'); if (!ta) return;
+          const v = cleanScene(ta.value, pics);
+          if (v !== ta.value) { ta.value = v; ta.dispatchEvent(new Event('input', { bubbles: true })); }
+        });
+        toast('Тексты починены: осталось только то, что происходит в кадре');
+        junkPaint();
+        if (typeof changed === 'function') changed();
+      };
+    } catch (e) { }
+  };
+  root._junkPaint = junkPaint;
+  setTimeout(junkPaint, 1200);
+  root.addEventListener('input', e => { if (e.target && e.target.tagName === 'TEXTAREA') junkPaint(); });
+  root._partDone = item => {
       let lg = item && item.long;
       if (!lg && item && item.id) {           // the same clip seen through another door: take the real one
         const real = (typeof LIB !== 'undefined' ? LIB : []).find(x => x.id === item.id);

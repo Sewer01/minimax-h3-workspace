@@ -5928,7 +5928,7 @@ const PRESETS = [
     text: 'Бой, погоня, бег: динамичные сцены с вашими персонажами.' },
   { id: 'long', kind: 'video', badge: ['Быстрый черновик', 'f'], title: 'Видеостудия', need: 'изображения героев + сцены',
     text: 'Ролик из нескольких сцен, каждая продолжает прошлую: клипы, истории, музыка.' },
-  { id: 'actionsc', kind: 'video', isNew: true, role: 'action_unet', badge: ['8 + 4 шага', 'f'], title: 'Экшн-видеостудия',
+  { id: 'actionsc', kind: 'video', isNew: true, role: 'action_unet', poster: 'actionsc', badge: ['8 + 4 шага', 'f'], title: 'Экшн-видеостудия',
     need: 'изображения героев + сцены',
     text: 'Длинный экшн по сценам: погоня или бой нарастает от сцены к сцене, клипы склеиваются в один ролик. Быстрый гибрид-расчёт, звук модель делает сама.' },
   { id: 'krea', kind: 'image', title: 'Изображение по тексту', need: 'только текст',
@@ -5939,8 +5939,10 @@ const PRESETS = [
 const PR = { tab: '', have: {}, q: '', f: 'all', view: 'grid' };
 try { PR.favs = JSON.parse(localStorage.getItem('h3-pfav') || '[]'); } catch { PR.favs = []; }
 const navIcon = id => { const v = $(`.nav[data-view="${id}"] svg`); return v ? v.outerHTML : ''; };
-const prMedia = x => x.kind === 'image'
-  ? `<img class="pr-media" src="/ui/previews/${x.id}.jpg" alt="" onerror="this.remove()">`
+/* у нового режима ещё нет своего ролика: если у карточки указан poster, показываем кадр из
+   библиотеки превью - иначе карточка осталась бы с пустым окном слева */
+const prMedia = x => (x.kind === 'image' || x.poster)
+  ? `<img class="pr-media" src="/ui/previews/${x.poster || x.id}.jpg" alt="" onerror="this.remove()">`
   : `<video class="pr-media" src="/ui/previews/${x.id}.mp4" muted loop autoplay playsinline preload="auto" onerror="this.remove()"></video>`;
 const prHave = x => !x.role || PR.have[x.role] !== false;
 function presetsPaint() {

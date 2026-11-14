@@ -315,61 +315,53 @@ def main():
         # вставить) только в режиме отладки, а приложение работает без отладки. Включаем меню сами,
         # как только ядро браузера появится: настройка одна на окно, действует во всех полях сразу.
         def enable_menu(*a):
+            """Правая кнопка мыши. WebView2 показывает своё меню (выделить всё, копировать,
+               вставить) только в режиме отладки, а приложение работает без отладки - поэтому меню
+               включаем сами. И чтение ядра, и запись настройки допустимы только из потока
+               интерфейса: из своего потока даже обращение к CoreWebView2 бросает ошибку."""
             _state = enable_menu.state
             if _state["done"] or _state["tries"] > 40:
                 return
             _state["tries"] += 1
-            try:
-                # окно - это форма; сам браузер лежит в ней как form.webview (или form.browser.webview)
-                native = getattr(api._window, "native", None)
-                view = getattr(native, "webview", None) or getattr(getattr(native, "browser", None), "webview", None)
-                core = getattr(view, "CoreWebView2", None) if view is not None else None
-                if core is None:
-                    if _state["tries"] > 40:
-                        server.applog("правая кнопка мыши: ядро браузера не найдено · окно: "
-                                      + type(native).__name__ + " · браузер: " + type(view).__name__)
-                        _state["done"] = True
-                        return
-                    threading.Timer(0.5, enable_menu).start()
-                    return
-                # ядро найдено, но настройки можно трогать только из потока интерфейса
-                box = {}
+            box = {}
 
-                def _apply():
-                    try:
-                        core.Settings.AreDefaultContextMenusEnabled = True
-                        box["ok"] = bool(core.Settings.AreDefaultContextMenusEnabled)
-                    except Exception as e:
-                        box["err"] = str(e)[:90]
+            def _apply():
                 try:
-                    # делегат без аргументов: void тоже берётся из System, иначе Action[void] падает
-                    from System import Action, void
-                    native.Invoke(Action[void](_apply))
+                    native = getattr(api._window, "native", None)
+                    view = getattr(native, "webview", None) or getattr(getattr(native, "browser", None), "webview", None)
+                    core = getattr(view, "CoreWebView2", None) if view is not None else None
+                    if core is None:
+                        box["later"] = "ядро ещё не готово"
+                        return
+                    core.Settings.AreDefaultContextMenusEnabled = True
+                    box["ok"] = bool(core.Settings.AreDefaultContextMenusEnabled)
                 except Exception as e:
-                    box["via"] = "Invoke не вышел: " + str(e)[:70]
-                    try:
-                        from System import Action
-                        from System import Void
-                        native.Invoke(Action[Void](_apply))
-                    except Exception as e2:
-                        box["via2"] = str(e2)[:60]
-                        try:
-                            _apply()
-                        except Exception as e3:
-                            box["err"] = str(e3)[:70]
-                _state["done"] = True
-                server.applog("правая кнопка мыши: меню включено · проверено значением: " + str(box.get("ok"))
-                              if box.get("ok") else "правая кнопка мыши: меню включить не удалось - "
-                              + str(box.get("err")) + " · " + str(box.get("via")) + " · " + str(box.get("via2")))
+                    box["err"] = str(e)[:90]
+
+            try:
+                from webview.platforms import winforms as _wf
+                native = getattr(api._window, "native", None)
+                if native is None:
+                    box["later"] = "окна ещё нет"
+                else:
+                    native.Invoke(_wf.WinForms.MethodInvoker(_apply))
             except Exception as e:
+                box["via"] = str(e)[:90]
+
+            if box.get("ok"):
                 _state["done"] = True
-                server.applog("правая кнопка мыши: меню включить не удалось - " + str(e)[:100])
+                server.applog("правая кнопка мыши: меню включено · проверено значением: True")
+            elif _state["tries"] >= 40:
+                _state["done"] = True
+                server.applog("правая кнопка мыши: включить не удалось · " + str(box))
+            else:
+                threading.Timer(0.5, lambda *a: enable_menu()).start()
+        enable_menu.state = {"tries": 0, "done": False}
         try:
             ev_shown = api._window.events.shown
             ev_shown += lambda *a: enable_menu()
         except Exception:
             pass
-        enable_menu.state = {"tries": 0, "done": False}
         threading.Timer(2.0, lambda *a: enable_menu()).start()
 
         def window_state(win):

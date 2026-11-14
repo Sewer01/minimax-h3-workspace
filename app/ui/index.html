@@ -2245,7 +2245,7 @@ function offerNewModes(s) {
     const btn = $('#confirm [data-close]');
     const later = () => fetch('/api/mode/offered', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: o.mode }) });
     btn.addEventListener('click', later, { once: true });
-    confirmBox('Новый режим', `В обновлении появился режим «${name}». Чтобы он заработал, нужно скачать модели (около ${String(o.gb).replace('.', ',')} ГБ). Добавить сейчас? Скачивание можно закрыть и продолжить позже, оно докачается с того же места.`, 'Добавить', async () => {
+    confirmBox('Новый режим', (o.gb ? `В обновлении появился режим «${name}». Чтобы он заработал, нужно скачать модели (около ${String(o.gb).replace('.', ',')} ГБ). Добавить сейчас? Скачивание можно закрыть и продолжить позже, оно докачается с того же места.` : `В обновлении появился режим «${name}». Все нужные модели уже лежат в папке моделей - скачивать ничего не придётся, режим заработает сразу. Включить его?`), 'Добавить', async () => {
       btn.removeEventListener('click', later); await later();
       try {
         if (s.engine === 'external') {
@@ -3807,7 +3807,9 @@ function renderModels(s) {
   $('#mdFixExt').textContent = `Скачать недостающие (${need.length}, ${GB(need.reduce((a, m) => a + m.size, 0))})`;
   const MN = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн-видео', actionsc: 'Экшн-видеостудия', long: 'Видеостудия', krea: 'Изображение по тексту', kreareal: 'Изображение: реализм', qwen: 'Правка изображения', flux: 'Правка изображения: FLUX.2 (в коммерцию)', upscale: 'Увеличение видео и изображений', relayvsr: 'Быстрое увеличение видео (RelayVSR)' };
   $('#mdAdd').innerHTML = s.engine === 'managed' || s.engine === 'external' ? Object.entries(s.add_modes || {}).map(([m, gb]) =>
-    `<button class="btn" data-add="${m}">Добавить ${MN[m]} (+${String(gb).replace('.', ',')} ГБ)</button>`).join(' ') : '';
+    /* «(+0 ГБ)» читается как ошибка: когда всё уже лежит на диске, кнопка ничего не качает,
+         она только включает режим - так и пишем */
+    `<button class="btn" data-add="${m}" title="${gb ? 'Понадобится скачать ' + String(gb).replace('.', ',') + ' ГБ моделей' : 'Все нужные файлы уже в папке моделей: скачивания не будет'}">${gb ? 'Добавить ' + MN[m] + ' (+' + String(gb).replace('.', ',') + ' ГБ)' : 'Включить ' + MN[m] + ' · модели уже есть'}</button>`).join(' ') : '';
   $$(MODE_ORDER.map(v => `.nav[data-view="${v}"]`).join(',')).forEach(n => {
     const off = s.modes && !s.modes.includes(n.dataset.view);
     n.querySelector('.badge')?.remove();

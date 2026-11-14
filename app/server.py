@@ -912,8 +912,26 @@ class App:
                   for role, variant in self.choice().items()
                   if role in needed or role in {r for roles in catalog.MODE_OPTIONAL.values() for r in roles}]
         choice = self.choice()
-        add_modes = {m: round((catalog.plan_size(choice, self.modes() + [m]) - catalog.plan_size(choice, self.modes())) / 1e9, 1)   # gigabytes (plan_size is in bytes)
-                     for m in catalog.MODE_ROLES if m not in self.modes()}
+        # What a mode would really download: the roles it brings that no enabled mode brings yet,
+        # minus the files that already lie in the model folders. The old estimate counted them even
+        # when they were there, so «Добавить: Экшн-видео (+22,0 ГБ)» offered to fetch a model the
+        # person already owns - and it looked like the models had disappeared.
+        have = {str(f).rsplit("\\", 1)[-1].lower() for names in getattr(self, "visible", {}).values() for f in names}
+        mine = set(catalog.roles_for(self.modes()))
+        add_modes = {}
+        for m in catalog.MODE_ROLES:
+            if m in self.modes():
+                continue
+            need = 0
+            for role in catalog.roles_for([m]) - mine:
+                v = (catalog.VARIANTS.get(role) or {}).get(choice.get(role))
+                if not v:
+                    continue
+                fname = str(v["file"]).rsplit("\\", 1)[-1].lower()
+                al = {str(a).rsplit("\\", 1)[-1].lower() for a in catalog.FILE_ALIASES.get(v["file"], ())}
+                if fname not in have and not (al & have):
+                    need += v["size"]
+            add_modes[m] = round(need / 1e9, 1)
         return web.json_response({
             **base, "online": True, "modes": self.modes(), "add_modes": add_modes,
             "hf_mirror": bool(self.config.get("hf_mirror")),

@@ -81,7 +81,7 @@ async def check(session, comfy_root, installed_running=None, data_dir=None):
         sha = ((head or [{}])[0]).get("sha") or ""
         when = (((head or [{}])[0]).get("commit") or {}).get("author", {}).get("date", "")[:10]
         folder = Path(comfy_root) / "ComfyUI" / "custom_nodes" if comfy_root else None
-        olds = sorted(folder.glob(f'{pack["name"]}.old-*')) if folder else []
+        olds = (sorted(folder.glob(f'{pack["name"]}.old-*')) + sorted(backup_root(comfy_root).glob(f'{pack["name"]}.old-*'))) if folder else []
         applied = ""
         try:
             applied = ((folder / pack["name"] / ".h3-applied").read_text(encoding="utf-8").split() or [""])[0][:10]
@@ -196,6 +196,42 @@ def rollback(comfy_root, data_dir):
     return marks[-1].name
 
 
+BACKUP_DIR = "packs-backup"
+
+
+def backup_root(comfy_root):
+    """Where copies of replaced packs live: outside custom_nodes, or ComfyUI would load them as
+       second copies of the same nodes and stop with "route already registered"."""
+    return Path(comfy_root) / BACKUP_DIR
+
+
+def tidy_nodes(comfy_root):
+    """Move any leftover copy of a pack out of custom_nodes (old behaviour left them there).
+       Returns the names it moved; the caller logs them."""
+    nodes = Path(comfy_root) / "ComfyUI" / "custom_nodes"
+    dest = backup_root(comfy_root)
+    moved = []
+    if not nodes.is_dir():
+        return moved
+    dest.mkdir(parents=True, exist_ok=True)
+    for p in sorted(nodes.iterdir()):
+        if not p.is_dir():
+            continue
+        name = p.name
+        if ".old-" in name or ".broken-" in name or name.startswith(".new-"):
+            to = dest / name
+            n = 2
+            while to.exists():
+                to = dest / f"{name}-{n}"
+                n += 1
+            try:
+                shutil.move(str(p), str(to))
+                moved.append(name)
+            except OSError:
+                pass
+    return moved
+
+
 def update_pack(comfy_root, pack, commit, archive=None):
     """Replace one node pack with another commit of its repository, keeping the old folder.
 
@@ -204,6 +240,8 @@ def update_pack(comfy_root, pack, commit, archive=None):
     """
     nodes = Path(comfy_root) / "ComfyUI" / "custom_nodes"
     target = nodes / pack["name"]
+    keep = backup_root(comfy_root)
+    keep.mkdir(parents=True, exist_ok=True)
     archive = Path(archive) if archive else Path(comfy_root) / "downloads" / f'{pack["name"]}-{commit[:8]}.zip'
     z = None
     for _ in range(4):
@@ -231,7 +269,7 @@ def update_pack(comfy_root, pack, commit, archive=None):
             raise RuntimeError("распакованная папка без __init__.py")
         backup = None
         if target.exists():
-            backup = nodes / f'{pack["name"]}.old-{time.strftime("%Y%m%d-%H%M%S")}'
+            backup = keep / f'{pack["name"]}.old-{time.strftime("%Y%m%d-%H%M%S")}'
             target.rename(backup)
         fresh.rename(target)
         shutil.rmtree(stage, ignore_errors=True)
@@ -252,9 +290,11 @@ def update_pack(comfy_root, pack, commit, archive=None):
 
 
 def rollback_pack(comfy_root, name):
-    """Put back the newest .old-<time> copy of a node pack."""
+    """Put back the newest copy of a node pack (they live outside custom_nodes since 1.4; the old
+       ones that are still lying inside custom_nodes are found too, and moved out afterwards)."""
     nodes = Path(comfy_root) / "ComfyUI" / "custom_nodes"
-    olds = sorted(nodes.glob(f"{name}.old-*"), key=lambda p: p.name)
+    olds = sorted(list(backup_root(comfy_root).glob(f"{name}.old-*")) + list(nodes.glob(f"{name}.old-*")),
+                  key=lambda p: p.name)
     if not olds:
         raise RuntimeError("Старой копии этой ноды нет")
     target = nodes / name
@@ -263,3 +303,4 @@ def rollback_pack(comfy_root, name):
     olds[-1].rename(target)
     (target / ".h3-applied").unlink(missing_ok=True)     # it is the pinned version again
     return olds[-1].name
+

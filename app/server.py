@@ -1493,6 +1493,12 @@ class App:
     def wake_comfy(self):
         """Bring the local ComfyUI up if it is not up: the same path the app takes at start.
            Runs in a worker thread, so it only touches the process, never the event loop."""
+        try:   # a copy of a pack left inside custom_nodes makes the engine refuse to start
+            swept = updates.tidy_nodes(self.comfy_root())
+            if swept:
+                applog("убрал дубли нод из custom_nodes: " + ", ".join(swept))
+        except Exception:
+            pass
         if self.config.get("engine") != "managed" or self.comfy_override or self.installer:
             return False
         if self.process and self.process.alive():
@@ -1592,8 +1598,13 @@ class App:
             return web.json_response({"error": "Неизвестная нода или нет папки ComfyUI"}, status=400)
         if self.jobs:
             return web.json_response({"error": "Идёт генерация: дождитесь её конца"}, status=409)
-        head = await updates.gh_json(self.session, f"/repos/{pack['repo']}/commits?per_page=1")
-        sha = ((head or [{}])[0]).get("sha") or ""
+        # the version the program was built and checked with, not the newest commit of the repository:
+        # a pack from tomorrow can register routes the current ComfyUI core already has, and then the
+        # engine does not start at all
+        sha = pack.get("commit") or ""
+        if not sha:
+            head = await updates.gh_json(self.session, f"/repos/{pack['repo']}/commits?per_page=1")
+            sha = ((head or [{}])[0]).get("sha") or ""
         if not sha:
             return web.json_response({"error": "GitHub не ответил"}, status=502)
         standing = ""
@@ -1620,7 +1631,7 @@ class App:
             await asyncio.to_thread(self.wake_comfy)
             return web.json_response({"error": str(e)}, status=500)
         await asyncio.to_thread(self.wake_comfy)
-        applog(f"нода {name} обновлена до {sha[:10]}" + (f", старая копия {kept}" if kept else ""))
+        applog(f"нода {name} переведена на {sha[:10]}" + (f", старая копия {kept}" if kept else ""))
         return web.json_response({"ok": True, "commit": sha[:10], "backup": kept})
 
     async def h_updates_pack_rollback(self, req):

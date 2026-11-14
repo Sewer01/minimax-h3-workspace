@@ -111,6 +111,10 @@
    those rows would only promise what the graph does not do */
 #view-actionsc .rm-media,#view-actionsc .lm-snd,#view-actionsc .lm-snd-hint,#view-actionsc .lm-own,#view-actionsc .lm-base,#view-actionsc .lm-base-hint,#view-actionsc .lm-srcpick,#view-actionsc .lm-src{display:none!important}
 #view-actionsc .no-base,#view-actionsc .no-base+details,#view-actionsc .agvar{display:none!important}
+/* скрыли переключатели - но их строки с названиями стояли отдельно и висели пустыми ярлыками;
+   теперь вместе с переключателем скрывается вся строка */
+#view-actionsc .row:has(.lm-mode),#view-actionsc .row:has(.lm-q),#view-actionsc .row:has(.lm-snd),
+#view-actionsc .row:has(.lm-base){display:none!important}
 #view-actionsc .lm-mode,#view-actionsc .lm-mode-hint,#view-actionsc .lm-q,#view-actionsc .lm-qnote{display:none!important}
 #view-actionsc .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}
 #view-actionsc .rm-imgs .ref{width:104px;height:104px;aspect-ratio:auto;flex:0 0 104px}
@@ -4148,7 +4152,12 @@ const ICON = {
 };
 // last messages and script errors: they go into the report for the author
 const TOASTS = [];
-const noteMsg = s => { TOASTS.push(new Date().toLocaleTimeString('ru') + ' ' + String(s).slice(0, 300)); if (TOASTS.length > 20) TOASTS.shift(); };
+const noteMsg = s => {
+  const line = new Date().toLocaleTimeString('ru') + ' ' + String(s).slice(0, 300);
+  TOASTS.push(line); if (TOASTS.length > 20) TOASTS.shift();
+  /* и в журнал программы: без этого страница молчит, а причина ищется наугад */
+  try { postJSON('/api/log', { text: line }).catch(() => { }); } catch { }
+};
 window.addEventListener('error', e => noteMsg('Ошибка скрипта: ' + e.message + ' (' + (e.filename || '').split('/').pop() + ':' + e.lineno + ')'));
 window.addEventListener('unhandledrejection', e => noteMsg('Ошибка: ' + (e.reason && e.reason.message || e.reason)));
 function toast(msg) {
@@ -5018,6 +5027,8 @@ function makeRefMode(cfg) {
       c._dn[lg.draft ? 'draft' : 'final'] = { sig: (root._sent && root._sent[lg.part]) || root._sig(c), url: item.url, id: item.id, text: root._sentText && root._sentText[lg.part] != null ? root._sentText[lg.part] : $('textarea', c).value };
       { const fr = freshAt(), all = $$('.sc', root), mk = lg.draft ? 'draft' : 'final'; for (let j = lg.part + 1; j < all.length && !fr[j]; j++) { const x = all[j]; if (x._dn[mk]) x._old = { ...(x._old || {}), [mk]: x._dn[mk] }; x._dn[mk] = null; } c._old = { ...(c._old || {}), [mk]: null }; }   // the scenes that continued the old one, up to the next new shot
       refreshStates();
+      // почему цепочка встала, видно только из этих чисел: что было запланировано, сколько готово, какой проект
+      noteMsg(`студия ${cfg.mode}: сцена ${lg.part + 1} из ${lg.n} готова · цепочка=${root._chainPart} · готово до ${readyUpTo()} · проект ${root._run}` + (root._chainPart !== lg.part ? ' · цепочка не совпала: продолжения не будет' : ''));
       if (root._chainPart === lg.part) { toast(`Сцена ${lg.part + 1} готова. Запускаю следующую…`); setTimeout(root._chainNext, 800); return; }
       toast(`Сцена ${lg.part + 1} готова` + (lg.part + 1 < lg.n ? '. Можно делать следующую.' : '. Все сцены готовы: склейте клипы в «Монтаже».'));
     };

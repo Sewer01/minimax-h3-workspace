@@ -1400,6 +1400,18 @@ class App:
         self.recent_errors = (self.recent_errors + [f"{datetime.now():%H:%M:%S} {text}"])[-15:]
 
 
+    async def h_ui_log(self, req):
+        """One line from the page: what the studio decided, what broke in a script. Without this the
+           page fails silently and the reason can only be guessed."""
+        try:
+            body = await req.json()
+        except Exception:
+            return web.json_response({"ok": False})
+        text = str(body.get("text") or "").strip()[:300]
+        if text:
+            applog("страница: " + text)
+        return web.json_response({"ok": True})
+
     async def h_open_driver(self, _req):
         webbrowser.open("https://www.nvidia.com/Download/index.aspx?lang=ru")
         return web.json_response({"ok": True})
@@ -3979,6 +3991,7 @@ def build_app(comfy_override=None):
         web.post("/api/long/stage", state.h_long_stage),
         web.post("/api/generate/action", state.h_generate_action),
         web.get("/api/action/info", state.h_action_info),
+        web.post("/api/log", state.h_ui_log),
         web.get("/api/cloud", state.h_cloud_get),
         web.post("/api/cloud", state.h_cloud_set),
         web.post("/api/cloud/test", state.h_cloud_test),

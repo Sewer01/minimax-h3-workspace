@@ -407,7 +407,8 @@ ROLE_TITLES = {
 
 MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "swap": "Замена персонажа", "action": "Экшн-сцены",
                "krea": "Изображение по тексту", "kreareal": "Изображение: реализм", "qwen": "Правка изображения", "flux": "Правка изображения: FLUX.2 (можно в коммерцию)",
-               "upscale": "Увеличение видео и изображений", "relayvsr": "Быстрое увеличение видео (RelayVSR)", "long": "Длинное видео"}
+               "upscale": "Увеличение видео и изображений", "relayvsr": "Быстрое увеличение видео (RelayVSR)", "long": "Длинное видео",
+    "actionsc": "Экшн-видеостудия (сцены подряд)"}
 
 # Which roles each mode needs.
 MODE_ROLES = {
@@ -439,6 +440,7 @@ MODE_OPTIONAL = {
     "swap": ["pika_lora", "realism_lora", "motion_repair_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
     "long": ["vocal_model", "dmad_lora"],
+    "actionsc": ["dmad_lora", "speed_slider_lora"],
 }
 ALL_ROLES = list(VARIANTS)
 

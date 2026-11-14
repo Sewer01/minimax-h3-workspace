@@ -1291,8 +1291,8 @@ body.dropping::after{content:'Отпустите — программа разл
     <section class="view" id="view-refs"></section>
     <section class="view" id="view-actor"></section>
     <section class="view" id="view-action"></section>
-    <section class="view" id="view-long">
-      <section class="view" id="view-actionsc" hidden></section></section>
+    <section class="view" id="view-actionsc"></section>
+    <section class="view" id="view-long"></section>
     <section class="view" id="view-montage"></section>
     <section class="view" id="view-krea"></section>
     <section class="view" id="view-qwen"></section>
@@ -2196,8 +2196,8 @@ function setEngine(on) {
 /* pinned top bar with every video and image section */
 (function () {
   const bar = document.createElement('div'); bar.id = 'modeBar'; document.body.appendChild(bar);
-  const SHORT = { video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёр', swap: 'Замена', long: 'Видеостудия', action: 'Экшн-видео', krea: 'Изображение', qwen: 'Правка', upfile: 'Увеличить' };
-  const GROUPS = [['presets'], ['video', 'lipsync', 'refs', 'actor', 'swap', 'long', 'action'], ['krea', 'qwen'], ['upfile']];
+  const SHORT = { video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёр', swap: 'Замена', long: 'Видеостудия', actionsc: 'Экшн-студия', action: 'Экшн-видео', krea: 'Изображение', qwen: 'Правка', upfile: 'Увеличить' };
+  const GROUPS = [['presets'], ['video', 'lipsync', 'refs', 'actor', 'swap', 'long', 'actionsc', 'action'], ['krea', 'qwen'], ['upfile']];
   function paint() {
     const cur = ($('.view.active')?.id || '').replace('view-', '');
     let html = '';

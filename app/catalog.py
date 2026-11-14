@@ -389,6 +389,44 @@ ACTION_DMAD_FILES = (ACTION_DMAD_LORA + ".safetensors",
                      "minimax_h3_fl2v_lightx2v_v0.1_dareties_v4_step600_comfy_fro.safetensors")
 
 
+# LoRA, сделанная для одной семьи моделей, молча портит другую: файловая LoRA для картинок Krea,
+# положенная в папку loras, раньше подмешивалась и во все видео-разделы. По названию видно, для чего
+# файл сделан, поэтому раздел чужой семьи его пропускает; кнопка в этом разделе включает его вручную.
+LORA_FAMILY = (
+    ("krea", ("krea", "realism_engine")),
+    ("flux", ("flux-2", "flux2", "flux_2")),
+    ("qwen", ("qwen_image", "qwen-image", "qwen image")),
+    ("h3img", ("h3_image", "h3-image")),
+    ("upscale", ("seedvr", "relayvsr", "lms_upscaler")),
+    ("video", ("minimax_h3", "minimax-h3", "h3_", "h3-", "pika_h3", "dmad", "speed_slider",
+               "motion_repair", "ref2v", "fl2v", "sla", "character_swap", "ref2va",
+               "t2v", "i2v", "r2v", "singularity")),
+)
+
+MODE_FAMILY = {"video": "video", "lipsync": "video", "refs": "video", "actor": "video", "swap": "video",
+               "action": "video", "actionsc": "video", "long": "video",
+               "krea": "krea", "kreareal": "krea", "qwen": "qwen", "flux": "flux", "h3img": "h3img",
+               "upscale": "upscale", "relayvsr": "upscale"}
+
+
+def lora_family(name):
+    """Which family a LoRA file was made for, by its name; "" when the name says nothing."""
+    low = str(name or "").replace("/", "\\").lower()
+    for family, marks in LORA_FAMILY:
+        if any(m in low for m in marks):
+            return family
+    return ""
+
+
+def lora_fits_mode(name, mode):
+    """Mix this own LoRA into the section by default? Unknown by name - yes, as before; known and of
+       another family - no, until the person switches it on in that section by hand."""
+    fam = lora_family(name)
+    if not fam or not mode:
+        return True
+    return fam == MODE_FAMILY.get(mode, "")
+
+
 def is_action_dmad(name):
     """Does this LoRA name mean the action acceleration file (any of its published names)?"""
     base = re.split(r"[\\/]", name or "")[-1].lower()   # ComfyUI writes subfolders with a backslash, browsers with a slash
@@ -470,7 +508,10 @@ MODE_OPTIONAL = {
     "swap": ["pika_lora", "realism_lora", "motion_repair_lora"],
     "action": ["speed_slider_lora", "action_upscaler"],
     "long": ["vocal_model", "dmad_lora"],
-    "actionsc": ["dmad_lora", "speed_slider_lora"],
+    # точная экшн-схема берёт свою LoRA DMAD по имени файла (ACTION_DMAD_FILES), а роль dmad_lora -
+    # это файл ускорения ЧЕРНОВИКА Видеостудии; черновика в Экшн-студии нет, и предлагать здесь файл,
+    # который эта студия никогда не читает, значит врать человеку
+    "actionsc": ["speed_slider_lora"],
 }
 ALL_ROLES = list(VARIANTS)
 
@@ -564,7 +605,8 @@ def choose_models(hw, profile=None):
 
 MAIN_ROLE = {"video": "fast_unet", "lipsync": "lipsync_unet", "refs": "lipsync_unet", "actor": "lipsync_unet", "swap": "lipsync_unet",
              "long": "lipsync_unet", "action": "action_unet", "actionsc": "action_unet", "krea": "krea_unet", "qwen": "qwen_unet", "flux": "flux_unet", "h3img": "h3img_unet",
-             "upscale": "seedvr_unet"}
+             "upscale": "seedvr_unet", "kreareal": "kreareal_unet", "relayvsr": "relayvsr_unet", "flux": "flux_unet",
+              "h3img": "h3img_unet"}
 ROLE_FAMILY = {"lipsync_unet": "ref2", "fast_unet": "fast", "action_unet": "hybrid",
                "ref2v_turbo_lora": "ref2", "pika_lora": "ref2", "swap_lora": "ref2", "sla_lora": "fast", "speed_slider_lora": "hybrid"}
 FAMILY_TITLE = {"ref2": "Ref2V / Singularity (референсы, Lipsync, студия)", "fast": "FastH3 (Image-to-Video)", "hybrid": "Hybrid FL2VA/Ref2VA (экшн)"}

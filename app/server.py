@@ -1110,7 +1110,11 @@ class App:
         loras = [{"role": r, "title": catalog.ROLE_TITLES.get(r, r), "name": self.model_names.get(r, ""), "have": r not in missing,
                   "must": r in catalog.MODE_ROLES.get(mode, []), "mine": r in picked}
                  for r in catalog.MODE_ROLES.get(mode, []) + catalog.MODE_OPTIONAL.get(mode, []) if r.endswith("_lora") and r in self.model_names]
-        loras += [{"title": "Своя LoRA", "name": x["file"], "have": True, "must": False, "mine": True, "custom": True, "off": mode in (x.get("skip") or [])}
+        loras += [{"title": "Своя LoRA", "name": x["file"], "have": True, "must": False, "mine": True, "custom": True,
+                   "fits": mode in (x.get("also") or []) or catalog.lora_fits_mode(x["file"], mode),
+                   "family": catalog.lora_family(x["file"]) or "неизвестная",
+                   "off": mode in (x.get("skip") or [])
+                          or (mode not in (x.get("also") or []) and not catalog.lora_fits_mode(x["file"], mode))}
                   for x in self.unique_loras() if x.get("on", True)]
         return web.json_response({"notes": [{"level": lv, "text": t} for lv, t in notes], "loras": loras,
                                   "picked": picked.get(role), "name": self.model_names.get(role),
@@ -2434,7 +2438,8 @@ class App:
         if self.rh():
             return []
         return [(x["file"], float(x["strength"])) for x in self.unique_loras()
-                if x.get("on", True) and x.get("file") and mode not in (x.get("skip") or [])]
+                if x.get("on", True) and x.get("file") and mode not in (x.get("skip") or [])
+                and (mode in (x.get("also") or []) or catalog.lora_fits_mode(x["file"], mode))]
 
     def unique_loras(self):
         """The user's own LoRAs, one entry per file: older versions let the same file be added
@@ -2458,9 +2463,13 @@ class App:
         if not hit:
             raise web.HTTPBadRequest(text="Такой LoRA нет в списке")
         skip = [m for m in (hit.get("skip") or []) if m != mode]
+        also = [m for m in (hit.get("also") or []) if m != mode]
         if not body.get("on"):
             skip.append(mode)
+        elif not catalog.lora_fits_mode(file, mode):
+            also.append(mode)   # the person insists on a foreign-family LoRA in this section
         hit["skip"] = skip
+        hit["also"] = also
         self.config.update(custom_loras=items)
         return web.json_response({"ok": True})
 

@@ -9006,7 +9006,9 @@ applyZoom();
 })();
 // An own main model in the mode itself: pick a file ComfyUI sees; the app says whether it fits the rest of the mode (speed-up LoRAs, format, video card)
 (() => {
-  const MAIN = { video: 'fast_unet', lipsync: 'lipsync_unet', refs: 'lipsync_unet', actor: 'lipsync_unet', swap: 'lipsync_unet', long: 'lipsync_unet', actionsc: 'action_unet', action: 'action_unet', krea: 'krea_unet', qwen: 'qwen_unet' };
+  // роль основной модели на раздел: без неё строка «своя модель» в разделе молчит (role=undefined),
+    // поэтому список должен покрывать ВСЕ режимы - раньше в нём не было реализма, FLUX, H3 Image и обоих увеличений
+    const MAIN = { video: 'fast_unet', lipsync: 'lipsync_unet', refs: 'lipsync_unet', actor: 'lipsync_unet', swap: 'lipsync_unet', long: 'lipsync_unet', actionsc: 'action_unet', action: 'action_unet', krea: 'krea_unet', kreareal: 'kreareal_unet', qwen: 'qwen_unet', flux: 'flux_unet', h3img: 'h3img_unet', upscale: 'seedvr_unet', relayvsr: 'relayvsr_unet' };
   const refresh = async box => {
     const { mode, role } = box.dataset;
     try {
@@ -9021,7 +9023,7 @@ applyZoom();
         ? '<span class="hint">LoRA: ComfyUI занят (обычно это загрузка модели) — список появится сам.</span>'
         : ((std.length ? '<span class="hint">LoRA режима:</span>' + std.map(l => `<span class="mp-l${l.have ? '' : (l.must ? ' no' : ' opt')}${l.mine ? ' mine' : ''}" title="${esc(l.must ? 'Нужна этому режиму' : 'Подключается по желанию')}">${esc(l.title)}${l.have ? '' : (l.must ? ' — файла нет' : ' — не скачана, по желанию')}${(l.have || !l.role) ? ''
   : ` <button type="button" class="mp-dl" data-dlrole="${esc(l.role)}" title="${l.must ? 'Скачать нужный этому режиму файл' : 'Скачать сейчас, файл не обязателен'}">Скачать</button>`}</span>`).join('') : '')
-          + (own.length ? '<span class="hint">Ваши LoRA:</span>' + own.map(l => `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="Нажмите, чтобы ${l.off ? 'включить' : 'выключить'} эту LoRA только в этом разделе; в других она останется как есть">${esc(String(l.name).split(/[\\/]/).pop())} · ${l.off ? 'выключена здесь — включить' : 'работает здесь — выключить'}</button>`).join('') : ''))
+          + (own.length ? '<span class="hint">Ваши LoRA:</span>' + own.map(l => `<button type="button" class="mp-l mine tgl${l.off ? ' off' : ''}" data-file="${esc(l.name)}" title="${l.fits === false ? 'По названию эта LoRA сделана для другого раздела (' + (l.family || 'другая семья') + '), поэтому здесь она по умолчанию не участвует: видео-модель от картинной LoRA может испортиться. Нажмите, чтобы включить её здесь назло.' : 'Нажмите, чтобы ' + (l.off ? 'включить' : 'выключить') + ' эту LoRA только в этом разделе; в других она останется как есть'}">${esc(String(l.name).split(/[\\/]/).pop())} · ${l.fits === false ? (l.off ? 'для этого раздела не участвует — включить назло' : 'включена здесь вручную') : (l.off ? 'выключена здесь — включить' : 'работает здесь — выключить')}</button>`).join('') : ''))
           || '<span class="hint">LoRA в этом режиме не нужны</span>';
       $('.mp-notes', box).innerHTML = r.picked ? r.notes.map(n => `<div class="${n.level}">${n.level === 'bad' ? '✕ ' : n.level === 'warn' ? '⚠ ' : 'ⓘ '}${esc(n.text)}</div>`).join('') : '';
     } catch {

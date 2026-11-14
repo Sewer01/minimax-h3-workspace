@@ -2805,7 +2805,7 @@ class App:
                 graph, stages = wf.action_part_graph(self.model_names, scenes, k, width, height, seed, images, aloras,
                                                      preview=await self.preview_opts(), state=state, fresh=fresh,
                                                      faithful=faithful and k == 0,
-                ltxv=await self.has_node("LTXVSetVideoLatentNoiseMasks") if faithful else True)
+                ltxv=await self.has_node("LTXVSetVideoLatentNoiseMasks"))
                 if faithful and s.get("refiner_def"):
                     # the refiner's input names come from the installed node; values as in the original workflow
                     for nid, node in graph.items():

@@ -1035,7 +1035,9 @@ def action_part_graph(m, scenes, k, width, height, seed, images, loras, preview=
         white = add("EmptyImage", width=round(lw / 16), height=round(lh / 16), batch_size=max(1, t_tot - t_ov), color=16777215)
         both = add("ImageBatch", image1=[black, 0], image2=[white, 0])
         vmask = add("ImageToMask", image=[both, 0], channel="red")
-        if faithful and ltxv:   # SelfLift wants a mask of shape [1, 1, T, H, W]; this node (ComfyUI-LTXVideo) builds it from one mask per latent frame
+        if ltxv:   # which latent frames are new must be said per frame: one mask per frame, and the node
+        # for it comes from ComfyUI-LTXVideo; with a single mask for the whole clip the frames kept
+        # from the previous scene and the frames being made blend into each other (double exposure)
             v_lat = [add("LTXVSetVideoLatentNoiseMasks", samples=[cut2, 0], masks=[vmask, 0]), 0]
         else:
             v_lat = [add("SetLatentNoiseMask", samples=[cut2, 0], mask=[vmask, 0]), 0]

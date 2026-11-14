@@ -6607,7 +6607,15 @@ async function sendPrompt(blk, to) {
     // строки про звук принадлежат сцене: раньше такая строка вырезалась вместе со всем текстом,
     // написанным на ней; снимаем только префикс поля описания, чтобы программа поставила выравнивание сама
     const clean = t => t.split('\n').map(l => l.replace(/^\s*integrated_multimodal_description\s*:\s*(\[Shot \d+\]\s*)?/i, '')).join('\n').trim();
-    L2.root._setScenes(list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec, fresh: x.fresh })).filter(x => x.prompt));
+    const scenesMade = list.map(x => ({ prompt: clean(x.text.join('\n')), sec: x.sec, fresh: x.fresh })).filter(x => x.prompt);
+    {   // the model sometimes copies a scene instead of moving the story on: say it out loud, do not generate the same clip four times
+      const key = s => s.prompt.toLowerCase().replace(/<[^>]+>/g, '').replace(/\W+/g, ' ').trim();
+      const by = {};
+      scenesMade.forEach((s, i) => { (by[key(s)] = by[key(s)] || []).push(i + 1); });
+      const twins = Object.keys(by).filter(k => by[k].length > 1 && k.length > 40).map(k => by[k].join(', '));
+      if (twins.length) toast('Агент повторил сцены ' + twins.join(' · ') + ' одинаковым текстом: поправьте текст или попросите его продолжить дальше');
+    }
+    L2.root._setScenes(scenesMade);
     // the studio never receives the frames from the chat: a <Video N> in the text would point at nothing,
     // and the numbers would land on the person's photos. What the studio really has is the base frame.
     prompt = prompt.replace(/<\s*Video\s*\d+\s*>/g, '<Frame>');

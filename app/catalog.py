@@ -3,6 +3,7 @@
 Every model has a role (what the workflows use it for). A role can have several
 variants; `choose_models` picks one per role from the detected hardware.
 """
+import re
 
 COMFY_VERSION = "0.44.0"  # current release; it also brings the newer MiniMax H3 nodes the modes use
 MIN_DRIVER = 580  # the bundled PyTorch is built for CUDA 13
@@ -32,6 +33,12 @@ NODE_PACKS = [
     # memory savers (MiniMaxChunkFeedForward, MiniMaxLowVRAMAttention) used by the long video graphs
     {"name": "ComfyUI-KJNodes", "repo": "kijai/ComfyUI-KJNodes",
      "commit": "ab72eda7ffad6280422d71ab7d54d3fb87c0ba18"},
+    # the exact scheme of the action workflow (Prompt Mastery): a SelfLift sampler and a finishing step.
+    # Both repos were read before adding: no network, no shell, no exec, no extra pip packages; commits pinned.
+    {"name": "comfyui-SelfLift", "repo": "facok/comfyui-SelfLift",
+     "commit": "835c3cf7919410f71f414688f049c6ca497789d0"},          # no LICENSE file in the repository
+    {"name": "ComfyUI-YCNodes-MiniMax-H3", "repo": "yichengup/ComfyUI-YCNodes-MiniMax-H3",
+     "commit": "efbe83f69ffa97a251a575ce42edc7bf8005da0c"},          # MIT; the version the workflow was made with
 ]
 
 # What each mode needs from custom nodes: checked in a user's own ComfyUI (a new install gets them by itself).
@@ -47,6 +54,11 @@ NODE_CHECKS = [
      "optional": False, "why": "видео, в котором меняем персонажа"},
     {"pack": "ComfyUI-KJNodes", "classes": ["MiniMaxChunkFeedForward", "MiniMaxLowVRAMAttention", "ImageNoiseAugmentation"], "modes": ["long"],
      "optional": False, "why": "экономия видеопамяти в длинном видео и зерно плёнки в монтаже"},
+    # without these two the exact action mode simply is not offered: the picture stays the same, just less clean
+    {"pack": "comfyui-SelfLift", "classes": ["SelfLiftH3Sampler"], "modes": ["action", "actionsc"],
+     "optional": True, "why": "точный режим экшн-сцен (чище картинка)"},
+    {"pack": "ComfyUI-YCNodes-MiniMax-H3", "classes": ["H3SigmaRefiner"], "modes": ["action", "actionsc"],
+     "optional": True, "why": "точный режим экшн-сцен (доводочный шаг)"},
 ]
 
 
@@ -69,6 +81,8 @@ def _m(repo, path, size_gb, category, name=None, sub=SUB):
 # the same file is published under two names; either one counts as present
 FILE_ALIASES = {
     "minimax_h3_latent_upscaler_3d_bf16.safetensors": ("minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors",),
+    # the SelfLift upscaler of the action scheme also exists in full precision under another name
+    "h3_upscaler_lms_v0.1.safetensors": ("h3_upscaler_lms_v0.1_fp32.safetensors",),
 }
 
 VARIANTS = {
@@ -343,6 +357,17 @@ VARIANT_LABELS = {
 
 # LoRA from the original action workflow that has no public download; used when the user has it
 ACTION_DMAD_LORA = "minimax_h3_dmad_full_dareties_v4_step600_comfy_fro"
+# the same file under the names it circulates with: the repository one and the Civitai one
+ACTION_DMAD_FILES = (ACTION_DMAD_LORA + ".safetensors",
+                     "minimax_h3_fl2v_lightx2v_v0.1_dareties_v4_step600_comfy_fro.safetensors")
+
+
+def is_action_dmad(name):
+    """Does this LoRA name mean the action acceleration file (any of its published names)?"""
+    base = re.split(r"[\\/]", name or "")[-1].lower()   # ComfyUI writes subfolders with a backslash, browsers with a slash
+    names = {n.lower() for n in ACTION_DMAD_FILES}
+    names |= {n.replace(".safetensors", "") + " (1).safetensors" for n in names}   # a browser adds "(1)" on a repeat
+    return base in names or base.replace(".safetensors", "") in {n.replace(".safetensors", "") for n in names}
 
 ROLE_TITLES = {
     "fast_unet": "Основная модель — Image-to-Video (FastH3)",

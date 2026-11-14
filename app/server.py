@@ -2840,7 +2840,7 @@ class App:
         _, oi = await self.comfy_json("GET", "/object_info/SelfLiftH3Sampler")
         _, oi2 = await self.comfy_json("GET", "/object_info/H3SigmaRefiner")
         _, loras = await self.comfy_json("GET", "/models/loras")
-        dmad = next((n for n in loras or [] if catalog.ACTION_DMAD_LORA in n), None)
+        dmad = next((n for n in loras or [] if catalog.is_action_dmad(n)), None)
         missing = {m["role"] for m in self.missing}
         have_up = "action_upscaler" not in missing
         nodes = bool(oi) and bool(oi2)
@@ -2866,7 +2866,7 @@ class App:
             # on RunningHub only built-in nodes are assumed; LoRAs are used if the user's RH workflow has them
             rh_files = {n.replace("\\", "/").split("/")[-1].lower(): n for n in (getattr(self, "rh_models", None) or [])}
             speed = rh_files.get(catalog.VARIANTS["speed_slider_lora"]["v1.1"]["file"].lower())
-            dmad = next((n for b, n in rh_files.items() if catalog.ACTION_DMAD_LORA in b), None)
+            dmad = next((n for b, n in rh_files.items() if catalog.is_action_dmad(b)), None)
             s = {"faithful": False, "dmad": dmad, "speed": speed}
         else:
             s = await self.action_setup()

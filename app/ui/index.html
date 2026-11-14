@@ -5084,8 +5084,35 @@ function makeRefMode(cfg) {
       root._sel = 0;
       root._run = Math.random().toString(36).slice(2, 12); recount(); refreshStates();
     };
+    /* Клип мог вернуться уже после того, как страница пересобралась: номер прогона живой, а карточки
+     новые. Раньше такой результат молча выбрасывался - человек видел ролик в предпросмотре, полоса
+     сцен оставалась пустой, а в журнале не было ни слова. Теперь причина пишется, а клип находится
+     в Библиотеке по номеру проекта (см. root._adopt). */
+    root._adopt = () => {   // what the Library already holds for THIS project goes back into the tiles
+      try {
+        const all = (typeof LIB !== 'undefined' && LIB) || [];
+        let took = 0;
+        all.forEach(it => {
+          const lg = it && it.long;
+          if (!lg || lg.all || lg.test || lg.run !== root._run || it.missing) return;
+          const c = $$('.sc', root)[lg.part]; if (!c) return;
+          const mk = lg.draft ? 'draft' : 'final';
+          if (c._dn && !c._dn[mk]) {
+            c._dn[mk] = { sig: root._sig(c), url: it.url, id: it.id, text: ($('textarea', c) || {}).value || '' };
+            (root._doneIds = root._doneIds || new Set()).add(it.id);
+            took++;
+          }
+        });
+        if (took) { refreshStates(); noteMsg(`студия ${cfg.mode}: нашлось в Библиотеке готовых сцен: ${took}`); }
+        return took;
+      } catch (e) { return 0; }
+    };
     root._partDone = item => {
-      const lg = item && item.long; if (!lg || lg.run !== root._run) return;
+      const lg = item && item.long;
+      if (!lg || lg.run !== root._run) {
+        if (lg && cfg.scenes) noteMsg(`студия ${cfg.mode}: пришёл клип сцены ${lg.part + 1} из проекта ${lg.run}, а сейчас открыт проект ${root._run} - заберём из Библиотеки`);
+        return;
+      }
       if (root._doneIds && root._doneIds.has(item.id)) return;   // the same result can arrive twice (panel and queue)
       (root._doneIds = root._doneIds || new Set()).add(item.id);
       if (lg.all) {   // the whole video at once: every scene is done, the last one can be continued
@@ -5229,7 +5256,7 @@ function makeRefMode(cfg) {
         if (ready && !parts.includes(ready - 1)) { cards.forEach(c => { c._dn[mk] = null; }); toast('Точка продолжения не найдена на диске: сцены нужно сделать заново.'); }
       }
       { const tgt = p.qm === 'draft' && root._dmad !== false ? 'draft' : 'final'; root._qBy = { draft: S.q, final: S.q, ...(p.qBy || {}) }; root._qBy.draft = okQ(root._qBy.draft); root._qBy.final = okQ(root._qBy.final); S.q = root._qBy[tgt]; setQ(tgt, true); }
-      setMode(p.mode || 'parts'); root._restoring = false; recount(); refreshStates(); RM[cfg.mode]?.upd?.();   // the section that owns this project refreshes its own summary
+      setMode(p.mode || 'parts'); root._restoring = false; recount(); refreshStates(); RM[cfg.mode]?.upd?.(); root._adopt?.();   // clips that finished while the page was elsewhere come back to their tiles   // the section that owns this project refreshes its own summary
       return true;
     };
     root._restoring = true;   // nothing is saved until the last project has been put back
@@ -5250,7 +5277,7 @@ function makeRefMode(cfg) {
         if (!last) { const r = await (await fetch('/api/long/project?last=1&sec=' + cfg.mode)).json(); last = r.run || ''; }
         if (last) await root._openRun(last);
       } catch {}
-      root._restoring = false; root._save();
+      root._restoring = false; root._save(); root._adopt?.();
     }, 2500);
 
     const rst = document.createElement('button'); rst.className = 'btn lm-reset'; rst.type = 'button'; rst.hidden = true; rst.textContent = 'Начать заново';

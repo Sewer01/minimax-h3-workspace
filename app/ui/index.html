@@ -919,6 +919,10 @@ body.dropping::after{content:'Отпустите — программа разл
 #clCard .cl-f{width:100%;max-width:100%}
 #clCard .m .chip,#clCard .m .btn{white-space:normal;text-align:center}
 #mdStatus>#mdModelsCard,#mdStatus>#mdDl,#mdStatus>#mdNodesCard,#mdStatus>details{grid-column:auto}
+.mg{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:16px 0 6px;padding-top:10px;border-top:1px solid var(--line)}
+.mg:first-child{margin-top:2px;border-top:0;padding-top:0}
+.mg b{font-size:13.5px}
+.mg small{color:var(--muted);font-size:11.5px}
 .card.fold>.card-h{cursor:pointer;user-select:none}
 .card.fold>.card-h h3::before{content:'▾';display:inline-block;width:18px;color:var(--dim);transition:transform .15s}
 .card.fold.collapsed>.card-h h3::before{transform:rotate(-90deg)}
@@ -1711,7 +1715,7 @@ body.dropping::after{content:'Отпустите — программа разл
         </details>
         <div id="mdRow">
       <div class="card" id="mdEngineCard" style="margin-bottom:16px">
-          <div class="card-h"><h3>Движок</h3><button class="btn" id="mdEngUpd" type="button" title="Спросить GitHub, вышла ли новая версия ComfyUI, и обновить её, не трогая модели и ноды">Проверить обновление</button></div>
+          <div class="card-h"><h3>Движок</h3><button class="btn" id="mdEngBat" type="button" title="Запустить штатный update_comfyui.bat встроенной сборки: он обновляет ядро и ноды, не трогая модели" style="margin-right:6px">Обновить ComfyUI штатно</button><button class="btn" id="mdEngUpd" type="button" title="Спросить GitHub, вышла ли новая версия ComfyUI, и обновить её, не трогая модели и ноды">Проверить обновление</button></div>
           <div class="kv" id="mdEngine"></div>
           <div class="hint" id="engProbe" style="margin-top:8px"></div>
           <div class="hint" id="mdEngState" style="margin-top:6px"></div>
@@ -3803,12 +3807,29 @@ function renderModels(s) {
   const miss = s.models.filter(m => !m.have).map(m => m.role).sort().join(',');
   if (window._missSig !== undefined && window._missSig !== miss && window.refreshMdl) window.refreshMdl();
   window._missSig = miss;
-  $('#mlist').innerHTML = s.models.map(m => {
+  /* список был сплошной простынёй: непонятно, к какому разделу какой файл ✓ теперь группы
+     по режимам - файл показан один раз под тем режимом, который раньше всех в нём участвует,
+     а остальные режимы перечислены в самой строке */
+  const MNAME = { video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн-видео', actionsc: 'Экшн-видеостудия', h3img: 'Изображения MiniMax H3 Image', long: 'Видеостудия', krea: 'Изображение по тексту', kreareal: 'Изображение: реализм', qwen: 'Правка изображения', flux: 'Правка изображения: FLUX.2 (в коммерцию)', upscale: 'Увеличение видео и изображений', relayvsr: 'Быстрое увеличение видео (RelayVSR)' };
+  const mRow = m => {
     const optional = !m.modes.length;
     const st = m.have ? '<span class="st ok">✓ загружено</span>' : optional ? '<span class="st opt" title="Без этого файла разделы работают; он добавляет возможность. Нажмите «Скачать», чтобы взять его.">по желанию</span>' : '<span class="st miss" title="Этот файл нужен выбранным разделам. Нажмите «Докачать недостающие» или «Скачать».">нет файла</span>';
-    const modes = m.modes.map(x => ({ video: 'Image-to-Video', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн-видео', actionsc: 'Экшн-видеостудия', long: 'Видеостудия', krea: 'Изображение по тексту', kreareal: 'Изображение: реализм', qwen: 'Правка изображения', flux: 'Правка: FLUX.2', upscale: 'Увеличение', relayvsr: 'Быстрое увеличение' })[x] || x).join(', ') || 'дополнительно';
+    const modes = m.modes.map(x => MNAME[x] || x).join(', ') || 'дополнительно';
 
     return `<div class="m"><b>${esc((m.name || m.file || '').split('\\').pop())}<small>${esc(m.title)} · ${modes}<br>Нужен файл: <span class="mf" title="Нажмите, чтобы скопировать имя">${esc(m.file || '')}</span> · положить в папку ${esc(m.folder || '')} вашего ComfyUI (подойдёт и любая подпапка в ней)${m.marks ? ` · в названии: ${esc(m.marks)}` : ''}</small></b><span class="hint sz">${GB(m.size)}</span>${st}<div class="m-btns" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap">${!m.have ? `<button class="btn mini pri" type="button" data-dlnow="${m.role}" title="Скачать этот файл прямо в папку моделей вашего ComfyUI">Скачать (${GB(m.size)})</button>` : ''}<button class="btn mini" type="button" data-dlmodel="${m.role}" title="Открыть страницу скачивания этого файла в браузере">Страница в интернете…</button><button class="btn mini" type="button" data-copyurl="${esc(m.url || '')}" title="Скопировать прямую ссылку, чтобы скачать менеджером загрузок или через другой компьютер">Копировать ссылку</button><button class="btn mini" type="button" data-copyname="${esc(m.file || '')}" title="Скопировать имя файла, чтобы найти его на компьютере или на сайте">Копировать имя</button><button class="btn mini" type="button" data-pickmodel="${m.role}" title="${m.have ? 'Заменить на другой файл (например, другую точность модели)' : 'Если файл у вас называется иначе — выберите его вручную'}">${m.have ? (m.picked ? 'Другой файл ✓' : 'Заменить…') : 'Указать файл…'}</button>${m.variants && m.variants.length > 1 ? `<button class="btn mini" type="button" data-variant="${m.role}" title="Поставить другую версию этой же модели, например полегче или новее">Другая версия…</button>` : ''}${m.lic ? `<span class="licb ${m.lic}" title="${esc(m.lic_note || '')}">${({ nc: 'нельзя в коммерцию', unknown: 'лицензия не указана', mixed: 'ролик можно, модель — нет', h3: 'MiniMax H3: условия' })[m.lic] || 'лицензия'}</span>` : ''}</div></div>`;
+  };
+  const ownerOf = m => !m.modes.length ? '' : m.modes.slice().sort((a, b) => {
+    const ia = MODE_ORDER.indexOf(a), ib = MODE_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  })[0];
+  const MG = {};
+  s.models.forEach(m => { const g = ownerOf(m) || '_extra'; (MG[g] = MG[g] || []).push(m); });
+  $('#mlist').innerHTML = [...MODE_ORDER.filter(k => MG[k]), ...MG._extra ? ['_extra'] : []].map(k => {
+    const list = MG[k], got = list.filter(m => m.have).length;
+    const bad = list.filter(m => !m.have && k !== '_extra').length;
+    return `<div class="mg"><b>${k === '_extra' ? 'Дополнительные файлы' : esc(MNAME[k] || k)}</b>`
+      + `<small>${got} из ${list.length} · ${k === '_extra' ? 'ставятся по желанию' : bad ? bad + ' не хватает' : 'всё на месте'}</small></div>`
+      + list.map(mRow).join('');
   }).join('');
   $('#mdFix').hidden = s.engine !== 'managed' || s.models.every(m => m.have || !m.modes.length);
   MD_EXT = s.engine === 'external';
@@ -4013,7 +4034,22 @@ setTimeout(fitTopBar, 700);   // the pills are built a moment after the page ope
     toast(`Вышел ComfyUI ${esc(core.latest)} — можно обновить`);
     say(`Вышел ComfyUI <b>${esc(core.latest)}</b> (у вас ${esc(core.installed)}). Обновим только код ядра (несколько десятков мегабайт): модели, ноды и папка вывода не меняются, а перезаписываемые файлы уйдут в резерв, из которого можно вернуть.
       <button class="btn pri mini" id="mdEngGo" type="button" style="margin-left:6px">Обновить движок</button>${roll(core)}`);
-    $('#mdEngGo').onclick = async e => {
+    const bat = $('#mdEngBat');
+  if (bat) bat.onclick = async e => {
+    if ((window.QUEUE || []).some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация: дождитесь конца'); return; }
+    confirmBox('Обновить встроенный ComfyUI?',
+      'Запустим штатный update_comfyui.bat самой сборки: он обновляет ядро и ноды, но не трогает скачанные модели. ComfyUI на минуту закроется и поднимется сам. Продолжать?',
+      async () => {
+        bat.disabled = true; say('Обновляем ComfyUI штатным скриптом… это несколько минут');
+        try {
+          const r = await postJSON('/api/comfy/update', {});
+          say((r.ok ? 'Готово: ' + (r.before || '?') + ' → ' + (r.after || '?') : 'Скрипт завершился с кодом ' + r.code + ' · ядро перезапущено') + ' · подробности в журнале программы');
+          loadStatus();
+        } catch (err) { say('Не вышло: ' + esc(err.message)); }
+        bat.disabled = false;
+      }, { ok: 'Обновить', cancel: 'Отмена' });
+  };
+  $('#mdEngGo').onclick = async e => {
       if ((window.QUEUE || []).some(j => j.state === 'queued' || j.state === 'running')) { toast('Идёт генерация: дождитесь конца'); return; }
       e.target.disabled = true;
       try { await postJSON('/api/updates/core', { version: core.latest }); poll(); }

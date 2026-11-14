@@ -1403,6 +1403,55 @@ class App:
         self.recent_errors = (self.recent_errors + [f"{datetime.now():%H:%M:%S} {text}"])[-15:]
 
 
+    async def h_comfy_update(self, _req):
+        """Кнопка «Обновить ComfyUI»: запускает ШТАТНЫЙ update_comfyui.bat встроенной сборки -
+           обычный, не _stable и не _and_python_dependencies: те могут заменить PyTorch на CPU-сборку,
+           после чего ComfyUI уже не запустится с видеокартой."""
+        if self.config.get("engine") != "managed":
+            return web.json_response({"error": "Обновление ComfyUI из программы работает только для встроенного ComfyUI."}, status=400)
+        if self.installer or getattr(self, "comfy_updating", False):
+            return web.json_response({"error": "Сейчас идёт установка или обновление. Дождитесь конца."}, status=409)
+        root = self.comfy_root()
+        bat = root / "update" / "update_comfyui.bat"
+        if not bat.exists():
+            return web.json_response({"error": "Не найден файл update\\update_comfyui.bat во встроенном ComfyUI."}, status=404)
+        self.comfy_updating = True
+        applog("обновление ComfyUI: запускаем штатный скрипт сборки")
+        try:
+            before = None
+            try:
+                before = (await self.system_stats())["system"].get("comfyui_version")
+            except Exception:
+                pass
+            if self.process:
+                await asyncio.to_thread(self.process.stop)
+
+            def run():
+                # аргумент нужен, чтобы .bat пропустил свою «pause» в конце и не ждал нажатия кнопки
+                p = subprocess.run(["cmd", "/c", "update_comfyui.bat", "nopause"], cwd=bat.parent, capture_output=True,
+                                   timeout=1200, creationflags=engine.CREATE_NO_WINDOW, env=engine.local_env(root))
+                return p.returncode, (p.stdout or b"").decode("cp866", "replace") + (p.stderr or b"").decode("cp866", "replace")
+            try:
+                code, out = await asyncio.to_thread(run)
+            except Exception as e:
+                code, out = -1, f"{type(e).__name__}: {e}"
+            self.start_managed()
+            try:
+                await self.wait_comfy()
+            except Exception as e:
+                applog("обновление ComfyUI: после обновления ядро не поднялось - " + str(e)[:120])
+            after = None
+            try:
+                after = (await self.system_stats())["system"].get("comfyui_version")
+            except Exception:
+                pass
+            await self.resolve_models()
+            applog(f"обновление ComfyUI: код {code} · было {before} → стало {after}")
+            return web.json_response({"ok": code == 0, "code": code, "before": before, "after": after,
+                                      "log": out[-3000:].replace("\r", "")})
+        finally:
+            self.comfy_updating = False
+
     async def h_ui_log(self, req):
         """One line from the page: what the studio decided, what broke in a script. Without this the
            page fails silently and the reason can only be guessed."""
@@ -4034,6 +4083,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/action", state.h_generate_action),
         web.get("/api/action/info", state.h_action_info),
         web.post("/api/log", state.h_ui_log),
+        web.post("/api/comfy/update", state.h_comfy_update),
         web.get("/api/cloud", state.h_cloud_get),
         web.post("/api/cloud", state.h_cloud_set),
         web.post("/api/cloud/test", state.h_cloud_test),

@@ -1301,6 +1301,150 @@ def _qwen_base(m, image, megapixels, prompt, seed, size=None, extras=()):
     return g, stages
 
 
+H3IMG_MP = {"4": 4.0, "8": 8.0, "16": 16.0}   # the model is tuned for about 4 megapixels and up (2048x2048); best around 16
+H3IMG_MAX_REFS = 5
+
+def h3img_size(aspect, megapixels):
+    """Width and height (multiples of 32) of the given aspect ratio and area in megapixels."""
+    try:
+        aw, ah = (float(x) for x in str(aspect).split(":"))
+        assert aw > 0 and ah > 0
+    except (ValueError, AssertionError):
+        aw, ah = 1.0, 1.0
+    px = megapixels * 1_000_000
+    return r32(math.sqrt(px * aw / ah)), r32(math.sqrt(px * ah / aw))
+
+
+def _h3img_base(m):
+    return {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": m["h3img_unet"], "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": m["text_encoder"], "type": "minimax", "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": m["h3img_vae"]}},
+        "4": {"class_type": "ModelAttentionBackend", "inputs": {"model": ["1", 0], "attention": "comfy kitchen attention"}},
+    }
+
+
+def h3img_t2i_graph(m, prompt, width, height, seed):
+    """MiniMax H3 Image, picture by text (the official t2i workflow): 6 steps, CFG 1, no negative prompt. No prompt enhancer: the
+    prompt is written by the agent's skill."""
+    g = _h3img_base(m)
+    g.update({
+        "5": {"class_type": "MiniMaxH3ImageConditioning", "inputs": {"prompt": prompt, "width": width, "height": height,
+                                                                        "clip": ["2", 0], "vae": ["3", 0]}},
+        "6": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
+        "7": {"class_type": "BasicGuider", "inputs": {"model": ["4", 0], "conditioning": ["5", 0]}},
+        "8": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+        "9": {"class_type": "BasicScheduler", "inputs": {"model": ["4", 0], "scheduler": "beta", "steps": 6, "denoise": 1.0}},
+        "10": {"class_type": "SamplerCustomAdvanced", "inputs": {
+            "noise": ["6", 0], "guider": ["7", 0], "sampler": ["8", 0], "sigmas": ["9", 0], "latent_image": ["5", 1]}},
+        "11": {"class_type": "VAEDecode", "inputs": {"samples": ["10", 0], "vae": ["3", 0]}},
+        "12": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/h3img", "images": ["11", 0]}},
+    })
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load", "5": "encode", "6": "encode", "7": "encode", "8": "encode",
+              "9": "encode", "10": "sample", "11": "decode", "12": "save"}
+    return g, stages
+
+
+def h3img_edit_graph(m, prompt, images, megapixels, seed, size=None, ref_mp=None):
+    """MiniMax H3 Image with reference pictures (up to H3IMG_MAX_REFS): <Picture 1> is the picture to edit (and gives the shape of the
+    result unless `size` is given), the others are style / character / object references. Every picture is scaled to about
+    `ref_mp` (default: `megapixels`); the size of the result follows the first picture scaled to `megapixels` (multiples of 32).
+    A small `ref_mp` with a big `megapixels` gives a big clean result without feeding huge references to the model."""
+    g = _h3img_base(m)
+    ref_mp = ref_mp or megapixels
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load"}
+    cond = {"prompt": prompt, "clip": ["2", 0], "vae": ["3", 0]}
+    for i, name in enumerate(list(images)[:H3IMG_MAX_REFS]):
+        lid, rid = f"2{i}0", f"2{i}1"
+        g[lid] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        g[rid] = {"class_type": "ResizeImageMaskNode", "inputs": {
+            "resize_type": "scale total pixels", "resize_type.megapixels": ref_mp, "scale_method": "area", "input": [lid, 0]}}
+        last = rid
+        if i == 0:
+            src = rid
+            if ref_mp != megapixels:   # the size of the result comes from the same picture at the bigger area
+                g["219"] = {"class_type": "ResizeImageMaskNode", "inputs": {
+                    "resize_type": "scale total pixels", "resize_type.megapixels": megapixels, "scale_method": "area", "input": [lid, 0]}}
+                src = "219"
+                stages["219"] = "encode"
+            g["220"] = {"class_type": "ResizeImageMaskNode", "inputs": {
+                "resize_type": "scale to multiple", "resize_type.multiple": 32, "scale_method": "area", "input": [src, 0]}}
+            g["221"] = {"class_type": "GetImageSize", "inputs": {"image": ["220", 0]}}
+            last = "220" if ref_mp == megapixels else rid   # the model gets the picture at `ref_mp`
+            stages.update({"220": "encode", "221": "encode"})
+        cond[f"images.image_{i}"] = [last, 0]
+        stages.update({lid: "encode", rid: "encode"})
+    cond["width"], cond["height"] = (size[0], size[1]) if size else (["221", 0], ["221", 1])
+    g.update({
+        "5": {"class_type": "MiniMaxH3ImageConditioning", "inputs": cond},
+        "6": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["5", 0]}},
+        "7": {"class_type": "KSampler", "inputs": {
+            "seed": seed, "steps": 6, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+            "model": ["4", 0], "positive": ["5", 0], "negative": ["6", 0], "latent_image": ["5", 1]}},
+        "8": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}},
+        "9": {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/h3img_edit", "images": ["8", 0]}},
+    })
+    stages.update({"5": "encode", "6": "encode", "7": "sample", "8": "decode", "9": "save"})
+    return g, stages
+
+
+H3IMG_SHEET_SIZE = (3840, 2176)    # about 8 MP: at 4 MP (the lower limit of the model) the picture is grainy, 8-16 MP is clean
+H3IMG_SHEET6_SIZE = (4352, 1984)
+H3IMG_FRAME_SIZE = (3328, 1856)    # one storyboard frame, about 6 MP
+
+
+def h3img_tags(text):
+    """The prompts written for Qwen call the pictures <image1>, <image2>; MiniMax H3 Image calls them <Picture 1>, <Picture 2>."""
+    return re.sub(r"<image\s*(\d)>", r"<Picture \1>", text)
+
+
+def h3img_sheet_graph(m, image, seed, headless=True, background="grey", marks="", panels=4, mp=None):
+    """Character sheet from one picture on MiniMax H3 Image (the same sheet text as for Qwen, tags <Picture 1>).
+    `mp`: area of the whole sheet in megapixels (the panels share it: a sheet needs 8-16 MP to look clean)."""
+    prompt = h3img_tags(sheet_prompt(headless, background, marks, panels))
+    size = h3img_size("11:5" if panels == 6 else "16:9", mp) if mp else (H3IMG_SHEET6_SIZE if panels == 6 else H3IMG_SHEET_SIZE)
+    g, stages = h3img_edit_graph(m, prompt, [image], 2.0, seed, size)
+    return g, stages, prompt
+
+
+def h3img_story_graph(m, images, prompt, seed, size=H3IMG_SHEET_SIZE):
+    """Storyboard as ONE picture from 1-5 pictures (character, location...): <Picture 1>, <Picture 2> in the prompt."""
+    return h3img_edit_graph(m, prompt, images, 2.0, seed, size)
+
+
+def h3img_frames_graph(m, refs, prompts, seed, size=H3IMG_FRAME_SIZE, line="white"):
+    """The frame-by-frame storyboard on MiniMax H3 Image: every frame is its own picture, the sheet is glued from them."""
+    g = _h3img_base(m)
+    stages = {"1": "load", "2": "load", "3": "load", "4": "load"}
+    scaled = []
+    for i, img in enumerate(list(refs)[:H3IMG_MAX_REFS]):
+        a, b = f"10{i}", f"11{i}"
+        g[a] = {"class_type": "LoadImage", "inputs": {"image": img}}
+        g[b] = {"class_type": "ResizeImageMaskNode", "inputs": {
+            "resize_type": "scale total pixels", "resize_type.megapixels": 2.0, "scale_method": "area", "input": [a, 0]}}
+        scaled.append(b)
+        stages[a] = stages[b] = "encode"
+    titles, frame_nodes = {}, []
+    for i, text in enumerate(prompts):
+        base = 200 + i * 10
+        en, zr, ks, dc, sv = (str(base + k) for k in range(5))
+        cond = {"prompt": text, "width": size[0], "height": size[1], "clip": ["2", 0], "vae": ["3", 0]}
+        for k, b in enumerate(scaled):
+            cond[f"images.image_{k}"] = [b, 0]
+        g[en] = {"class_type": "MiniMaxH3ImageConditioning", "inputs": cond}
+        g[zr] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": [en, 0]}}
+        g[ks] = {"class_type": "KSampler", "inputs": {
+            "seed": seed + i, "steps": 6, "cfg": 1, "sampler_name": "euler", "scheduler": "simple", "denoise": 1,
+            "model": ["4", 0], "positive": [en, 0], "negative": [zr, 0], "latent_image": [en, 1]}}
+        g[dc] = {"class_type": "VAEDecode", "inputs": {"samples": [ks, 0], "vae": ["3", 0]}}
+        g[sv] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "H3Workspace/story_frame", "images": [dc, 0]}}
+        stages.update({en: "encode", zr: "encode", ks: "sample", dc: "decode", sv: "save"})
+        titles[sv] = f"Кадр {i + 1}"
+        frame_nodes.append([dc, 0])
+    _glue(g, stages, titles, frame_nodes, line)
+    return g, stages, titles
+
+
 def flux_t2i_graph(m, prompt, width, height, seed):
     """FLUX.2 klein 4B (distilled), picture by text: 4 steps, CFG 1, no negative prompt."""
     g = {

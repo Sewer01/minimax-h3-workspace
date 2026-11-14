@@ -95,6 +95,9 @@ class JobStore(dict):
         return r
 
 
+H3IMG_MAX_PX = 20_000_000   # MiniMax H3 Image works at 4-20 MP: its own limit is far above the other picture models
+
+
 def round_size(form, step=32, low=256, high=2048, max_px=2200000):
     """The user's own width/height from the form, rounded to the model's step (None when not given)."""
     w, h = str(form.get("width", "")), str(form.get("height", ""))
@@ -438,7 +441,7 @@ class App:
             if hit:
                 found.add(role)
         # modes added after a set-up was made: with your own ComfyUI they switch on by themselves when the files are there
-        self.auto_modes = {m for m in ("krea", "kreareal", "qwen", "flux", "upscale", "long") if self.config.get("engine") == "external"
+        self.auto_modes = {m for m in ("krea", "kreareal", "qwen", "flux", "h3img", "upscale", "long") if self.config.get("engine") == "external"
                            and all(r in found for r in catalog.MODE_ROLES[m])}
         needed = catalog.roles_for(self.modes())
         missing = [entries[r] for r in needed if r in entries and r not in found]
@@ -2162,6 +2165,14 @@ class App:
         if custom:
             width, height = custom
         engine = form.get("engine", "krea")
+        if engine == "h3img":   # MiniMax H3 Image: размер берётся из формата и площади (МП), а не из таблицы 1 МП
+            await self.need_models("h3img")
+            mp = wf.H3IMG_MP.get(form.get("mp", "4"), 4.0)
+            width, height = round_size(form, high=8192, max_px=H3IMG_MAX_PX) or wf.h3img_size(aspect, mp)
+            graph, stages = wf.h3img_t2i_graph(self.model_names, prompt, width, height, seed)
+            return await self.queue(graph, stages, {
+                "mode": "krea", "sub": "Изображение (MiniMax H3 Image)", "prompt": prompt, "aspect": aspect,
+                "q": "4K" if mp >= 8 else "2K", "len": 0.0, "res": f"{width}×{height}", "seed": seed, **lab})
         if engine == "flux":
             await self.need_models("flux")
             graph, stages = wf.flux_t2i_graph(self.model_names, prompt, width, height, seed)
@@ -2189,7 +2200,9 @@ class App:
     async def h_generate_qwen(self, req):
         form, image, seed = await self.read_image_form(req)
         flux = form.get("kind") != "sheet" and form.get("engine") == "flux"
-        await self.need_models("flux" if flux else "qwen")
+        # MiniMax H3 Image ведёт себя так же в трёх задачах: правка, раскадровка, лист персонажа; картинок до 5
+        h3 = form.get("engine") == "h3img" and form.get("kind", "edit") in ("edit", "story", "sheet")
+        await self.need_models("h3img" if h3 else "flux" if flux else "qwen")
         if form.get("kind") == "story" and form.get("frames") == "1":
             # storyboard frame by frame (FLUX.2 klein): every frame is its own picture, the sheet is glued from them
             use_qwen = form.get("engine") == "qwen"
@@ -2198,8 +2211,10 @@ class App:
             if len(frames) not in wf.FRAME_COLS:
                 raise web.HTTPBadRequest(text=f"Нужно 2, 3, 4, 6, 8 или 9 кадров, а в описании их {len(frames)}. Напишите каждый кадр с новой строки: «1: ...», «2: ...».")
             refs = [x for x in ([image] if image else []) + list(form.get("_extra") or [])]
-            build = wf.qwen_frames_graph if use_qwen else wf.flux_frames_graph
-            graph, stages, titles = build(self.model_names, refs, frames, seed, size=round_size(form) or wf.FRAME_SIZE, line=form.get("line", "white"))
+            build = wf.h3img_frames_graph if h3 else wf.qwen_frames_graph if use_qwen else wf.flux_frames_graph
+            fsize = (round_size(form, high=8192, max_px=H3IMG_MAX_PX)
+                     or (wf.h3img_size("16:9", min(wf.H3IMG_MP.get(form.get("size", "4"), 4.0), 8.0)) if h3 else wf.FRAME_SIZE))
+            graph, stages, titles = build(self.model_names, refs, frames, seed, size=fsize, line=form.get("line", "white"))
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Раскадровка по кадрам", "prompt": form.get("prompt", "").strip(), "aspect": "",
                 "q": "", "len": 0.0, "res": "", "seed": seed}, titles=titles)
@@ -2210,14 +2225,29 @@ class App:
             if not prompt:
                 raise web.HTTPBadRequest(text="Опишите историю по кадрам")
             refs = [image] + list(form.get("_extra") or [])
-            sz = round_size(form) or wf.STORY_SIZE
-            if flux:
+            sz = round_size(form, high=8192, max_px=H3IMG_MAX_PX) or (
+                wf.h3img_size("16:9", wf.H3IMG_MP.get(form.get("size", "4"), 4.0)) if h3 else wf.STORY_SIZE)
+            if h3:
+                graph, stages = wf.h3img_story_graph(self.model_names, refs, prompt, seed, sz)
+            elif flux:
                 graph, stages = wf.flux_story_graph(self.model_names, refs, prompt, seed, sz)
             else:
                 graph, stages = wf.qwen_story_graph(self.model_names, refs, prompt, seed, sz)
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Раскадровка по изображениям", "prompt": prompt, "aspect": "",
                 "q": "", "len": 0.0, "res": "%d×%d" % wf.STORY_SIZE, "seed": seed})
+        if h3:
+            prompt = form.get("prompt", "").strip()
+            if not prompt:
+                raise web.HTTPBadRequest(text="Напишите, что изменить на изображении")
+            mp = wf.H3IMG_MP.get(form.get("size", "4"), 4.0)
+            size = round_size(form, high=8192, max_px=H3IMG_MAX_PX) or (
+                wf.h3img_size(form["aspect"], mp) if form.get("aspect") else None)
+            graph, stages = wf.h3img_edit_graph(self.model_names, prompt, [image] + list(form.get("_extra") or ()),
+                                                mp, seed, size, min(mp, 4.0))
+            return await self.queue(graph, stages, {
+                "mode": "qwen", "sub": "Правка изображения (MiniMax H3 Image)", "prompt": prompt, "aspect": "",
+                "q": "", "len": 0.0, "res": "%d×%d" % size if size else "", "seed": seed})
         if flux:
             prompt = form.get("prompt", "").strip()
             if not prompt:
@@ -2227,6 +2257,18 @@ class App:
             return await self.queue(graph, stages, {
                 "mode": "qwen", "sub": "Правка изображения (FLUX.2)", "prompt": prompt, "aspect": "",
                 "q": "", "len": 0.0, "res": "", "seed": seed})
+        if form.get("kind") == "sheet" and h3:
+            panels = 6 if form.get("panels") == "6" else 4
+            graph, stages, prompt = wf.h3img_sheet_graph(
+                self.model_names, image, seed, headless=form.get("headless", "1") != "0",
+                background=form.get("background", "grey"), marks=form.get("marks", "")[:300], panels=panels)
+            sub_, res = "Лист персонажа (MiniMax H3 Image)", "%d×%d" % (
+                wf.H3IMG_SHEET6_SIZE if panels == 6 else wf.H3IMG_SHEET_SIZE)
+            prompt = "Лист персонажа · MiniMax H3 Image" + (" (6 панелей)" if panels == 6 else "") + (
+                ": " + form["marks"].strip()[:80] if form.get("marks", "").strip() else "")
+            return await self.queue(graph, stages, {
+                "mode": "qwen", "sub": sub_, "prompt": prompt, "aspect": "", "q": "4K", "len": 0.0,
+                "res": res, "seed": seed})
         if form.get("kind") == "sheet":
             panels = 6 if form.get("panels") == "6" else 4
             graph, stages, prompt = wf.qwen_sheet_graph(

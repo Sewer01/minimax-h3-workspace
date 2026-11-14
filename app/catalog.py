@@ -220,6 +220,17 @@ VARIANTS = {
     "qwen_vae": {
         "bf16": _m("Comfy-Org/Qwen-Image-2.1", "vae/qwen_image_2.1_vae_bf16.safetensors", 0.68, "vae", sub=IMG_SUB),
     },
+    # MiniMax H3 Image: picture by text and edit by up to 5 reference pictures, the same 6-step scheme.
+    # W4A8 is the light one (12.5 GB, fits 16 GB cards); int8 is heavier and cleaner.
+    "h3img_unet": {
+        "w4a8": _m("Comfy-Org/MiniMax-H3-Image", "diffusion_models/minimax_h3_image_pruned_w4a8.safetensors",
+                   12.55, "diffusion_models"),
+        "int8": _m("Comfy-Org/MiniMax-H3-Image", "diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors",
+                   20.98, "diffusion_models"),
+    },
+    "h3img_vae": {
+        "fp16": _m("Comfy-Org/MiniMax-H3-Image", "vae/minimax_h3_image_vae_fp16.safetensors", 1.17, "vae"),
+    },
     # FLUX.2 klein 4B (Apache 2.0, free for commercial use): edit a picture by text
     "flux_unet": {
         "fp8": _m("black-forest-labs/FLUX.2-klein-4b-fp8", "flux-2-klein-4b-fp8.safetensors", 4.07,
@@ -239,6 +250,12 @@ VARIANTS = {
 # A mirror or a damaged CDN answer must never quietly become someone else's weights.
 # Files that Hugging Face keeps as plain git objects have no published sum and are not here.
 MODEL_SHA256 = {
+    "Comfy-Org/MiniMax-H3-Image|diffusion_models/minimax_h3_image_pruned_w4a8.safetensors":
+        "517cc19b85348386f4df7c806dce80d839d0899e7cdaa3e1dbb09de964381dbb",
+    "Comfy-Org/MiniMax-H3-Image|diffusion_models/minimax_h3_image_pruned_int8_convrot.safetensors":
+        "83eb140f1ff95c068f8a6886e6d3f3d0d4ab2e07bb2fe6d2ef992a51146ee622",
+    "Comfy-Org/MiniMax-H3-Image|vae/minimax_h3_image_vae_fp16.safetensors":
+        "d80e9c2e5cfc9844869961ff5a58c9a9e52182df6bfb30b26018dd7f348721af",
     "Alissonerdx/Minimax-H3-ComfyUI|latent_upscaler/h3_upscaler_lms_v0.1.safetensors": "40d4228227146245ef2b65480b647c50222465ca125de5880f192e3259e40d59",
     "Alissonerdx/Minimax-H3-ComfyUI|vae_approx/taeh3.safetensors": "4fd022bfcab08772fe0536b17ea1a3bbb5625be11e397868d1c5d891863d4c13",
     "Comfy-Org/Krea-2|diffusion_models/krea2_turbo_int8_convrot.safetensors": "8e4eeda70dd5037ab1ba2bef6b417f9f901e26093117cf397f741fc1fdaaf3f1",
@@ -336,6 +353,7 @@ ROLE_MARKS = {
     "krea_vae": ["qwen_image", "qwen-image"], "kreareal_unet": ["krea"], "kreareal_lora": ["realism"],
     "qwen_unet": ["qwen"], "qwen_clip": ["qwen3vl", "qwen3-vl"], "qwen_vae": ["qwen"],
     "flux_unet": ["flux"], "flux_clip": ["qwen_3", "qwen3"], "flux_vae": ["flux"],
+    "h3img_unet": ["h3_image", "h3-image"], "h3img_vae": ["h3_image_vae", "image_vae"],
 }
 
 
@@ -352,6 +370,7 @@ def marks_text(role):
 
 # Plain words for the "another version" choice in the Models section (only versions of the same model replace each other)
 VARIANT_LABELS = {
+    "h3img_unet": {"w4a8": "лёгкая W4A8 (12,5 ГБ)", "int8": "обычная int8 (21 ГБ)"},
     "fast_unet": {"int8": "обычная (int8)", "nvfp4": "лёгкая NVFP4 — только для видеокарт RTX 50-й серии"},
     "lipsync_unet": {"full": "v1.3 полная (самая тяжёлая)", "pruned": "v1.3 облегчённая", "lite": "v1.3 лёгкая (слабее качество)",
                      "v2": "v2 облегчённая — по отзывам, звук лучше", "v2_full": "v2 полная"},
@@ -373,6 +392,8 @@ def is_action_dmad(name):
     return base in names or base.replace(".safetensors", "") in {n.replace(".safetensors", "") for n in names}
 
 ROLE_TITLES = {
+    "h3img_unet": "Основная модель — Изображения MiniMax H3 Image (по тексту и правка по референсам)",
+    "h3img_vae": "VAE для MiniMax H3 Image",
     "fast_unet": "Основная модель — Image-to-Video (FastH3)",
     "lipsync_unet": "Основная модель — Lipsync (Singularity)",
     "text_encoder": "Текстовый энкодер (Qwen3-VL 32B)",
@@ -409,7 +430,7 @@ ROLE_TITLES = {
 }
 
 MODE_TITLES = {"video": "Image-to-Video", "lipsync": "Lipsync", "refs": "Референсы", "actor": "Актёрская игра", "swap": "Замена персонажа", "action": "Экшн-сцены",
-               "krea": "Изображение по тексту", "kreareal": "Изображение: реализм", "qwen": "Правка изображения", "flux": "Правка изображения: FLUX.2 (можно в коммерцию)",
+               "krea": "Изображение по тексту", "kreareal": "Изображение: реализм", "qwen": "Правка изображения", "flux": "Правка изображения: FLUX.2 (можно в коммерцию)", "h3img": "Изображения MiniMax H3 Image (по тексту и по референсам)",
                "upscale": "Увеличение видео и изображений", "relayvsr": "Быстрое увеличение видео (RelayVSR)", "long": "Длинное видео",
     "actionsc": "Экшн-видеостудия (сцены подряд)"}
 
@@ -431,6 +452,7 @@ MODE_ROLES = {
     "kreareal": ["kreareal_unet", "kreareal_lora", "krea_clip", "krea_vae"],
     "qwen": ["qwen_unet", "qwen_clip", "qwen_vae"],
     "flux": ["flux_unet", "flux_clip", "flux_vae"],
+    "h3img": ["h3img_unet", "text_encoder", "h3img_vae"],
     "upscale": ["seedvr_unet", "seedvr_vae"],
     "relayvsr": ["relayvsr_unet", "relayvsr_vae"],
 }
@@ -448,7 +470,7 @@ MODE_OPTIONAL = {
 ALL_ROLES = list(VARIANTS)
 
 # The user's original files, for connecting to an existing ComfyUI that already has them.
-DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
+DEFAULT_CHOICE = {"h3img_unet": "w4a8", "h3img_vae": "fp16", "fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "nvfp4", "video_vae": "int8",
                   "audio_vae": "fp32", "ref2v_turbo_lora": "bf16", "upscaler": "bf16", "preview": "taeh3",
                   "action_unet": "int8", "speed_slider_lora": "v1.1", "action_upscaler": "lms", "vocal_model": "fp16",
                   "realism_lora": "v1", "motion_repair_lora": "v1", "pika_lora": "hd8", "dmad_lora": "v1", "swap_lora": "v15", "sla_lora": "bf16",
@@ -459,11 +481,11 @@ DEFAULT_CHOICE = {"fast_unet": "int8", "lipsync_unet": "full", "text_encoder": "
 
 
 PROFILES = {
-    "lite": {"title": "Лёгкий", "lipsync_unet": "lite", "action_unet": "lite",
+    "lite": {"title": "Лёгкий", "h3img_unet": "w4a8", "lipsync_unet": "lite", "action_unet": "lite",
              "about": "Самые лёгкие версии: меньше качать и меньше памяти, качество немного ниже"},
-    "standard": {"title": "Стандарт", "lipsync_unet": "v2", "action_unet": "int8",
+    "standard": {"title": "Стандарт", "h3img_unet": "w4a8", "lipsync_unet": "v2", "action_unet": "int8",
                  "about": "Облегчённая (pruned) Singularity v2: ~20 ГБ вместо 34, качество почти как у полной. Подходит для видеокарт 12–16 ГБ"},
-    "max": {"title": "Максимум", "lipsync_unet": "full", "action_unet": "int8",
+    "max": {"title": "Максимум", "h3img_unet": "int8", "lipsync_unet": "full", "action_unet": "int8",
             "about": "Полные модели, как в исходных workflow"},
 }
 
@@ -499,7 +521,8 @@ def choose_models(hw, profile=None):
     blackwell = (hw.get("compute_cap") or 0) >= 12
     profile = profile if profile in PROFILES else recommended_profile(hw)
     choice = dict(DEFAULT_CHOICE, lipsync_unet=PROFILES[profile]["lipsync_unet"],
-                  action_unet=PROFILES[profile]["action_unet"])
+                  action_unet=PROFILES[profile]["action_unet"],
+                     h3img_unet=PROFILES[profile].get("h3img_unet", "int8"))
     notes = []
 
     if blackwell and vram >= 16:
@@ -535,7 +558,7 @@ def choose_models(hw, profile=None):
 
 
 MAIN_ROLE = {"video": "fast_unet", "lipsync": "lipsync_unet", "refs": "lipsync_unet", "actor": "lipsync_unet", "swap": "lipsync_unet",
-             "long": "lipsync_unet", "action": "action_unet", "actionsc": "action_unet", "krea": "krea_unet", "qwen": "qwen_unet", "flux": "flux_unet",
+             "long": "lipsync_unet", "action": "action_unet", "actionsc": "action_unet", "krea": "krea_unet", "qwen": "qwen_unet", "flux": "flux_unet", "h3img": "h3img_unet",
              "upscale": "seedvr_unet"}
 ROLE_FAMILY = {"lipsync_unet": "ref2", "fast_unet": "fast", "action_unet": "hybrid",
                "ref2v_turbo_lora": "ref2", "pika_lora": "ref2", "swap_lora": "ref2", "sla_lora": "fast", "speed_slider_lora": "hybrid"}
@@ -587,4 +610,4 @@ def model_entry(role, variant):
 
 
 # modes that appeared after the first release: the app offers them once after an update
-OFFER_MODES = ["flux", "long"]
+OFFER_MODES = ["flux", "long", "h3img"]

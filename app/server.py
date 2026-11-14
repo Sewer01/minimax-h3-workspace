@@ -32,6 +32,7 @@ from aiohttp import web
 
 import agent as ag
 import catalog
+import datadir
 import clipboard
 import cloud
 import customwf

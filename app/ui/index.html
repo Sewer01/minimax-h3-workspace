@@ -107,6 +107,12 @@
 .tl-player video{width:100%;max-height:36vh;display:block}
 .tl-player .hint{padding:22px 14px;text-align:center}
 .lm-scenes .sc:not(.sel){display:none}
+/* the action studio has no song of its own (the model makes the sound) and no base video yet:
+   those rows would only promise what the graph does not do */
+#view-actionsc .rm-media,#view-actionsc .lm-snd,#view-actionsc .lm-snd-hint,#view-actionsc .lm-own,#view-actionsc .lm-base,#view-actionsc .lm-base-hint,#view-actionsc .lm-srcpick,#view-actionsc .lm-src{display:none!important}
+#view-actionsc .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}
+#view-actionsc .rm-imgs .ref{width:104px;height:104px;aspect-ratio:auto;flex:0 0 104px}
+#view-actionsc .slots{--refh:104px;--refw:104px}
 #view-long .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}.srf{position:relative;flex:0 0 104px;width:104px;height:104px;border-radius:10px;overflow:hidden;border:1.5px dashed rgba(232,38,79,.7)}.srf img{width:100%;height:100%;object-fit:cover;display:block}.srfl{position:absolute;left:4px;bottom:4px;font-style:normal;font-size:10px;padding:2px 6px;border-radius:6px;background:rgba(232,38,79,.92);color:#fff}#view-long .rm-imgs .ref{width:104px!important;height:104px!important;aspect-ratio:auto;flex:0 0 104px}
 #view-long .slots{--refh:104px;--refw:104px}   // the studio keeps its small squares: its audio place must not tower over them
 #view-long .rm-params .row>.hint,#view-long .rm-params .row>.cw-hint{display:none}
@@ -1062,6 +1068,10 @@ body.dropping::after{content:'Отпустите — программа разл
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
       Экшн-сцены
     </button>
+    <button class="nav sub" data-view="actionsc">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg>
+      Экшн-видеостудия
+    </button>
 
     <button class="nav sub" data-view="krea">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5L6 20"/></svg>
@@ -1281,7 +1291,8 @@ body.dropping::after{content:'Отпустите — программа разл
     <section class="view" id="view-refs"></section>
     <section class="view" id="view-actor"></section>
     <section class="view" id="view-action"></section>
-    <section class="view" id="view-long"></section>
+    <section class="view" id="view-long">
+      <section class="view" id="view-actionsc" hidden></section></section>
     <section class="view" id="view-montage"></section>
     <section class="view" id="view-krea"></section>
     <section class="view" id="view-qwen"></section>
@@ -2185,7 +2196,7 @@ function setEngine(on) {
 /* pinned top bar with every video and image section */
 (function () {
   const bar = document.createElement('div'); bar.id = 'modeBar'; document.body.appendChild(bar);
-  const SHORT = { video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёр', swap: 'Замена', long: 'Видеостудия', action: 'Экшн', krea: 'Изображение', qwen: 'Правка', upfile: 'Увеличить' };
+  const SHORT = { video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёр', swap: 'Замена', long: 'Видеостудия', action: 'Экшн-видео', krea: 'Изображение', qwen: 'Правка', upfile: 'Увеличить' };
   const GROUPS = [['presets'], ['video', 'lipsync', 'refs', 'actor', 'swap', 'long', 'action'], ['krea', 'qwen'], ['upfile']];
   function paint() {
     const cur = ($('.view.active')?.id || '').replace('view-', '');
@@ -4118,7 +4129,7 @@ $('.nav[data-view="models"]').addEventListener('click', async () => {
 });
 
 /* ---------- LIBRARY ---------- */
-const MODE_NAME = { montage: 'Монтаж', custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн', long: 'Видеостудия', krea: 'Изображение по тексту', qwen: 'Правка изображения', upscale: 'Увеличение', relayvsr: 'Увеличение' };
+const MODE_NAME = { actionsc: 'Экшн-видеостудия', montage: 'Монтаж', custom: 'Свой workflow', video: 'Видео', lipsync: 'Lipsync', refs: 'Референсы', actor: 'Актёрская игра', swap: 'Замена персонажа', action: 'Экшн', long: 'Видеостудия', krea: 'Изображение по тексту', qwen: 'Правка изображения', upscale: 'Увеличение', relayvsr: 'Увеличение' };
 const LIB = [];
 const IMG_PANELS = [];  // refresh functions of the picture result windows
 let libFilter = 'all', selecting = false, selected = new Set(), openId = null, openItem = null;  // openItem: the viewer may show a clip the library does not have yet
@@ -4484,7 +4495,7 @@ $('#vwCopy').onclick = () => {
 $('#vwZoom').onclick = () => { const it = (byId(openId) || openItem); if (it && it.url) zoomOpen(it.url); };
 $('#vwImg').onclick = () => { const it = (byId(openId) || openItem); if (it && it.kind === 'image' && it.url) zoomOpen(it.url); };
 async function continueLong(it) {
-  const L2 = RM.long.root;
+  const L2 = (RM[it.mode] || RM.long).root;   // a clip made in the action studio continues there
   if (!(it.long && it.long.run) || (L2._run !== it.long.run && !(await L2._openRun(it.long.run)))) {
     // a video that was not made here (or whose project is gone): continue from its last frames as a new project
     L2._setSrc({ id: it.id, name: (it.prompt || it.sub || 'видео из Библиотеки').slice(0, 50) });
@@ -4513,7 +4524,7 @@ $('#vwRepeat').onclick = async () => {
   if (it.mode === 'long' && it.long && it.long.run) {
     goTo('long');
     try {
-      if (await RM.long.root._openRun(it.long.run)) { toast('Перенесли проект целиком: сцены, настройки и все картинки'); return; }
+      if (await (RM[it.mode] || RM.long).root._openRun(it.long.run)) { toast('Перенесли проект целиком: сцены, настройки и все картинки'); return; }
     } catch { }
     toast('Картинки проекта не нашлись - переносим настройки и тексты');
   }
@@ -5105,7 +5116,7 @@ function makeRefMode(cfg) {
         if (ready && !parts.includes(ready - 1)) { cards.forEach(c => { c._dn[mk] = null; }); toast('Точка продолжения не найдена на диске: сцены нужно сделать заново.'); }
       }
       { const tgt = p.qm === 'draft' && root._dmad !== false ? 'draft' : 'final'; root._qBy = { draft: S.q, final: S.q, ...(p.qBy || {}) }; root._qBy.draft = okQ(root._qBy.draft); root._qBy.final = okQ(root._qBy.final); S.q = root._qBy[tgt]; setQ(tgt, true); }
-      setMode(p.mode || 'parts'); root._restoring = false; recount(); refreshStates(); RM.long?.upd?.();
+      setMode(p.mode || 'parts'); root._restoring = false; recount(); refreshStates(); RM[(p.mode === 'actionsc') ? 'actionsc' : 'long']?.upd?.();
       return true;
     };
     root._restoring = true;   // nothing is saved until the last project has been put back
@@ -5624,7 +5635,7 @@ function makeRefMode(cfg) {
     extraLabel: cfg.mode === 'refs' || cfg.mode === 'actor' || cfg.swap || cfg.scenes ? 'Шаги' : 'Схема',
     extra: () => cfg.scenes ? (root._paintQ?.(), root._mode === 'parts' ? (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika') : (root._q === 'draft' ? '4 шага · черновик' : '8 шагов · Pika')) : cfg.mode === 'actor' || cfg.swap ? '10 · 1 проход' : cfg.mode === 'refs' ? `${S.steps} · 1 проход` : (S.faithful ? 'точная копия' : '8 + 4 шага'),
     passes: () => cfg.scenes ? $$('.sc', root).map(() => root._q === 'draft' ? 4 : 8) : cfg.mode === 'actor' || cfg.swap ? [10] : cfg.mode === 'refs' ? [S.steps] : S.faithful ? [13] : [8, 4],
-    get twoPass() { return cfg.mode === 'action' && !S.faithful; },
+    get twoPass() { return (cfg.mode === 'action' || cfg.mode === 'actionsc') && !S.faithful; },
     target: () => $('.ref img', imgsEl),
     meta: () => ({ mode: cfg.mode, prompt: promptEl().value.trim(), sub: '' }),
     onDone: item => { addToLib(item); if (cfg.scenes && root._partDone) root._partDone(item); },
@@ -5819,10 +5830,16 @@ const RM = {
     placeholder: '',
   }),
   action: makeRefMode({
-    mode: 'action', title: 'Экшн-сцены', pill: 'Hybrid · 8 + 4 шага', dur: 8, maxImages: 6, videos: false,
+    mode: 'action', title: 'Экшн-видео', pill: 'Hybrid · 8 + 4 шага', dur: 8, maxImages: 6, videos: false,
     sub: 'Бой, погоня, бег, стрельба — динамичные сцены с вашими персонажами',
     refHint: 'До 6 изображений: персонажи и локация. До 3 аудио: голос, ритм или атмосфера (вместе с изображениями). В промпте: &lt;Picture 1&gt; или роли вида «@image1 - character reference».',
     placeholder: '@image1 - character reference. Девушка с @image1 убегает по ночному рынку, опрокидывает корзины…',
+  }),
+  actionsc: makeRefMode({
+    mode: 'actionsc', title: 'Экшн-видеостудия', pill: 'Гибрид · 8 + 4 шага · сцены подряд', dur: 10, maxImages: 5, videos: false, scenes: true,
+    sub: 'Длинный экшн по сценам: каждая следующая продолжает прошлую, готовые клипы склеиваются в один ролик',
+    refHint: 'До 5 изображений: персонажи, локация, предмет. В тексте сцены ссылайтесь на них &lt;Picture 1&gt;, &lt;Picture 2&gt; - программа сама поставит номера по местам. Звук делает сама модель: своего аудио здесь нет.',
+    placeholder: '',
   }),
 };
 

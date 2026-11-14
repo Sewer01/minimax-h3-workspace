@@ -2508,15 +2508,22 @@ class App:
             raise web.HTTPNotFound()
         return web.FileResponse(f)
 
+    async def h_generate_actionsc(self, req):
+        """The action studio: the same scene-by-scene road, the action model underneath."""
+        self._studio_mode = "actionsc"
+        return await self.h_generate_long(req)
+
     async def h_generate_long(self, req):
-        # one door for both studios: the action one needs the hybrid model, not the ref2v one
-        self._studio_mode = "actionsc" if ((await req.post()).get("mode") or "") == "actionsc" else "long"
+        # one door for both studios; the address says which one, the form is only a fallback
+        if getattr(self, "_studio_mode", None) != "actionsc":
+            self._studio_mode = "long"
         await self.need_models(self._studio_mode)
         self._capture = {}
         try:
             return await self.generate_long(req)
         finally:
             captured, self._capture = self._capture or {}, None
+            self._studio_mode = None   # the next request decides again
             run = getattr(self, "_long_run", None)
             if run:
                 self.keep_long_refs(run, captured)
@@ -2524,7 +2531,7 @@ class App:
 
     async def generate_long(self, req):
         form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "img3", "img4", "aud0", "srcvid", "srcframe") + tuple(f"simg{i}_{j}" for i in range(12) for j in range(9)), need_prompt=False)   # the texts are in the scenes, there is no single prompt
-        act = (form.get("mode") or "long") == "actionsc"
+        act = getattr(self, "_studio_mode", "long") == "actionsc"
         self._long_run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]   # the references are kept even if the request is refused later
         try:
             scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10)), bool(x.get("fresh"))) for x in json.loads(form.get("scenes") or "[]")]
@@ -3918,6 +3925,7 @@ def build_app(comfy_override=None):
         web.post("/api/generate/actor", state.h_generate_actor),
         web.post("/api/generate/swap", state.h_generate_swap),
         web.post("/api/generate/long", state.h_generate_long),
+        web.post("/api/generate/actionsc", state.h_generate_actionsc),
         web.post("/api/montage", state.h_montage),
         web.get("/api/long/state", state.h_long_state),
         web.get("/api/long/project", state.h_long_project),

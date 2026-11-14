@@ -113,8 +113,11 @@
 #view-actionsc .no-base,#view-actionsc .no-base+details,#view-actionsc .agvar{display:none!important}
 /* скрыли переключатели - но их строки с названиями стояли отдельно и висели пустыми ярлыками;
    теперь вместе с переключателем скрывается вся строка */
-#view-actionsc .row:has(.lm-mode),#view-actionsc .row:has(.lm-q),#view-actionsc .row:has(.lm-snd),
-#view-actionsc .row:has(.lm-base){display:none!important}
+#view-actionsc .row:has(.lm-mode),#view-actionsc .row:has(.lm-snd),#view-actionsc .row:has(.lm-base){display:none!important}
+/* черновика в Экшн-видеостудии нет, но строка «Режим» остаётся: по ней видно размер.
+   Кнопку пересоздаёт код раздела, поэтому запрет держится стилями, а не свойством disabled */
+#view-actionsc .lm-q [data-mq="draft"]{opacity:.4;pointer-events:none}
+#view-actionsc .lm-q-hint::after{content:" · черновика здесь нет: сцена сразу считается 8 шагов в уменьшенном кадре и 4 в полном"}
 #view-actionsc .lm-mode,#view-actionsc .lm-mode-hint,#view-actionsc .lm-q,#view-actionsc .lm-qnote{display:none!important}
 #view-actionsc .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}
 #view-actionsc .rm-imgs .ref{width:104px;height:104px;aspect-ratio:auto;flex:0 0 104px}
@@ -2395,8 +2398,8 @@ function paramsCard(el, st, opts) {
     </div>
     <div class="row">
       <div class="row-l">Качество <span class="resv"></span></div>
-      <div class="seg seg-q">${QUALITY.map(q => `<button data-q="${q.id}">${qLabel(q)}<small>${q.sub || '&nbsp;'}</small></button>`).join('')}</div>
-      <div class="hint">Чем меньше размер, тем быстрее расчёт; чем больше, тем чётче изображение. Размеры в кнопках для формата 16:9, для других форматов рядом с «Качество» показан точный размер.</div>
+      <div class="seg seg-q">${QUALITY.map(q => `<button data-q="${q.id}"><span class="qt">${qLabel(q)}</span><small>${q.sub || '&nbsp;'}</small></button>`).join('')}</div>
+      <div class="hint">Чем меньше размер, тем быстрее расчёт; чем больше, тем чётче изображение. Размеры в кнопках - для выбранного формата: поменяете формат, и они пересчитаются.</div>
     </div>
     <div class="row">
       <div class="row-l">Свой размер <small class="hint">(необязательно)</small></div>
@@ -2440,6 +2443,9 @@ function paramsCard(el, st, opts) {
     $$('.seg button[data-r]', el).forEach(c => c.classList.toggle('on', c.dataset.r === st.refSize));
     const [w, h] = st.cw && st.ch ? [st.cw, st.ch] : resFor(st.aspect, st.q);
     $('.resv', el).textContent = `${w}×${h}` + (st.cw && st.ch ? ' · свой' : '');
+    /* кнопки качества раньше всегда показывали горизонтальный кадр: при вертикали или квадрате
+       цифры не менялись и не совпадали с тем, что справа. Теперь пересчитываются на каждый формат */
+    $$('.seg button[data-q]', el).forEach(c => { const s = resFor(st.aspect, c.dataset.q).join('×'); const qt = $('.qt', c); if (qt && qt.textContent !== s) qt.textContent = s; });
     $('.cw-reset', el).hidden = !(st.cw || st.ch);
     $$('.seg button[data-q]', el).forEach(c => c.style.opacity = st.cw && st.ch ? .45 : '');
     if (opts.duration) {
@@ -5412,7 +5418,8 @@ function makeRefMode(cfg) {
     root._qBy = { draft: S.q, final: S.q };
     function setQ(v, force) {
       if (!force && v !== root._q) { root._qBy[root._q] = S.q; S.q = QUALITY_ALL.some(x => x.id === root._qBy[v]) ? root._qBy[v] : '720p'; S._upd?.(); }   // the size chosen in «Параметры» belongs to the row that is open
-      root._q = cfg.mode === 'actionsc' ? 'final' : v;   // the action graph has no draft pass
+      root._q = cfg.mode === 'actionsc' ? 'final' : v;   // the action graph has no draft pass:
+    // the switch stays visible so the size is readable, but the draft answer is disabled and explained
     $$('.lm-q button', root).forEach(b => b.classList.toggle('on', b.dataset.mq === v));
       root._paintQ();
       vid.onended = null; vid.loop = true; refreshStates(); renderTL(); showClip(); onScenes();
@@ -5476,7 +5483,11 @@ function makeRefMode(cfg) {
       const baseSeg = $('.lm-base', root), baseHint = $('.lm-base-hint', root), ownBox = $('.lm-srcpick', root);
       if (baseSeg) {
         const baseRow = mk('row', '<div class="row-l">Основа</div>');
-        if (cfg.mode === 'actionsc') baseRow.classList.add('no-base');   // this studio has no base video yet: the row and its guide would only stand empty
+        if (cfg.mode === 'actionsc') {
+    const dq = $('.lm-q [data-mq="draft"]', root);   // черновика в этом режиме нет: 8 + 4 шага сразу
+    if (dq) { dq.disabled = true; dq.title = 'Черновика в Экшн-видеостудии нет: сцена сразу считается 8 шагов в уменьшенном кадре и 4 в полном. Здесь видно размер хорошего качества.'; }
+  }
+  if (cfg.mode === 'actionsc') baseRow.classList.add('no-base');   // this studio has no base video yet: the row and its guide would only stand empty
         baseSeg.style.marginBottom = '0';
         baseRow.append(baseSeg);
         if (ownBox) { ownBox.style.marginTop = '8px'; baseRow.append(ownBox); }

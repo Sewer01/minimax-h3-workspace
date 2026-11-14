@@ -8387,6 +8387,8 @@ applyZoom();
 
 /* ---------- MONTAGE: join library clips in a chosen order (ComfyUI does the work, no ffmpeg) ---------- */
 (function mountMontage() {
+  // по-русски про число клипов: «1 клип», «2 клипа», «12 клипов»
+  const clipsW = N => `${N}` + (N % 10 === 1 && N % 100 !== 11 ? ' клип' : (N % 10 >= 2 && N % 10 <= 4 && (N % 100 < 10 || N % 100 >= 20)) ? ' клипа' : ' клипов');
   const root = $('#view-montage'), MT = { ids: [], cuts: [], ins: [], drag: null, busy: false, up: {}, n: 0, px: 26, hpx: 96, res: false };
   try { MT.px = +localStorage.getItem('h3-mt-px') || 26; } catch {}
   try { MT.hpx = +localStorage.getItem('h3-mt-h') || 96; } catch {}
@@ -8443,7 +8445,7 @@ applyZoom();
     $('.mt-strip', root).innerHTML = MT.ids.length ? MT.ids.map((id, i) => { const it = get(id), d = durOf(i); return `<div class="mt-item${wOf(d) < 92 ? ' narrow' : ''}" draggable="true" data-i="${i}" style="width:${wOf(d)}px" data-w="${wOf(d)}"><video src="${it.url}#t=${(inOf(i) + 0.2).toFixed(2)}" preload="metadata" muted playsinline></video><span class="mt-n">${i + 1}</span>${window.mtPipeDone && window.mtPipeDone(id) ? '<span class="mt-ok" title="Клип обработан">✓</span>' : ''}<span class="mt-len">${trimTxt(i)}</span><div class="mt-b"><button type="button" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Порядок склейки: переставить левее">◀</button><button type="button" data-rm title="Убрать из монтажа (в Библиотеке клип останется)">✕</button><button type="button" data-mv="1" ${i === MT.ids.length - 1 ? "disabled" : ""} title="Порядок склейки: переставить правее">▶</button></div><i class="mt-rhl" title="Потяните, чтобы отрезать начало клипа"></i><i class="mt-rh" title="Потяните, чтобы отрезать конец клипа (длиннее оригинала нельзя). Двойной щелчок по клипу - вернуть целое"></i></div>`; }).join('')
       : '<div class="hint">Пока пусто: нажмите на клипы сверху.</div>';
     const total = MT.ids.reduce((a, id, i) => a + durOf(i), 0);
-    $('.mt-total', root).textContent = MT.ids.length ? `${MT.ids.length} клипов · ≈ ${Math.round(total)} с` : '';
+    $('.mt-total', root).textContent = MT.ids.length ? `${clipsW(MT.ids.length)} · ≈ ${Math.round(total)} с` : '';
     if (MT.ids.length) $('.mt-strip', root).insertAdjacentHTML('beforeend',
       `<i class="mt-fr" data-fr="-1" title="На один кадр левее (${frameStep().toFixed(3)} с)">◀</i>`
       + '<i class="mt-ph" title="Потяните за этот треугольник: метка встанет туда, где нужен рез. Слева показывается кадр, на который она указывает"></i><i class="mt-line"></i>'
@@ -8818,8 +8820,8 @@ applyZoom();
     const box = $('.mt-pipe', root), n = MT.ids.length, line = (t, ok) => `<div class="${ok ? 'ok' : ''}">${ok ? '✓ ' : '• '}${t}</div>`;
     let h = '';
     const have = id => PIPE.steps[id] || {};
-    if (PIPE.doUp && n) { const c = MT.ids.filter(id => have(id).up).length; h += line(`Увеличение: ${c} из ${n} клипов${c === n ? ' — завершено' : ''}`, c === n); }
-    if (PIPE.grain > 0 && n) { const c = MT.ids.filter(id => have(id).gr).length; h += line(`Зерно: ${c} из ${n} клипов${c === n ? ' — завершено' : ''}`, c === n); }
+    if (PIPE.doUp && n) { const c = MT.ids.filter(id => have(id).up).length; h += line(`Увеличение: ${c} из ${clipsW(n)}${c === n ? ' — завершено' : ''}`, c === n); }
+    if (PIPE.grain > 0 && n) { const c = MT.ids.filter(id => have(id).gr).length; h += line(`Зерно: ${c} из ${clipsW(n)}${c === n ? ' — завершено' : ''}`, c === n); }
     const j = PIPE.joined && byId(PIPE.joined.id) ? PIPE.joined : null;
     if (MT.joining) h += line('Сохраняю…', false);
     else if (j && j.key === orderKey()) h += line('Сохранено: ролик готов, его можно смотреть и увеличивать', true);
@@ -8877,7 +8879,7 @@ applyZoom();
   async function joinNow(ids, durs, ins) {
     const st = $('.mt-status', root);
     if (MT.busy && !MT.chaining) return;
-    if (ids.length < 2) { st.textContent = 'Добавьте клип из Библиотеки'; return; }
+    if (ids.length < 1) { st.textContent = 'Добавьте в монтаж хотя бы один клип'; return; }
     const key = orderKey();
     MT.busy = true; MT.joining = true; $('.mt-go', root).disabled = true; st.textContent = 'Отправляем клипы в ComfyUI…'; pipePaint();
     const fail = msg => { MT.busy = false; MT.joining = false; MT.chaining = false; $('.mt-go', root).disabled = false; st.textContent = msg; pipePaint(); };
@@ -8887,7 +8889,7 @@ applyZoom();
       const r = await fetch('/api/montage', { method: 'POST', body: fd });
       const txt = await r.text(); let res; try { res = JSON.parse(txt); } catch { res = { error: txt }; }
       if (!r.ok) throw new Error(res.error || r.statusText);
-      qAdd(res.prompt_id, 'montage', `${ids.length} клипов`);
+      qAdd(res.prompt_id, 'montage', clipsW(ids.length));
       st.textContent = 'Сохраняем…';
       onPrompt(res.prompt_id, ev => {
         if (ev.prompt_id !== res.prompt_id) return;
@@ -8918,7 +8920,7 @@ applyZoom();
     const st = $('.mt-status', root);
     if (MT.upBusy) { MT.cancel = true; st.textContent = 'Останавливаем…'; if (MT.curPrompt) fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt_id: MT.curPrompt }) }); return; }
     if (MT.busy) return;
-    if (MT.ids.length < 2) { st.textContent = 'Добавьте клип из Библиотеки'; return; }
+    if (MT.ids.length < 1) { st.textContent = 'Добавьте в монтаж хотя бы один клип'; return; }
     const doUp = eng !== 'none', grain = +$('.mt-grain', root).value;
     if (doUp) {
       let stt = {}; try { stt = await (await fetch('/api/status')).json(); } catch {}
@@ -8963,11 +8965,11 @@ applyZoom();
     } catch (err) {
       MT.upBusy = false; MT.busy = false; MT.chaining = false; MT.curPrompt = null; $('.mt-go', root).disabled = false; upBtn.textContent = upTxt; pipePaint();
       const left = ids.filter(id => !(PIPE.steps[id] && (!doUp || PIPE.steps[id].up) && (!grain || PIPE.steps[id].gr))).length;
-      st.textContent = `Обработка прервана: ${err.message}. Готово ${ids.length - left} из ${ids.length} клипов, они сохранены. Нажмите кнопку ещё раз: работа продолжится с первого неготового клипа.`;
+      st.textContent = `Обработка прервана: ${err.message}. Готово ${ids.length - left} из ${clipsW(ids.length)}, они сохранены. Нажмите кнопку ещё раз: работа продолжится с первого неготового клипа.`;
       return;
     }
     MT.upBusy = false; MT.curPrompt = null; upBtn.textContent = upTxt;
-    st.textContent = `${doUp ? 'Увеличение' : 'Зерно'} завершено для всех ${ids.length} клипов. Сохраняем…`;
+    st.textContent = `${doUp ? 'Увеличение' : 'Зерно'} завершено · ${clipsW(ids.length)}. Сохраняем…`;
     await joinNow(out, durs, ins);
   }
   IMG_PANELS.push(() => { applyPend(); pipePaint(); window.mtRestoreResult(); });

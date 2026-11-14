@@ -2509,7 +2509,9 @@ class App:
         return web.FileResponse(f)
 
     async def h_generate_long(self, req):
-        await self.need_models("long")
+        # one door for both studios: the action one needs the hybrid model, not the ref2v one
+        self._studio_mode = "actionsc" if ((await req.post()).get("mode") or "") == "actionsc" else "long"
+        await self.need_models(self._studio_mode)
         self._capture = {}
         try:
             return await self.generate_long(req)
@@ -2522,6 +2524,7 @@ class App:
 
     async def generate_long(self, req):
         form, files, prompt, aspect, quality, seed = await self.read_form(req, ("img0", "img1", "img2", "img3", "img4", "aud0", "srcvid", "srcframe") + tuple(f"simg{i}_{j}" for i in range(12) for j in range(9)), need_prompt=False)   # the texts are in the scenes, there is no single prompt
+        act = (form.get("mode") or "long") == "actionsc"
         self._long_run = re.sub(r"[^A-Za-z0-9]", "", form.get("run", ""))[:32]   # the references are kept even if the request is refused later
         try:
             scenes = [(str(x.get("prompt", "")).strip(), float(x.get("sec", 10)), bool(x.get("fresh"))) for x in json.loads(form.get("scenes") or "[]")]
@@ -2542,6 +2545,8 @@ class App:
             seed += max(0, min(1000, int(form.get("variant") or 0))) * 1000003
         except ValueError:
             pass
+        if act and not (form.get("part", "").isdigit()) and not test:
+            raise web.HTTPBadRequest(text="Экшн-видеостудия считает по частям: включите режим «По частям» - каждая сцена продолжает предыдущую.")
         if not scenes:
             raise web.HTTPBadRequest(text="Напишите хотя бы одну сцену")
         images = [files.get(f"img{i}") for i in range(5)]   # by place, not by order: the numbers in the texts stay true
@@ -2592,13 +2597,40 @@ class App:
                     raise web.HTTPBadRequest(text=f"Сцена {k} сделана в формате {was}, а сейчас выбран {width}×{height}. "
                                                   "Верните прежний формат и качество или переделайте сцену 1 в новом.")
                 state = await self.upload_state(src, f"h3s_long_{run}_{k - 1}.latent")
-            graph, stages = wf.long_part_graph(self.model_names, scenes, k, width, height, seed, images, audio, start,
-                                               dmad if draft else self.model_names["pika_lora"], self.custom_loras("long"), "match", vocals, state,
-                                               await self.preview_opts(), cont, form.get("src_project") == "1", fresh, draft)
+            if act:
+                # the same scene road on the action model: the LoRAs and the exact scheme are taken the
+                # way the single action mode takes them, so both doors agree
+                if self.rh():
+                    rh_files = {n.replace("\\", "/").split("/")[-1].lower(): n for n in (getattr(self, "rh_models", None) or [])}
+                    speed = rh_files.get(catalog.VARIANTS["speed_slider_lora"]["v1.1"]["file"].lower())
+                    dmad_a = next((n for b, n in rh_files.items() if catalog.is_action_dmad(b)), None)
+                    s = {"faithful": False, "dmad": dmad_a, "speed": speed}
+                else:
+                    s = await self.action_setup()
+                aloras = []
+                for key, name, default in (("dmad", s["dmad"], 0.8), ("speed", s["speed"], 4.0)):
+                    v = lora_strength(form, key, default)
+                    if name and v is not None:
+                        aloras.append((name, v))
+                aloras += self.custom_loras("action")
+                faithful = bool(s.get("faithful")) and form.get("faithful") != "0"
+                graph, stages = wf.action_part_graph(self.model_names, scenes, k, width, height, seed, images, aloras,
+                                                     preview=await self.preview_opts(), state=state, fresh=fresh,
+                                                     faithful=faithful)
+                if faithful and s.get("refiner_def"):
+                    # the refiner's input names come from the installed node; values as in the original workflow
+                    for nid, node in graph.items():
+                        if node.get("class_type") == "H3SigmaRefiner":
+                            req_inputs = [x for x in (s["refiner_def"]["input"].get("required") or {}) if x != "sigmas"]
+                            node["inputs"] = {**node.get("inputs", {}), **dict(zip(req_inputs, [1, 0.7, 0.0, "cosine"]))}
+            else:
+                graph, stages = wf.long_part_graph(self.model_names, scenes, k, width, height, seed, images, audio, start,
+                                                   dmad if draft else self.model_names["pika_lora"], self.custom_loras("long"), "match", vocals, state,
+                                                   await self.preview_opts(), cont, form.get("src_project") == "1", fresh, draft)
             plan = wf.long_plan([sc[1] for sc in scenes], cont_first=bool(cont) or form.get("src_project") == "1", fresh=fresh)
             sub = f"сцена {k + 1} из {len(scenes)}" + (" · музыка" if audio else " · звук от модели")
             return await self.queue(graph, stages, {
-                "mode": "long", "sub": sub + (" · черновик" if draft else f" · проба {width}×{height}" if test else ""), "prompt": scenes[k][0], "aspect": aspect, "q": quality,
+                "mode": "actionsc" if act else "long", "sub": sub + (" · черновик" if draft else f" · проба {width}×{height}" if test else ""), "prompt": scenes[k][0], "aspect": aspect, "q": quality,
                 "len": round((plan[k]["total"] - plan[k]["ov"]) / wf.FPS, 1), "res": f"{width}×{height}", "seed": seed,
                 "long": {"run": run, "part": k, "n": len(scenes), "draft": draft, "test": test}})
         graph, stages = wf.long_graph(self.model_names, scenes, width, height, seed, images, audio, start,

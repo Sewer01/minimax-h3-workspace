@@ -417,6 +417,8 @@ MODE_ROLES = {
     # same models as references: dialogue scenes with a voice sample, acting-first prompts
     "actor": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora"],
     "action": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
+    # the action studio: the same scene-by-scene road as the video studio, on the action model
+    "actionsc": ["action_unet", "text_encoder", "video_vae", "audio_vae", "upscaler"],
     # character swap preset: same Ref2V model as References + a small swap LoRA
     "swap": ["lipsync_unet", "text_encoder", "video_vae", "audio_vae", "ref2v_turbo_lora", "swap_lora"],
     # long video / clips: scenes that continue each other (Singularity Ref2V + Pika LoRA, same files as References)
@@ -528,7 +530,7 @@ def choose_models(hw, profile=None):
 
 
 MAIN_ROLE = {"video": "fast_unet", "lipsync": "lipsync_unet", "refs": "lipsync_unet", "actor": "lipsync_unet", "swap": "lipsync_unet",
-             "long": "lipsync_unet", "action": "action_unet", "krea": "krea_unet", "qwen": "qwen_unet", "flux": "flux_unet",
+             "long": "lipsync_unet", "action": "action_unet", "actionsc": "action_unet", "krea": "krea_unet", "qwen": "qwen_unet", "flux": "flux_unet",
              "upscale": "seedvr_unet"}
 ROLE_FAMILY = {"lipsync_unet": "ref2", "fast_unet": "fast", "action_unet": "hybrid",
                "ref2v_turbo_lora": "ref2", "pika_lora": "ref2", "swap_lora": "ref2", "sla_lora": "fast", "speed_slider_lora": "hybrid"}

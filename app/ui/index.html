@@ -113,11 +113,10 @@
 #view-actionsc .no-base,#view-actionsc .no-base+details,#view-actionsc .agvar{display:none!important}
 /* скрыли переключатели - но их строки с названиями стояли отдельно и висели пустыми ярлыками;
    теперь вместе с переключателем скрывается вся строка */
-#view-actionsc .row:has(.lm-mode),#view-actionsc .row:has(.lm-snd),#view-actionsc .row:has(.lm-base){display:none!important}
+#view-actionsc .row:has(.lm-mode),#view-actionsc .row:has(.lm-q),#view-actionsc .row:has(.lm-snd),#view-actionsc .row:has(.lm-base){display:none!important}
 /* черновика в Экшн-видеостудии нет, но строка «Режим» остаётся: по ней видно размер.
    Кнопку пересоздаёт код раздела, поэтому запрет держится стилями, а не свойством disabled */
 #view-actionsc .lm-q [data-mq="draft"]{opacity:.4;pointer-events:none}
-#view-actionsc .lm-q-hint::after{content:" · черновика здесь нет: сцена сразу считается 8 шагов в уменьшенном кадре и 4 в полном"}
 #view-actionsc .lm-mode,#view-actionsc .lm-mode-hint,#view-actionsc .lm-q,#view-actionsc .lm-qnote{display:none!important}
 #view-actionsc .rm-imgs{display:flex!important;gap:10px;flex-wrap:wrap}
 #view-actionsc .rm-imgs .ref{width:104px;height:104px;aspect-ratio:auto;flex:0 0 104px}

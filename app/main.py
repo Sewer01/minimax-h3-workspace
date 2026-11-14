@@ -311,6 +311,67 @@ def main():
             except Exception:
                 back_to_place()
 
+        # Правая кнопка мыши: движок WebView2 показывает своё меню (выделить всё, копировать,
+        # вставить) только в режиме отладки, а приложение работает без отладки. Включаем меню сами,
+        # как только ядро браузера появится: настройка одна на окно, действует во всех полях сразу.
+        def enable_menu(*a):
+            _state = enable_menu.state
+            if _state["done"] or _state["tries"] > 40:
+                return
+            _state["tries"] += 1
+            try:
+                # окно - это форма; сам браузер лежит в ней как form.webview (или form.browser.webview)
+                native = getattr(api._window, "native", None)
+                view = getattr(native, "webview", None) or getattr(getattr(native, "browser", None), "webview", None)
+                core = getattr(view, "CoreWebView2", None) if view is not None else None
+                if core is None:
+                    if _state["tries"] > 40:
+                        server.applog("правая кнопка мыши: ядро браузера не найдено · окно: "
+                                      + type(native).__name__ + " · браузер: " + type(view).__name__)
+                        _state["done"] = True
+                        return
+                    threading.Timer(0.5, enable_menu).start()
+                    return
+                # ядро найдено, но настройки можно трогать только из потока интерфейса
+                box = {}
+
+                def _apply():
+                    try:
+                        core.Settings.AreDefaultContextMenusEnabled = True
+                        box["ok"] = bool(core.Settings.AreDefaultContextMenusEnabled)
+                    except Exception as e:
+                        box["err"] = str(e)[:90]
+                try:
+                    # делегат без аргументов: void тоже берётся из System, иначе Action[void] падает
+                    from System import Action, void
+                    native.Invoke(Action[void](_apply))
+                except Exception as e:
+                    box["via"] = "Invoke не вышел: " + str(e)[:70]
+                    try:
+                        from System import Action
+                        from System import Void
+                        native.Invoke(Action[Void](_apply))
+                    except Exception as e2:
+                        box["via2"] = str(e2)[:60]
+                        try:
+                            _apply()
+                        except Exception as e3:
+                            box["err"] = str(e3)[:70]
+                _state["done"] = True
+                server.applog("правая кнопка мыши: меню включено · проверено значением: " + str(box.get("ok"))
+                              if box.get("ok") else "правая кнопка мыши: меню включить не удалось - "
+                              + str(box.get("err")) + " · " + str(box.get("via")) + " · " + str(box.get("via2")))
+            except Exception as e:
+                _state["done"] = True
+                server.applog("правая кнопка мыши: меню включить не удалось - " + str(e)[:100])
+        try:
+            ev_shown = api._window.events.shown
+            ev_shown += lambda *a: enable_menu()
+        except Exception:
+            pass
+        enable_menu.state = {"tries": 0, "done": False}
+        threading.Timer(2.0, lambda *a: enable_menu()).start()
+
         def window_state(win):
             """'window' / 'max' / 'fullscreen' - read from the live window."""
             try:
@@ -325,7 +386,7 @@ def main():
                 pass
             return "window"
 
-        def remember_geo(_=None):   # the next start opens the window the way you left it
+        def remember_geo(*a):   # the next start opens the window the way you left it (events pass no fixed arity)
             # window.snapshot does not exist in this pywebview, which is why the size was never
             # remembered: the old line raised and the except swallowed it. Properties x/y/width/height
             # and state do exist, so the state is stored too, and while maximized or in full screen the

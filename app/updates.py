@@ -1,7 +1,7 @@
 """Updates of the engine and the node packs, separate from the program's own update.
 
 The program update replaces the application files. This module answers a different question:
-ComfyUI itself is 0.44.0 today, and when 0.44.1 appears the person should not have to wait for
+ComfyUI itself is 0.45.0 today, and when 0.44.1 appears the person should not have to wait for
 a rebuild of our release. Two rules here:
 
   - the core is updated from the source archive of the release tag (tens of megabytes) and only

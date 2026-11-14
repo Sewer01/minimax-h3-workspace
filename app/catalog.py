@@ -5,12 +5,15 @@ variants; `choose_models` picks one per role from the detected hardware.
 """
 import re
 
-COMFY_VERSION = "0.44.0"  # current release; it also brings the newer MiniMax H3 nodes the modes use
+COMFY_VERSION = "0.45.0"  # the first build with RelayVSR (fast video upscale) and the newer MiniMax H3 nodes
 MIN_DRIVER = 580  # the bundled PyTorch is built for CUDA 13
 COMFY_URL = ("https://github.com/Comfy-Org/ComfyUI/releases/download/"
              f"v{COMFY_VERSION}/ComfyUI_windows_portable_nvidia.7z")
-COMFY_SIZE = 2_054_382_457  # the real size of the asset, so the progress bar and the disk estimate do not lie
-COMFY_SHA256 = "7170c2db49c182a81adcc051e80234f99dd891656fb200737f87797876348f96"  # GitHub prints this next to the asset
+COMFY_SIZE = 2_071_479_423  # the real size of the asset (read from GitHub), so the bar and the estimate do not lie
+# GitHub publishes no digest for this asset, and the value that stood here belonged to 0.44.0: keeping it
+# would reject a perfectly good 0.45.0 file. The download is https from GitHub, and the archive is unpacked
+# into its own folder; put a digest here once we have computed and trusted one, and it will be enforced.
+COMFY_SHA256 = ""
 COMFY_DIRNAME = "ComfyUI_windows_portable"
 
 # Nodes the fast RelayVSR upscale needs: they are part of the ComfyUI core, but not of every build,

@@ -745,7 +745,7 @@ body.dropping::after{content:'Отпустите — программа разл
 .sk-foot input{flex:1 1 auto;min-width:0}
 .sk-foot small{flex:0 1 auto;min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sk{padding:10px 12px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);display:grid;gap:6px}
-.sk-top{display:flex;align-items:center;gap:8px}
+/* .sk-top is styled above (there with min-width:0): this copy only re-declared the same lines */
 .sk-top b{font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sk-top select{background:var(--surface);border:1px solid var(--line-2);border-radius:8px;padding:4px 6px;font-size:12px;outline:none}
 .sk-top .x{width:24px;height:24px;border-radius:7px;background:var(--surface-2);font-size:11px}
@@ -7042,7 +7042,7 @@ async function openUpscale(it, file) {   // `file`: any file of the user (not fr
   };
 }
 /* ---------- запоминаем последние настройки и файлы, чтобы они были на месте после перезапуска ---------- */
-const MEM = { KEY: 'h3-mem', skip: new Set(['first', 'last', 'refs', 'dur0', 'start', 'end', 'faithful']), ready: false, sig: {}, audio: null };
+const MEM = { KEY: 'h3-mem', skip: new Set(['first', 'last', 'refs', 'dur0', 'start', 'end', 'faithful']), ready: false, sig: {}, audio: null, last: null };
 const memIdb = new Promise(res => {
   try {
     const r = indexedDB.open('h3mem', 1);
@@ -7081,7 +7081,10 @@ function memSave() {
       data[k] = { s: JSON.parse(JSON.stringify(o)), prompt: prompt ? prompt.value : undefined };
     });
     data.lipsync.s.start = L.start; data.lipsync.s.end = L.end;
-    localStorage.setItem(MEM.KEY, JSON.stringify(data));
+    // the heartbeat runs while nothing changes at all: rewriting the same text every few seconds is
+    // pure wear, so the store is touched only when the content really moved
+    const json = JSON.stringify(data);
+    if (json !== MEM.last) { MEM.last = json; localStorage.setItem(MEM.KEY, json); }
   } catch {}
   const slots = memSlots();
   slots.forEach(([key, el]) => {
@@ -7121,7 +7124,7 @@ async function memRestore() {
   }
   setTimeout(() => { apply(); MEM.ready = true; }, 800);  // adding a picture re-fits the format: put the saved choice back after that
 }
-setInterval(memSave, 2000);
+setInterval(memSave, 5000);   // a net against a crash; cheap now that nothing is rewritten in idle
 addEventListener('beforeunload', memSave);
 memRestore();
 

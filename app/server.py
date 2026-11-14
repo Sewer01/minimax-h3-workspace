@@ -217,7 +217,13 @@ class App:
 
     def comfy_root(self):
         d = self.config.get("install_dir")
-        return Path(d) / catalog.COMFY_DIRNAME if d else None
+        if not d:
+            return None
+        fixed = datadir.normalise_install_dir(d)
+        if fixed != d:   # the folder named in the settings IS ComfyUI: remember its parent once
+            self.config.data["install_dir"] = fixed
+            applog(f"путь установки поправлен: {d} → {fixed} (там лежит ComfyUI, а не куда ставить)")
+        return Path(fixed) / catalog.COMFY_DIRNAME
 
     def _ffmpeg(self):
         """The decoder that ships with the ComfyUI portable: the browser window cannot read HEVC or

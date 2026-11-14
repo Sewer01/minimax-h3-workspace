@@ -23,13 +23,29 @@ def move_all(src, dst):
         pass
 
 
+def normalise_install_dir(value):
+    """install_dir means the PARENT of ComfyUI_windows_portable. If somebody points it at the portable
+       folder itself (its python_embeded and ComfyUI are right there), take the parent instead: a wrong
+       value here hides the whole engine and sends the setup screen to download another copy."""
+    if not value:
+        return value
+    try:
+        p = Path(value)
+        if (p / "python_embeded" / "python.exe").exists() and (p / "ComfyUI").is_dir():
+            return str(p.parent)
+    except (OSError, ValueError):
+        pass
+    return value
+
+
 def managed_install_dir(data_dir):
     try:
         cfg = json.loads((data_dir / "config.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if cfg.get("engine") == "managed" and cfg.get("install_dir") and Path(cfg["install_dir"]).is_dir():
-        return Path(cfg["install_dir"])
+        # the parent, never the portable folder itself: data must not end up inside ComfyUI
+        return Path(normalise_install_dir(cfg["install_dir"]))
     return None
 
 

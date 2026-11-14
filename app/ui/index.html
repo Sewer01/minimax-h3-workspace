@@ -1630,6 +1630,7 @@ body.dropping::after{content:'Отпустите — программа разл
               <button class="mcard" data-m="actor"><i></i><b>Актёрская игра</b><span>Диалоги и крупные планы: эмоции, голос по образцу</span><small></small></button>
               <button class="mcard" data-m="action"><i></i><b>Экшн-видео</b><span>Бой, погоня, бег, прыжки</span><small></small></button>
               <button class="mcard" data-m="long"><i></i><b>Видеостудия</b><span>Клипы и ролики по сценам: до 15 с на сцену, сцены продолжают друг друга</span><small></small></button>
+        <button class="mcard" data-m="actionsc"><i></i><b>Экшн-видеостудия</b><span>Длинный экшн по сценам: 8 + 4 шага, файлы ускорения, звук делает модель</span><small></small></button>
               <button class="mcard" data-m="krea"><i></i><b>Изображение по тексту</b><span>Krea 2: красивые изображения по описанию (можно в коммерцию)</span><small></small></button>
               <button class="mcard" data-m="kreareal"><i></i><b>Изображение: реализм</b><span>Krea 2 для реалистичных людей и фото (в «Изображении по тексту», +15 ГБ)</span><small></small></button>
               <button class="mcard" data-m="qwen"><i></i><b>Правка изображения</b><span>Qwen: изменить своё изображение, лист персонажа</span><small></small></button>
@@ -5927,6 +5928,9 @@ const PRESETS = [
     text: 'Бой, погоня, бег: динамичные сцены с вашими персонажами.' },
   { id: 'long', kind: 'video', badge: ['Быстрый черновик', 'f'], title: 'Видеостудия', need: 'изображения героев + сцены',
     text: 'Ролик из нескольких сцен, каждая продолжает прошлую: клипы, истории, музыка.' },
+  { id: 'actionsc', kind: 'video', isNew: true, role: 'action_unet', badge: ['8 + 4 шага', 'f'], title: 'Экшн-видеостудия',
+    need: 'изображения героев + сцены',
+    text: 'Длинный экшн по сценам: погоня или бой нарастает от сцены к сцене, клипы склеиваются в один ролик. Быстрый гибрид-расчёт, звук модель делает сама.' },
   { id: 'krea', kind: 'image', title: 'Изображение по тексту', need: 'только текст',
     text: 'Красивые изображения по описанию: обычные, реализм, серии по списку промптов.' },
   { id: 'qwen', kind: 'image', title: 'Правка изображения', need: 'изображение + что изменить',
